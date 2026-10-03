@@ -58,11 +58,19 @@ pub struct DuplicateDto {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CandidateDto {
+    pub value: String,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadResultDto {
     pub person_id: i64,
     pub fields: FieldsDto,
     pub confidence: std::collections::BTreeMap<&'static str, f32>,
+    /// 会社名の候補(信頼度の高い順)。確認画面でワンタップ選択できる
+    pub company_candidates: Vec<CandidateDto>,
     pub extra_emails: Vec<String>,
     pub duplicates: Vec<DuplicateDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,6 +171,7 @@ impl AppState {
                     person_id,
                     fields: v.fields.into(),
                     confidence: Default::default(),
+                    company_candidates: vec![],
                     extra_emails: vec![],
                     duplicates: vec![],
                     already_imported: Some(person_id),
@@ -185,7 +194,14 @@ impl AppState {
                         }
                     })
                     .collect();
-                Ok(ReadResultDto { person_id, fields: fields.into(), confidence: confidences(&x), extra_emails, duplicates, already_imported: None })
+                Ok(ReadResultDto {
+                    person_id,
+                    fields: fields.into(),
+                    confidence: confidences(&x),
+                    company_candidates: x.company_candidates.iter().map(|f| CandidateDto { value: f.value.clone(), confidence: f.confidence }).collect(),
+                    extra_emails, duplicates,
+                    already_imported: None,
+                })
             }
         }
     }
@@ -263,6 +279,7 @@ mod tests {
         let r = st.import_card(&url, "front").unwrap();
         assert_eq!(r.fields.company, "株式会社ひなた工房");
         assert!(r.confidence.contains_key("email"));
+        assert_eq!(r.company_candidates[0].value, "株式会社ひなた工房");
         assert!(st.search("青木").unwrap().is_empty(), "確定前は検索に出ない");
         // 同じ画像は取り込まない
         assert_eq!(st.import_card(&url, "front").unwrap().already_imported, Some(r.person_id));

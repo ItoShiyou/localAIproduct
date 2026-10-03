@@ -42,6 +42,8 @@ fn main() {
     let mut ext_t = vec![];
     let mut all_contact = 0usize;
     let mut fails: Vec<String> = vec![];
+    let mut cand_hit = 0usize;
+    let mut cand_top1 = 0usize;
     // 初回は読み込みが入るので、時間の集計から除く(暖機)
     let warm = OcrImage::decode(&std::fs::read(&files[0]).unwrap()).unwrap();
     let _ = ocr.recognize(&warm);
@@ -68,6 +70,16 @@ fn main() {
             all_contact += 1;
         }
         n += 1;
+        {
+            use bizcard_logic::extract::squash;
+            let want = exp.company.as_deref().map(squash).unwrap_or_default();
+            if !want.is_empty() && x.company_candidates.iter().any(|f| squash(&f.value) == want) {
+                cand_hit += 1;
+            }
+            if !want.is_empty() && x.company_candidates.first().map(|f| squash(&f.value)) == Some(want.clone()) {
+                cand_top1 += 1;
+            }
+        }
         let bad: Vec<&str> = FIELDS.iter().enumerate().filter(|(i, _)| !r[*i]).map(|(_, f)| *f).collect();
         if !bad.is_empty() {
             fails.push(format!("{name}: {}", bad.join(",")));
@@ -82,6 +94,8 @@ fn main() {
         println!("| {} | {} |", FIELDS[i], ok[i]);
     }
     println!("メール・電話・携帯・FAXすべて一致(1枚単位): {all_contact}/{n}");
+    let with_company = files.iter().filter(|p| { let id = &p.file_name().unwrap().to_string_lossy()[..2]; let e: Expected = serde_json::from_str(&std::fs::read_to_string(root.join(format!("cards/{id}.expected.json"))).unwrap()).unwrap(); e.company.is_some() }).count();
+    println!("会社名の候補に正解がある(上位5件): {cand_hit}/{with_company}、先頭が正解: {cand_top1}/{with_company}(会社名が正解にある画像のみ)");
     ocr_t.sort_by(|a, b| a.total_cmp(b));
     ext_t.sort_by(|a, b| a.total_cmp(b));
     let pct = |v: &Vec<f64>, q: f64| v[((v.len() as f64 - 1.0) * q).round() as usize];

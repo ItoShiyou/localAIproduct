@@ -26,7 +26,6 @@ fn 難しい名刺の既知の不一致を固定する() {
         .collect();
     got.sort();
     let want: Vec<(String, Vec<&str>)> = vec![
-        ("12".into(), vec!["emails"]),
         ("25".into(), vec!["phones"]),
     ];
     assert_eq!(got, want);

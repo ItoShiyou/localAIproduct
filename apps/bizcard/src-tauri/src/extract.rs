@@ -54,6 +54,8 @@ pub struct Extraction {
     pub name_candidates: Vec<Field>,
     pub name_kana: Option<Field>,
     pub company: Option<Field>,
+    /// 会社名の候補(信頼度の高い順。先頭が `company` と同じとは限らない)。確認画面でワンタップ選択できるようにする
+    pub company_candidates: Vec<Field>,
     pub department: Option<Field>,
     pub title: Option<Field>,
     pub emails: Vec<Field>,
@@ -106,6 +108,11 @@ fn repair_contact_spaces(s: &str) -> String {
     for _ in 0..3 {
         t = re!(r"([A-Za-z0-9\-])\.\s+([a-z])").replace_all(&t, "$1.$2").into_owned();
     }
+    // 「@s akura-shokuhin.example.com」(@の直後の語の途中に入った空白)と、ドットが「,」になった「example,com」
+    for _ in 0..3 {
+        t = re!(r"(@[A-Za-z0-9\-]*)\s([A-Za-z0-9\-]+\.)").replace_all(&t, "$1$2").into_owned();
+    }
+    t = re!(r"([A-Za-z0-9]),([A-Za-z])").replace_all(&t, "$1.$2").into_owned();
     // 「examp le. com」のようにドメイン内の1文字分け(小文字の語の途中に入った空白)は直さない: 誤って別の語をつなぐため
     t
 }
@@ -598,7 +605,68 @@ pub fn extract(card: &OcrPage) -> Extraction {
     };
     ex.title = pick(true);
     ex.department = pick(false);
+    ex.company_candidates = company_candidates(&works, ex.company.as_ref());
     ex
+}
+
+/// 会社名の候補を集める: (1) 採用した行 (2) その行の併用モデルの読み (3) 法人格の語を含む他の行
+/// (4) 大きい文字の、氏名・連絡先ではない行(法人格のない屋号を拾うため。信頼度は低い)。
+fn company_candidates(works: &[Work], chosen: Option<&Field>) -> Vec<Field> {
+    let mut out: Vec<Field> = Vec::new();
+    let mut add = |value: &str, confidence: f32, line: usize| {
+        let v = value.trim();
+        if v.is_empty() || v.chars().count() < 2 {
+            return;
+        }
+        let key = squash(v).to_lowercase();
+        if out.iter().any(|f| squash(&f.value).to_lowercase() == key) {
+            return;
+        }
+        out.push(Field { value: v.to_string(), confidence, line });
+    };
+    let has_legal = |t: &str| COMPANY_JA.iter().any(|k| t.contains(k)) || company_en().is_match(t);
+    if let Some(c) = chosen {
+        add(&c.value, c.confidence, c.line);
+        if let Some(w) = works.iter().find(|w| w.idx == c.line) {
+            if let Some(a) = &w.alt_norm {
+                if has_legal(a) {
+                    add(a, c.confidence * 0.7, c.line);
+                }
+            }
+        }
+    }
+    for w in works {
+        if chosen.map(|c| c.line == w.idx).unwrap_or(false) {
+            continue;
+        }
+        let no_contact = !w.norm.contains('@') && !w.norm.chars().any(|c| c.is_ascii_digit());
+        if no_contact && has_legal(&w.norm) {
+            add(&w.norm, w.line.confidence * 0.6, w.idx);
+        }
+        if let Some(a) = &w.alt_norm {
+            if no_contact && has_legal(a) {
+                add(a, w.line.confidence * 0.45, w.idx);
+            }
+        }
+    }
+    // 大きい文字の行(氏名の形・部署/役職・住所・連絡先を除く)
+    let plain: Vec<&Work> = works
+        .iter()
+        .filter(|w| {
+            let t = w.norm.trim();
+            w.role == Role::None && !t.is_empty() && name_shape(t).is_none() && !t.chars().any(|c| c.is_ascii_digit() || c == '@')
+                && t.chars().count() >= 3 && classify_dept_title(t).0.is_none() && classify_dept_title(t).1.is_none()
+        })
+        .collect();
+    let max = plain.iter().map(|w| w.line.char_size()).fold(0.0_f32, f32::max);
+    for w in plain {
+        if max > 0.0 && w.line.char_size() >= max * 0.8 {
+            add(w.norm.trim(), w.line.confidence * 0.35, w.idx);
+        }
+    }
+    out.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    out.truncate(5);
+    out
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -801,6 +869,37 @@ mod tests {
         let x = extract(&c);
         assert!(x.company.is_none());
         assert_eq!(x.name.unwrap().value, "田中設計");
+    }
+
+    #[test]
+    fn 会社名の候補は読み取りの違いと法人格の行と大きい文字の行から出す() {
+        let mut co = line("株式会社ひなた工房", 0.0, 0.0, 30.0);
+        co.alt_text = Some("株式会社工房".into());
+        let c = card(vec![
+            co,
+            line("暮らしに、ひと工夫", 0.0, 40.0, 44.0),
+            line("Hinata Kobo Inc.", 0.0, 100.0, 20.0),
+            line("青木 遥", 0.0, 150.0, 40.0),
+        ]);
+        let x = extract(&c);
+        let v: Vec<&str> = x.company_candidates.iter().map(|f| f.value.as_str()).collect();
+        assert_eq!(v[0], "株式会社ひなた工房");
+        assert!(v.contains(&"株式会社工房"), "併用モデルの読み: {v:?}");
+        assert!(v.contains(&"Hinata Kobo Inc."), "{v:?}");
+        assert!(v.contains(&"暮らしに、ひと工夫"), "大きい文字の行: {v:?}");
+        assert!(!v.contains(&"青木 遥"), "氏名は候補にしない");
+        let confs: Vec<f32> = x.company_candidates.iter().map(|f| f.confidence).collect();
+        assert!(confs.windows(2).all(|w| w[0] >= w[1]), "信頼度順");
+    }
+
+    #[test]
+    fn メールのドットがカンマになった読みと_アットの後ろの空白を直す() {
+        let mut l = line("watanabeos akura-shokuh in,example, com", 0.0, 0.0, 18.0);
+        l.alt_text = Some("watanabe@s akura-shokuhin.example.com".into());
+        assert_eq!(vals(&extract(&card(vec![l])).emails), vec!["watanabe@sakura-shokuhin.example.com"]);
+        let mut l = line("x", 0.0, 0.0, 18.0);
+        l.alt_text = Some("jordan,ellis@larkspur-analytics.example,com".into());
+        assert_eq!(vals(&extract(&card(vec![l])).emails), vec!["jordan.ellis@larkspur-analytics.example.com"]);
     }
 
     #[test]
