@@ -2,11 +2,21 @@
 name = "receipt-db"
 version = "0.1.0"
 edition = "2021"
-description = "領収書DB(アプリ固有のロジック。Tauri の殻は未接続)"
+description = "領収書DB: アプリ固有のロジックと Tauri 2 の殻"
 publish = false
+default-run = "receipt-db"
 
 [lib]
 name = "receipt_db"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "receipt-db"
+path = "src/main.rs"
+required-features = ["tauri"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 factory-core = { path = "../core/engine" }
@@ -18,3 +28,13 @@ lopdf = "0.45"
 pdf-extract = "0.12"
 rusqlite = { version = "0.40", features = ["bundled"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+base64 = "0.22"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+
+[features]
+default = ["tauri"]
+# Tauri 2 の殻(tauri_glue.rs、main.rs)
+tauri = ["dep:tauri", "dep:tauri-plugin-dialog"]
+# 実OCR(ONNX Runtime 上の PP-OCR)。実行時に FACTORY_OCR_* でモデルの場所を渡す
+onnx = ["factory-core/onnx"]

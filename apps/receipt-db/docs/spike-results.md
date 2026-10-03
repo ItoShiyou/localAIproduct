@@ -85,3 +85,16 @@ Mac 固有の問題(onnxruntime の読み込み失敗、パス不整合など)�
 - **提案(PDF)**: 画像のみのPDFは、(a) PDFium(BSD、`pdfium-render`)の共有ライブラリを配布元から取得して同梱する、または (b) まずスキャナー出力に多い「1ページ1枚のJPEG」を `lopdf`(MIT)で取り出して OCR に渡す、の順に試す。(a) の取得に GitHub releases への通信が要るので、ネットワーク制限が外れた環境か、利用者側の手動配置が必要。
 - **提案(精度)**: 実際の領収書(個人情報を伏せたもの)20〜30件の提供を受けて、同じ手順で再測定する。
 - 再現手順: `testset/gen_testset.py` で生成 → `tools/spike/bench_ocr.py`(Python の候補比較)、`core/engine/examples/ocr_dump.rs`(Rust の `PpOcr` / `TesseractOcr`)でテキストを出す → `src-tauri/src/bin/spike_eval.rs` で labels.json と突き合わせる。
+
+## 7. Mac(M2)での画面接続と、実OCRでのコマンド経路の確認(2026-10-04)
+
+- `tauri dev --features onnx` で起動を確認(実OCR: ch_PP-OCRv4_det + japan_PP-OCRv3_rec、併用 ch_PP-OCRv4_rec、onnxruntime 1.30.0 osx-arm64)。
+- `src-tauri/tests/real_ocr_flow.rs`(画面と同じ `commands::AppState` 経由で、取り込み → 読み取り → 一覧)を合成テストセット50件で実行:
+
+| 項目 | 結果(Mac M2、6スレッド、release ビルド) |
+|---|---|
+| 読み取り50件 | 34.5秒(1件あたり 0.69秒)、失敗 0 |
+| 日付 / 金額 / 支払先の一致 | 50/50 / 50/50 / 49/50 |
+| 自動確定 | なし(全件「下書き」) |
+
+- **注意**: この測定中、同じ機械で文字起こしのベンチマーク(faster-whisper、6〜8スレッド)が並行して動いていた。時間は競合の影響を受けた値で、M2 の値でもあるため、合格判定の基準にしない。精度の数値は合成データ(ルールを同じ50件で調整済み)なので楽観的。

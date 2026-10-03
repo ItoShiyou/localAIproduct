@@ -27,6 +27,9 @@
 | pdf-extract(PDFのテキスト層。`src-tauri` で使用) | 0.12.1 | MIT | 同上 |
 | lopdf(画像のみPDFの埋め込みJPEG取り出し) | 0.45 | MIT | 同上 |
 | sha2(SHA-256) | 0.10 | MIT OR Apache-2.0 | 同上 |
+| tauri / tauri-build(殻、2026-10-04 追加) | 2.12 | Apache-2.0 OR MIT | 同上。依存の wry 0.57 は Apache-2.0 OR MIT、tao 0.37 は Apache-2.0(`cargo metadata` で確認) |
+| tauri-plugin-dialog(書き出し先の保存ダイアログ) | 2.8 | Apache-2.0 OR MIT | 同上。依存の rfd 0.16 は MIT |
+| React / React DOM(画面) | 18.3 | MIT | 同上(配布する JS に同梱) |
 
 ### 実行時に読み込む共有ライブラリ
 

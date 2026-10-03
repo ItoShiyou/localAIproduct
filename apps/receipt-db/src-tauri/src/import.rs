@@ -80,17 +80,26 @@ pub fn import_file(store: &Store, data_dir: &Path, path: &Path) -> Outcome {
         Ok(m) => m,
         Err(_) => return Outcome::Failed("ファイルを開けません".into()),
     };
-    if meta.len() == 0 {
-        return Outcome::Failed("空のファイルです".into());
-    }
     if meta.len() > MAX_BYTES {
         return Outcome::Failed("ファイルが大きすぎます(100MBまで)".into());
     }
     let Ok(bytes) = fs::read(path) else { return Outcome::Failed("ファイルを読めません".into()) };
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    import_bytes(store, data_dir, &name, &bytes)
+}
+
+/// 中身(バイト列)から取り込む。画面のファイル選択・ドラッグ&ドロップはこちらを使う。
+pub fn import_bytes(store: &Store, data_dir: &Path, name: &str, bytes: &[u8]) -> Outcome {
+    if bytes.is_empty() {
+        return Outcome::Failed("空のファイルです".into());
+    }
+    if bytes.len() as u64 > MAX_BYTES {
+        return Outcome::Failed("ファイルが大きすぎます(100MBまで)".into());
+    }
     let Some((kind, ext)) = kind_of(&bytes) else {
         return Outcome::Failed("PDF・JPEG・PNG のいずれでもありません(または壊れています)".into());
     };
-    let sha = format!("{:x}", Sha256::digest(&bytes));
+    let sha = format!("{:x}", Sha256::digest(bytes));
     match store.has_document(&sha) {
         Ok(true) => return Outcome::Duplicate,
         Ok(false) => {}
@@ -101,11 +110,10 @@ pub fn import_file(store: &Store, data_dir: &Path, path: &Path) -> Outcome {
         return Outcome::Failed("保存先を作れません".into());
     }
     let stored = dir.join(format!("{sha}.{ext}"));
-    if fs::write(&stored, &bytes).is_err() {
+    if fs::write(&stored, bytes).is_err() {
         return Outcome::Failed("原本のコピーを保存できません(空き容量を確認してください)".into());
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    match store.add_document(&sha, &name, &stored.to_string_lossy(), kind) {
+    match store.add_document(&sha, name, &stored.to_string_lossy(), kind) {
         Ok(Some(id)) => {
             match Jobs::new(&store.db).enqueue(JOB_KIND, &format!("{{\"document_id\":{id}}}")) {
                 Ok(_) => Outcome::Imported { document_id: id },
