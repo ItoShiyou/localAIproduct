@@ -496,9 +496,8 @@ enum NameKind {
 
 fn name_shape(t: &str) -> Option<NameKind> {
     let t = t.trim();
-    let han = r"\p{Han}々";
-    let ja_spaced = Regex::new(&format!(r"^[{han}ぁ-んァ-ヶー]{{1,4}} [{han}ぁ-んァ-ヶー]{{1,4}}$")).ok()?;
-    let ja_unspaced = Regex::new(&format!(r"^[{han}]{{2,4}}$")).ok()?;
+    let ja_spaced = re!(r"^[\p{Han}々ぁ-んァ-ヶー]{1,4} [\p{Han}々ぁ-んァ-ヶー]{1,4}$");
+    let ja_unspaced = re!(r"^[\p{Han}々]{2,4}$");
     let has_han = t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c) || c == '々');
     if has_han && (ja_spaced.is_match(t) || ja_unspaced.is_match(t)) {
         return Some(NameKind::Ja);
