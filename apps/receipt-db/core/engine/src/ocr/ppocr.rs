@@ -155,8 +155,21 @@ impl Ocr for PpOcr {
         let (w, h) = rgb.dimensions();
         let mut lines = Vec::new();
         for b in self.detect(&rgb)? {
-            let crop = rotated_crop(&rgb, &b);
-            let (text, conf) = self.rec.run(&crop)?;
+            // 縦書きは、(1)読む方向に回して読む(英数字・横倒しの文字)と、(2)正立の文字を1字ずつ切り出して
+            // 横に並べて読む(日本語の縦書き)の両方を試し、信頼度が高いほうを採る。
+            let mut crop = rotated_crop(&rgb, &b);
+            let (mut text, mut conf) = self.rec.run(&crop)?;
+            if b.vertical() {
+                if let Some(strip) = stacked_strip(&rgb, &b) {
+                    let (t2, c2) = self.rec.run(&strip)?;
+                    // 回して読んだ結果が英数字中心で確かなら(メール・電話・URL)そのまま採る。
+                    // 日本語の縦書きを回して読むと、確かそうに見える意味のない漢字列になりやすい。
+                    let keep_rotated = ascii_ratio(&text) >= 0.6 && conf >= 0.8;
+                    if !keep_rotated && c2 > conf * 0.9 {
+                        (text, conf, crop) = (t2, c2, strip);
+                    }
+                }
+            }
             let alt_text = match &self.alt {
                 Some(a) => Some(a.run(&crop)?.0).filter(|t| !t.trim().is_empty()),
                 None => None,
@@ -272,7 +285,9 @@ pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh
             }
             let theta = 0.5 * (2.0 * sxy).atan2(sxx - syy);
             let (mut ux, mut uy) = (theta.cos(), theta.sin());
-            if ux < -1e-6 || (ux.abs() < 1e-6 && uy < 0.0) {
+            // 向きの正規化: 横長なら右向き、縦長(縦に近い)なら下向き。ほぼ縦のときに ux の符号の誤差で
+            // 上向きになると、文字が上下逆さまで読まれる。
+            if (uy.abs() > ux.abs() && uy < 0.0) || (uy.abs() <= ux.abs() && ux < 0.0) {
                 ux = -ux;
                 uy = -uy;
             }
@@ -305,17 +320,16 @@ pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh
     out
 }
 
-/// 回転した領域を、読む方向が左から右になるように切り出す(双一次補間)。
-pub fn rotated_crop(img: &RgbImage, b: &DetBox) -> RgbImage {
-    let (ow, oh) = ((b.len.ceil() as u32).max(1), (b.thick.ceil() as u32).max(1));
-    let (vx, vy) = (-b.uy, b.ux);
+/// 中心 (cx, cy) から、列方向の単位ベクトル `a`、行方向の単位ベクトル `b` で、ow x oh の画像を標本化する(双一次補間)。
+fn sample_frame(img: &RgbImage, cx: f32, cy: f32, a: (f32, f32), b: (f32, f32), ow: u32, oh: u32) -> RgbImage {
+    let (ow, oh) = (ow.max(1), oh.max(1));
     let (w, h) = img.dimensions();
     let mut out = RgbImage::new(ow, oh);
     for j in 0..oh {
         for i in 0..ow {
-            let (du, dv) = (i as f32 + 0.5 - ow as f32 / 2.0, j as f32 + 0.5 - oh as f32 / 2.0);
-            let x = (b.cx + du * b.ux + dv * vx - 0.5).clamp(0.0, (w - 1) as f32);
-            let y = (b.cy + du * b.uy + dv * vy - 0.5).clamp(0.0, (h - 1) as f32);
+            let (da, db) = (i as f32 + 0.5 - ow as f32 / 2.0, j as f32 + 0.5 - oh as f32 / 2.0);
+            let x = (cx + da * a.0 + db * b.0 - 0.5).clamp(0.0, (w - 1) as f32);
+            let y = (cy + da * a.1 + db * b.1 - 0.5).clamp(0.0, (h - 1) as f32);
             let (x0, y0) = (x.floor() as u32, y.floor() as u32);
             let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
             let (fx, fy) = (x - x0 as f32, y - y0 as f32);
@@ -331,6 +345,95 @@ pub fn rotated_crop(img: &RgbImage, b: &DetBox) -> RgbImage {
         }
     }
     out
+}
+
+/// 回転した領域を、読む方向が左から右になるように切り出す(縦書きの「横倒しの文字」もこの形で読む)。
+pub fn rotated_crop(img: &RgbImage, b: &DetBox) -> RgbImage {
+    sample_frame(img, b.cx, b.cy, (b.ux, b.uy), (-b.uy, b.ux), b.len.ceil() as u32, b.thick.ceil() as u32)
+}
+
+/// 文字列のうち ASCII 文字の割合(空なら 0)
+pub fn ascii_ratio(t: &str) -> f32 {
+    let n = t.chars().count();
+    if n == 0 {
+        0.0
+    } else {
+        t.chars().filter(|c| c.is_ascii()).count() as f32 / n as f32
+    }
+}
+
+const PAD_RATIO: f32 = 0.15;
+
+/// 縦書きで文字が正立のまま縦に積まれている領域を、文字ごとに切り出して左から右へ並べた1行にする。
+/// 領域の余白を除いて(背景との差が大きい画素の範囲)文字の幅 `wi` と列の長さ `li` を求め、文字は
+/// 幅と高さがほぼ等しい(全角)とみなして `li / wi` を文字数に丸める。切れ目は、等分した位置の近くで
+/// 横方向の墨量が最も少ない行にする(文字の途中で切らない)。2文字未満、または100文字を超える場合は None。
+pub fn stacked_strip(img: &RgbImage, b: &DetBox) -> Option<RgbImage> {
+    // 下向き (ux, uy) を行方向、右向き (uy, -ux) を列方向とする正立の標本
+    let (cw, ch) = (b.thick.ceil() as u32, b.len.ceil() as u32);
+    if cw < 4 || ch < 8 {
+        return None;
+    }
+    let upright = sample_frame(img, b.cx, b.cy, (b.uy, -b.ux), (b.ux, b.uy), cw, ch);
+    let lum = |p: &image::Rgb<u8>| 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32;
+    let mut hist = [0u32; 256];
+    for p in upright.pixels() {
+        hist[lum(p) as usize] += 1;
+    }
+    // 背景の明るさ = 最頻値
+    let bg_l = hist.iter().enumerate().max_by_key(|(_, c)| **c).map(|(i, _)| i as f32).unwrap_or(255.0);
+    let ink = |p: &image::Rgb<u8>| ((lum(p) - bg_l).abs() > 48.0) as u32;
+    let mut col = vec![0u32; cw as usize];
+    let mut row = vec![0u32; ch as usize];
+    for (x, y, p) in upright.enumerate_pixels() {
+        let v = ink(p);
+        col[x as usize] += v;
+        row[y as usize] += v;
+    }
+    let ext = |v: &[u32]| -> Option<(usize, usize)> {
+        let f = v.iter().position(|c| *c > 0)?;
+        let l = v.iter().rposition(|c| *c > 0)?;
+        Some((f, l + 1))
+    };
+    let (x0, x1) = ext(&col)?;
+    let (y0, y1) = ext(&row)?;
+    let (wi, li) = ((x1 - x0) as f32, (y1 - y0) as f32);
+    let n = (li / wi).round() as usize;
+    if !(2..=100).contains(&n) {
+        return None;
+    }
+    let pitch = li / n as f32;
+    // 切れ目
+    let mut cuts = vec![y0];
+    for k in 1..n {
+        let ideal = y0 as f32 + pitch * k as f32;
+        let (lo, hi) = ((ideal - pitch * 0.3).max(y0 as f32) as usize, ((ideal + pitch * 0.3) as usize).min(y1 - 1));
+        let cut = (lo..=hi.max(lo)).min_by_key(|j| row[*j]).unwrap_or(ideal as usize);
+        cuts.push(cut.max(*cuts.last().unwrap() + 1));
+    }
+    cuts.push(y1);
+    let cell = wi.max(8.0) as u32;
+    let pad = (cell as f32 * PAD_RATIO).round() as u32;
+    let bgp = image::Rgb([bg_l as u8; 3]);
+    let bgp = {
+        // 背景色は四隅の平均(色つきの紙でも合わせる)
+        let mut acc = [0u32; 3];
+        for (x, y) in [(0, 0), (cw - 1, 0), (0, ch - 1), (cw - 1, ch - 1)] {
+            for c in 0..3 {
+                acc[c] += upright.get_pixel(x, y)[c] as u32;
+            }
+        }
+        if (0..3).all(|c| (acc[c] / 4) as f32 > 0.0) { image::Rgb([(acc[0] / 4) as u8, (acc[1] / 4) as u8, (acc[2] / 4) as u8]) } else { bgp }
+    };
+    let full = cell + 2 * pad;
+    let mut strip = RgbImage::from_pixel(full * n as u32, full, bgp);
+    for k in 0..n {
+        let (ya, yb) = (cuts[k] as u32, cuts[k + 1] as u32);
+        let piece = imageops::crop_imm(&upright, x0 as u32, ya, (x1 - x0) as u32, (yb - ya).max(1)).to_image();
+        let piece = imageops::resize(&piece, cell, cell, FilterType::Triangle);
+        imageops::replace(&mut strip, &piece, (k as u32 * full + pad) as i64, pad as i64);
+    }
+    Some(strip)
 }
 
 /// CTC の貪欲デコード。`probs` は (時刻 t, 文字種 k) の行優先。空白(0)と連続する同じ字を落とす。
@@ -420,6 +523,58 @@ mod tests {
         let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6, 1.0, 1.0);
         assert_eq!(b.len(), 1);
         assert!(b[0].vertical() && b[0].uy > 0.99);
+    }
+
+    #[test]
+    fn ほぼ縦の領域の向きは下向きにそろう() {
+        // 縦に近い帯(わずかに右へ傾く)。符号の誤差で上向きにならない
+        let (w, h) = (60, 200);
+        let mut p = vec![0.0f32; w * h];
+        for y in 10..190 {
+            let xc = 30 + (y - 10) / 90;
+            for x in xc..xc + 6 {
+                p[y * w + x] = 0.9;
+            }
+        }
+        let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6, 1.0, 1.0);
+        assert_eq!(b.len(), 1);
+        assert!(b[0].uy > 0.99 && b[0].vertical());
+    }
+
+    #[test]
+    fn 正立の縦積みの文字を1字ずつ切り出して横に並べる() {
+        // 白地に、黒い 20x20 の四角を縦に5つ(間隔 2px)
+        let mut img = RgbImage::from_pixel(60, 160, image::Rgb([255, 255, 255]));
+        for k in 0..5u32 {
+            for y in 0..20 {
+                for x in 0..20 {
+                    img.put_pixel(20 + x, 10 + k * 22 + y, image::Rgb([0, 0, 0]));
+                }
+            }
+        }
+        let b = DetBox { cx: 30.0, cy: 80.0, len: 150.0, thick: 40.0, ux: 0.0, uy: 1.0 };
+        let strip = stacked_strip(&img, &b).expect("5文字");
+        let cell = 20 + 2 * (20.0f32 * PAD_RATIO).round() as u32;
+        assert_eq!((strip.width(), strip.height()), (cell * 5, cell));
+        // 各文字のまん中は黒、文字の間(余白の中)は白
+        let pad = (20.0f32 * PAD_RATIO).round() as u32;
+        for k in 0..5 {
+            assert!(strip.get_pixel(k * cell + cell / 2, cell / 2)[0] < 60, "k={k}");
+            assert!(strip.get_pixel(k * cell + 1, 1)[0] > 200);
+        }
+        let _ = pad;
+        // 1文字分しかない・空白だけなら None
+        let blank = RgbImage::from_pixel(60, 160, image::Rgb([255, 255, 255]));
+        assert!(stacked_strip(&blank, &b).is_none());
+        let short = DetBox { cx: 30.0, cy: 20.0, len: 30.0, thick: 40.0, ux: 0.0, uy: 1.0 };
+        assert!(stacked_strip(&img, &short).is_none());
+    }
+
+    #[test]
+    fn asciiの割合() {
+        assert_eq!(ascii_ratio(""), 0.0);
+        assert!(ascii_ratio("watanabe@example.com") > 0.99);
+        assert!(ascii_ratio("株式会社") < 0.1);
     }
 
     #[test]
