@@ -1,0 +1,60 @@
+[
+ {
+  "file": "t01_clean.wav",
+  "model": "rnnoise",
+  "dur_s": 165.2,
+  "proc_s": 10.7,
+  "rtf": 0.065,
+  "cpu_s": 10.6,
+  "peak_rss_mb": 736
+ },
+ {
+  "file": "t02_aircon.wav",
+  "model": "rnnoise",
+  "dur_s": 165.2,
+  "proc_s": 10.9,
+  "rtf": 0.066,
+  "cpu_s": 10.8,
+  "sisdr_in": 5.0,
+  "sisdr_out": 11.6,
+  "peak_rss_mb": 772
+ },
+ {
+  "file": "t03_keyboard.wav",
+  "model": "rnnoise",
+  "dur_s": 165.2,
+  "proc_s": 9.8,
+  "rtf": 0.059,
+  "cpu_s": 9.7,
+  "sisdr_in": 5.0,
+  "sisdr_out": 15.8,
+  "peak_rss_mb": 778
+ },
+ {
+  "file": "t04_farmic.wav",
+  "model": "rnnoise",
+  "dur_s": 165.2,
+  "proc_s": 10.7,
+  "rtf": 0.065,
+  "cpu_s": 10.5,
+  "peak_rss_mb": 778
+ },
+ {
+  "file": "t05_overlap.wav",
+  "model": "rnnoise",
+  "dur_s": 55.7,
+  "proc_s": 3.5,
+  "rtf": 0.063,
+  "cpu_s": 3.5,
+  "peak_rss_mb": 778
+ },
+ {
+  "file": "t06_long10min.wav",
+  "model": "rnnoise",
+  "dur_s": 660.8,
+  "proc_s": 43.3,
+  "rtf": 0.066,
+  "cpu_s": 42.9,
+  "peak_rss_mb": 1156
+ }
+]

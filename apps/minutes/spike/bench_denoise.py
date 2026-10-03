@@ -6,7 +6,8 @@ try: import shim  # torchaudio新版でdeepfilternetを読むための互換
 except ImportError: pass
 import numpy as np, soundfile as sf, scipy.signal as ss, torch
 TS, DFN, TH, OUT, ONLY = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]  # ONLY: rnnoise か dfn3(別プロセスで測る)
-torch.set_num_threads(TH); os.makedirs(OUT, exist_ok=True)
+torch.set_num_threads(TH); torch.set_flush_denormal(True);  # 無音(0)入力でGRUが極端に遅くなるのを避ける
+os.makedirs(OUT, exist_ok=True)
 
 def align(est, ref, maxlag=3000):  # 処理遅延(フレーム遅れ)を相互相関で補正
     n = min(len(est), len(ref), 16000 * 30); c = ss.correlate(est[:n], ref[:n], mode="full", method="fft")
@@ -32,6 +33,7 @@ def dfn3(x16):
     global _dfn
     from df.enhance import init_df, enhance
     if _dfn is None: _dfn = init_df(DFN, log_level="ERROR")
+    x16 = x16 + (np.random.default_rng(0).standard_normal(len(x16)) * 1e-4).astype(np.float32)  # 完全な無音(0)だけの区間があると極端に遅くなる(実測)ため微小ノイズを足す
     m, st, _ = _dfn; sr = st.sr() if callable(st.sr) else st.sr
     x = torch.from_numpy(ss.resample_poly(x16, sr, 16000).astype(np.float32))[None]
     with torch.no_grad(): y = enhance(m, st, x)
