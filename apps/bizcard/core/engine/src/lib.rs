@@ -6,6 +6,9 @@
 
 pub mod db;
 pub mod error;
+pub mod jobs;
+pub mod logging;
+pub mod settings;
 pub mod export;
 pub mod journal;
 pub mod license;
