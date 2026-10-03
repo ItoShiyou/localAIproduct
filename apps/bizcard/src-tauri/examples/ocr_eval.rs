@@ -19,6 +19,7 @@ fn main() {
     let a: Vec<String> = std::env::args().collect();
     let threads = a.get(5).and_then(|s| s.parse().ok()).unwrap_or(2);
     let no_alt = a.iter().any(|x| x == "--no-alt");
+    let scale: f32 = a.iter().position(|x| x == "--scale").and_then(|i| a.get(i + 1)).and_then(|v| v.parse().ok()).unwrap_or(1.0);
     let dump = a.iter().position(|x| x == "--dump").and_then(|i| a.get(i + 1)).cloned();
     let ocr = PpOcr::new(&PpOcrConfig {
         onnxruntime_lib: a[1].clone().into(),
@@ -48,7 +49,11 @@ fn main() {
         let name = p.file_name().unwrap().to_string_lossy().to_string();
         let card_id = &name[..2];
         let exp: Expected = serde_json::from_str(&std::fs::read_to_string(root.join(format!("cards/{card_id}.expected.json"))).unwrap()).unwrap();
-        let img = OcrImage::decode(&std::fs::read(p).unwrap()).unwrap();
+        let mut img = OcrImage::decode(&std::fs::read(p).unwrap()).unwrap();
+        if scale != 1.0 {
+            let d = image::load_from_memory(&std::fs::read(p).unwrap()).unwrap();
+            img = OcrImage::from_dynamic(d.resize_exact((d.width() as f32 * scale) as u32, (d.height() as f32 * scale) as u32, image::imageops::FilterType::Lanczos3));
+        }
         let t = Instant::now();
         let page = ocr.recognize(&img).unwrap();
         ocr_t.push(t.elapsed().as_secs_f64());

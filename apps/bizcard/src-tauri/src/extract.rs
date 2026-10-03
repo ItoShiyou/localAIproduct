@@ -247,7 +247,7 @@ enum PhoneKind {
 
 fn phones_in(s: &mut String) -> Vec<(String, PhoneKind, bool)> {
     let re = re!(
-        r"\+\d{1,3}[-\s.]?\(?\d{1,4}\)?(?:[-\s.]\d{2,4}){1,3}|\(\d{2,5}\)\s?\d{1,4}[-.]\d{3,4}|0\d{1,4}-\d{1,4}-\d{3,4}|\d{3}[-.]\d{3}[-.]\d{4}"
+        r"\+\d{1,3}[-\s.]?\(?\d{1,4}\)?(?:[-\s.]\d{2,4}){1,3}|\(\d{2,5}\)\s?\d{1,4}[-.]\d{3,4}|0\d{1,4}-\d{1,4}-\d{3,4}|\d{3}[-.]\d{3}[-.]\d{4}|\+\d{10,14}|0\d{9,10}"
     );
     let spans: Vec<(usize, usize)> =
         re.find_iter(s).filter(|m| boundary_ok(s, m.start(), m.end())).map(|m| (m.start(), m.end())).collect();
@@ -577,6 +577,10 @@ fn name_shape(t: &str) -> Option<NameKind> {
     let ja_unspaced = re!(r"^[\p{Han}々]{2,5}$");
     let has_han = t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c) || c == '々');
     if has_han && (ja_spaced.is_match(t) || ja_unspaced.is_match(t)) {
+        return Some(NameKind::Ja);
+    }
+    // 外国人名のカタカナ表記(中黒区切り): ジョン・スミス
+    if re!(r"^[ァ-ヶー]{1,8}[・･][ァ-ヶー]{1,8}(?:[・･][ァ-ヶー]{1,8})?$").is_match(t) {
         return Some(NameKind::Ja);
     }
     let latin = re!(r"^[A-Z][a-z]+(?:[ .\-][A-Z][a-z]*\.?){1,3}$|^[A-Z]{2,}(?: [A-Z]{2,}){1,2}$");
