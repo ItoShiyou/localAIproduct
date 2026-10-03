@@ -30,7 +30,6 @@ fn 難しい名刺の既知の不一致を固定する() {
         ("19".into(), vec!["company"]),
         ("21".into(), vec!["name"]),
         ("22".into(), vec!["phones", "mobiles"]),
-        ("23".into(), vec!["emails"]),
         ("24".into(), vec!["company"]),
         ("25".into(), vec!["phones"]),
     ];

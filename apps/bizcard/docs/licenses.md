@@ -4,27 +4,31 @@
 ライセンス表記は、crates.io からダウンロードした各クレートの `Cargo.toml` の `license` 欄から転記したもの。
 **配布物に必要な表記(著作権表示・ライセンス全文の同梱)の中身は、各リポジトリのLICENSEファイルで未確認**(配布前に確認し、同梱方法を決める。要確認)。
 
-## 実行時の依存(`bizcard-logic`)
+## 実行時の依存(`bizcard-logic` + `core/engine`)
+
+直接の依存の一覧と、配布時に必要な表記は、receipt-db の `docs/licenses.md`(同じ `core/engine` を使う)に従う。確認日・方法もそちらに書かれている。このアプリ固有の依存は次のとおり。
 
 | 名前 | バージョン | ライセンス(Cargo.toml の表記) | 用途 |
 |---|---|---|---|
 | regex | 1.13.1 | MIT OR Apache-2.0 | ルール抽出の正規表現 |
-| csv | 1.4.0 | Unlicense/MIT | CSV書き出し(暫定。core の汎用書き出しが入るまで) |
-| encoding_rs | 0.8.42 | (Apache-2.0 OR MIT) AND BSD-3-Clause | Shift_JIS 変換 |
-| serde / serde_json | 1.0.229 / 1.0.151 | MIT OR Apache-2.0 | OCR出力の読み込み |
-| factory-core(`core/engine`) | 0.1.0 | 社内の共通コア(`publish = false`) | 無害化・文字コード・エラー型 |
+| serde / serde_json | 1.0.229 / 1.0.151 | MIT OR Apache-2.0 | OCR出力・正解ラベルの読み込み |
+| factory-core(`core/engine`) | 0.1.0 | 社内の共通コア(`publish = false`) | OCR・DB・CSV・エラー型 |
 
-`factory-core` 自身の依存(thiserror 1.0.69 MIT OR Apache-2.0、base64、ureq など)も配布物に入る。それらの表記は、依存ツリー全体を `cargo tree` で洗い出して確認する(未実施)。
+テスト専用(配布物に入れない): csv 1.4.0(Unlicense/MIT)、encoding_rs 0.8.42((Apache-2.0 OR MIT) AND BSD-3-Clause)、image 0.25(MIT OR Apache-2.0)。
+SQLite は core の rusqlite(bundled)を使う(このアプリ独自の SQLite 依存は無い)。
 
-## テスト専用の依存(配布物に入れない)
+## 実OCRの測定に使ったモデル(スパイクのみ。リポジトリには含めず、製品にも同梱しない)
 
-| 名前 | バージョン | ライセンス | 用途 |
-|---|---|---|---|
-| rusqlite | 0.32.1 | MIT | スキーマ案のテスト |
-| libsqlite3-sys(SQLite 本体を同梱ビルド) | 0.30.1 | MIT(SQLite 本体はパブリックドメインとされる。**未確認**) | 同上 |
+receipt-db の `docs/licenses.md` の「モデルと辞書」と同じファイルを使った(取得元とSHA-256はそちら)。
 
-製品の SQLite 接続は、core の `db`(未実装)に合わせる。製品で rusqlite を使うことになった場合は、本表を実行時の依存に移す。
+| ファイル | 状態 |
+|---|---|
+| ch_PP-OCRv4_det(検出)、ch_PP-OCRv4_rec(認識・中国語、数字/英字/記号に強い) | `rapidocr-onnxruntime` 1.4.4(PyPI、Apache-2.0)の同梱ファイル。RapidOCR の公開ハッシュと一致を確認済み(receipt-db 側) |
+| japan_PP-OCRv3_rec と japan_dict.txt(認識・日本語) | **出所未確認**: npm `multilingual-purejs-ocr` 1.0.1(ISC)の同梱ファイルで、モデル自体のライセンス表記がなく、公式の配布元とのハッシュ照合もできていない。**製品には同梱しない扱い。** 製品に入れるには、公式配布元からの取得と照合が先(要確認) |
+| ONNX Runtime 1.30.0 共有ライブラリ(Linux x86_64) | MIT。Mac/Windows 版の取得は未確認 |
+
+名刺管理は、日本語の名刺を読むために日本語の認識モデルが事実上必須(中国語モデル単独は仮名を落とす)。出所確認が済まないうちは、製品として日本語を読めない。
 
 ## モデル
 
-なし(生成モデルは使わない。OCRモデルは OCR 方式の決定後に記入)。
+生成モデルは使わない。

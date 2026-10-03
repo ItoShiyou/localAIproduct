@@ -42,6 +42,7 @@ dependencies = [
  "csv",
  "encoding_rs",
  "factory-core",
+ "image",
  "regex",
  "serde",
  "serde_json",

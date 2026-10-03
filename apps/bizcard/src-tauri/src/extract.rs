@@ -16,6 +16,19 @@ use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
 
+static LONG_BAR: OnceLock<Regex> = OnceLock::new();
+fn re_cached(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
+    cell.get_or_init(|| Regex::new(pat).expect("regex"))
+}
+
+macro_rules! re {
+    ($pat:expr) => {{
+        static CELL: OnceLock<Regex> = OnceLock::new();
+        re_cached(&CELL, $pat)
+    }};
+}
+
+
 /// 確認画面で「要確認」の印を付ける目安の閾値
 pub const REVIEW_THRESHOLD: f32 = 0.7;
 
@@ -67,6 +80,7 @@ pub fn normalize(s: &str) -> String {
         };
         out.push(n);
     }
+    let out = repair_contact_spaces(&out);
     // 数字にはさまれた長音記号はハイフンの誤認識として扱う
     let re = re_cached(&LONG_BAR, r"(\d)ー(\d)");
     let mut prev;
@@ -81,21 +95,24 @@ pub fn normalize(s: &str) -> String {
     cur
 }
 
+/// OCRがメール・URLの途中に入れる空白や、`://` の読み違いを直す(行に `@` `http` `www` がある場合だけ)
+fn repair_contact_spaces(s: &str) -> String {
+    if !(s.contains('@') || s.contains("http") || s.contains("www")) {
+        return s.to_string();
+    }
+    let mut t = re!(r"(?i)(https?):\s?[/Il1|]{1,2}(?:\s?[/Il1|])?").replace_all(s, "$1://").into_owned();
+    t = re!(r"([A-Za-z0-9._\-])\s*@\s*([A-Za-z0-9])").replace_all(&t, "$1@$2").into_owned();
+    // 「example. com」「hinata-kobo. example」のように、ドットの後ろに空白が入った小文字の語をつなぐ
+    for _ in 0..3 {
+        t = re!(r"([A-Za-z0-9\-])\.\s+([a-z])").replace_all(&t, "$1.$2").into_owned();
+    }
+    // 「examp le. com」のようにドメイン内の1文字分け(小文字の語の途中に入った空白)は直さない: 誤って別の語をつなぐため
+    t
+}
+
 /// 比較用: 空白を除き、半角にそろえる(評価と重複検知で使う)
 pub fn squash(s: &str) -> String {
     normalize(s).chars().filter(|c| !c.is_whitespace()).collect()
-}
-
-static LONG_BAR: OnceLock<Regex> = OnceLock::new();
-fn re_cached(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
-    cell.get_or_init(|| Regex::new(pat).expect("regex"))
-}
-
-macro_rules! re {
-    ($pat:expr) => {{
-        static CELL: OnceLock<Regex> = OnceLock::new();
-        re_cached(&CELL, $pat)
-    }};
 }
 
 // ---------- 語彙 ----------
@@ -119,7 +136,7 @@ const DEPT_SUFFIX_JA: &[&str] = &["事業部", "本部", "グループ", "チー
 
 const COMPANY_JA: &[&str] = &[
     "株式会社", "有限会社", "合同会社", "合資会社", "合名会社", "一般社団法人", "一般財団法人", "公益社団法人",
-    "公益財団法人", "NPO法人", "医療法人", "社会福祉法人", "学校法人", "(株)", "(有)", "㈱", "㈲",
+    "公益財団法人", "NPO法人", "医療法人", "社会福祉法人", "学校法人", "(株)", "株)", "(株", "(有)", "㈱", "㈲",
 ];
 
 fn company_en() -> &'static Regex {
@@ -255,11 +272,14 @@ fn phones_in(s: &mut String) -> Vec<(String, PhoneKind, bool)> {
 }
 
 fn postal_in(s: &mut String) -> Option<String> {
-    let re = re!(r"^\s*(?:〒\s*)?(\d{3})-?(\d{4})(?:\s|$)|〒\s*(\d{3})-?(\d{4})");
+    // OCRは「〒」を「テ」「干」と読み違え、後ろの文字と空白なしでつなげることがある
+    // (行頭の1文字は〒の読み違い: 「元」「T」「干」など。数字が7桁続けば郵便番号として扱う)
+    let re = re!(r"^\s*[^\d\s]?\s*(\d{3})-?(\d{4})(?:[^\d\-]|$)|[〒テ干]\s*(\d{3})-?(\d{4})");
     let found = re.captures(s).map(|c| {
         let (x, y) = if let Some(x) = c.get(1) { (x.as_str(), c.get(2).unwrap().as_str()) } else { (c.get(3).unwrap().as_str(), c.get(4).unwrap().as_str()) };
         let m = c.get(0).unwrap();
-        (format!("{x}-{y}"), m.start(), m.end())
+        let end = c.get(2).or(c.get(4)).unwrap().end();
+        (format!("{x}-{y}"), m.start(), end)
     });
     found.map(|(v, a, b)| {
         mask(s, a, b);
@@ -287,7 +307,8 @@ pub fn extract(card: &OcrPage) -> Extraction {
         .iter()
         .map(|&i| {
             let l = &card.lines[i];
-            let norm = normalize(&l.text);
+            let primary = l.text.as_str();
+            let norm = normalize(primary);
             let alt = l.alt_text.as_deref().map(normalize);
             Work { idx: i, line: l, rest: norm.clone(), norm, alt: alt.clone(), alt_norm: alt, role: Role::None }
         })
@@ -397,6 +418,10 @@ pub fn extract(card: &OcrPage) -> Extraction {
                 company = toks[..p].join(" ");
                 dt_tokens.push((w.idx, toks[p..].join(" ")));
             }
+        }
+        // OCRが「(株)」の開きかっこを落とした「株)」は戻す
+        if company.starts_with("株)") {
+            company.insert(0, '(');
         }
         ex.company = Some(Field { value: company, confidence: w.line.confidence * 0.85, line: w.idx });
         w.role = Role::Company;
@@ -549,7 +574,7 @@ enum NameKind {
 fn name_shape(t: &str) -> Option<NameKind> {
     let t = t.trim();
     let ja_spaced = re!(r"^[\p{Han}々ぁ-んァ-ヶー]{1,4} [\p{Han}々ぁ-んァ-ヶー]{1,4}$");
-    let ja_unspaced = re!(r"^[\p{Han}々]{2,4}$");
+    let ja_unspaced = re!(r"^[\p{Han}々]{2,5}$");
     let has_han = t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c) || c == '々');
     if has_han && (ja_spaced.is_match(t) || ja_unspaced.is_match(t)) {
         return Some(NameKind::Ja);
@@ -571,6 +596,10 @@ fn ja_dept_or_title(tok: &str) -> Option<(Option<String>, Option<String>)> {
             }
             if let Some((_, suffix)) = TITLE_SPLIT.iter().find(|(w, _)| w == t) {
                 return Some((Some(format!("{prefix}{suffix}")), Some(t.to_string())));
+            }
+            // 「物流企画室係長」のように、OCRが空白を落として部署と役職がつながった場合
+            if prefix.chars().count() >= 3 && DEPT_SUFFIX_JA.iter().any(|s| prefix.ends_with(s)) {
+                return Some((Some(prefix.to_string()), Some(t.to_string())));
             }
             return Some((None, Some(tok.to_string())));
         }

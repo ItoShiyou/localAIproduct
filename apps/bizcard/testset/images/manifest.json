@@ -1,0 +1,302 @@
+[
+ {
+  "file": "01-a.png",
+  "card": "01",
+  "style": "white-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "01-b.jpg",
+  "card": "01",
+  "style": "navy-white-zenhei",
+  "degrade": "傾き4度+ノイズ"
+ },
+ {
+  "file": "02-a.png",
+  "card": "02",
+  "style": "cream-propgothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "02-b.jpg",
+  "card": "02",
+  "style": "gray-band-gothic",
+  "degrade": "ぼかし+低コントラスト"
+ },
+ {
+  "file": "03-a.png",
+  "card": "03",
+  "style": "navy-white-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "03-b.jpg",
+  "card": "03",
+  "style": "green-tint-zenhei",
+  "degrade": "せん断(斜め撮影風)+ノイズ"
+ },
+ {
+  "file": "04-a.png",
+  "card": "04",
+  "style": "gray-band-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "04-b.jpg",
+  "card": "04",
+  "style": "white-gothic",
+  "degrade": "影のグラデーション+JPEG圧縮強め"
+ },
+ {
+  "file": "05-a.png",
+  "card": "05",
+  "style": "green-tint-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "05-b.jpg",
+  "card": "05",
+  "style": "cream-propgothic",
+  "degrade": "傾き-6度+ごま塩ノイズ+ぼかし"
+ },
+ {
+  "file": "06-a.png",
+  "card": "06",
+  "style": "white-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "06-b.jpg",
+  "card": "06",
+  "style": "navy-white-zenhei",
+  "degrade": "傾き4度+ノイズ"
+ },
+ {
+  "file": "07-a.png",
+  "card": "07",
+  "style": "cream-propgothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "07-b.jpg",
+  "card": "07",
+  "style": "gray-band-gothic",
+  "degrade": "ぼかし+低コントラスト"
+ },
+ {
+  "file": "08-a.png",
+  "card": "08",
+  "style": "navy-white-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "08-b.jpg",
+  "card": "08",
+  "style": "green-tint-zenhei",
+  "degrade": "せん断(斜め撮影風)+ノイズ"
+ },
+ {
+  "file": "09-a.png",
+  "card": "09",
+  "style": "gray-band-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "09-b.jpg",
+  "card": "09",
+  "style": "white-gothic",
+  "degrade": "影のグラデーション+JPEG圧縮強め"
+ },
+ {
+  "file": "10-a.png",
+  "card": "10",
+  "style": "green-tint-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "10-b.jpg",
+  "card": "10",
+  "style": "cream-propgothic",
+  "degrade": "傾き-6度+ごま塩ノイズ+ぼかし"
+ },
+ {
+  "file": "11-a.png",
+  "card": "11",
+  "style": "white-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "11-b.jpg",
+  "card": "11",
+  "style": "navy-white-zenhei",
+  "degrade": "傾き4度+ノイズ"
+ },
+ {
+  "file": "12-a.png",
+  "card": "12",
+  "style": "cream-propgothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "12-b.jpg",
+  "card": "12",
+  "style": "gray-band-gothic",
+  "degrade": "ぼかし+低コントラスト"
+ },
+ {
+  "file": "13-a.png",
+  "card": "13",
+  "style": "navy-white-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "13-b.jpg",
+  "card": "13",
+  "style": "green-tint-zenhei",
+  "degrade": "せん断(斜め撮影風)+ノイズ"
+ },
+ {
+  "file": "14-a.png",
+  "card": "14",
+  "style": "gray-band-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "14-b.jpg",
+  "card": "14",
+  "style": "white-gothic",
+  "degrade": "影のグラデーション+JPEG圧縮強め"
+ },
+ {
+  "file": "15-a.png",
+  "card": "15",
+  "style": "green-tint-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "15-b.jpg",
+  "card": "15",
+  "style": "cream-propgothic",
+  "degrade": "傾き-6度+ごま塩ノイズ+ぼかし"
+ },
+ {
+  "file": "16-a.png",
+  "card": "16",
+  "style": "white-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "16-b.jpg",
+  "card": "16",
+  "style": "navy-white-zenhei",
+  "degrade": "傾き4度+ノイズ"
+ },
+ {
+  "file": "17-a.png",
+  "card": "17",
+  "style": "cream-propgothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "17-b.jpg",
+  "card": "17",
+  "style": "gray-band-gothic",
+  "degrade": "ぼかし+低コントラスト"
+ },
+ {
+  "file": "18-a.png",
+  "card": "18",
+  "style": "navy-white-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "18-b.jpg",
+  "card": "18",
+  "style": "green-tint-zenhei",
+  "degrade": "せん断(斜め撮影風)+ノイズ"
+ },
+ {
+  "file": "19-a.png",
+  "card": "19",
+  "style": "gray-band-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "19-b.jpg",
+  "card": "19",
+  "style": "white-gothic",
+  "degrade": "影のグラデーション+JPEG圧縮強め"
+ },
+ {
+  "file": "20-a.png",
+  "card": "20",
+  "style": "green-tint-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "20-b.jpg",
+  "card": "20",
+  "style": "cream-propgothic",
+  "degrade": "傾き-6度+ごま塩ノイズ+ぼかし"
+ },
+ {
+  "file": "21-a.png",
+  "card": "21",
+  "style": "white-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "21-b.jpg",
+  "card": "21",
+  "style": "navy-white-zenhei",
+  "degrade": "傾き4度+ノイズ"
+ },
+ {
+  "file": "22-a.png",
+  "card": "22",
+  "style": "cream-propgothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "22-b.jpg",
+  "card": "22",
+  "style": "gray-band-gothic",
+  "degrade": "ぼかし+低コントラスト"
+ },
+ {
+  "file": "23-a.png",
+  "card": "23",
+  "style": "navy-white-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "23-b.jpg",
+  "card": "23",
+  "style": "green-tint-zenhei",
+  "degrade": "せん断(斜め撮影風)+ノイズ"
+ },
+ {
+  "file": "24-a.png",
+  "card": "24",
+  "style": "gray-band-gothic",
+  "degrade": "なし"
+ },
+ {
+  "file": "24-b.jpg",
+  "card": "24",
+  "style": "white-gothic",
+  "degrade": "影のグラデーション+JPEG圧縮強め"
+ },
+ {
+  "file": "25-a.png",
+  "card": "25",
+  "style": "green-tint-zenhei",
+  "degrade": "なし"
+ },
+ {
+  "file": "25-b.jpg",
+  "card": "25",
+  "style": "cream-propgothic",
+  "degrade": "傾き-6度+ごま塩ノイズ+ぼかし"
+ }
+]
