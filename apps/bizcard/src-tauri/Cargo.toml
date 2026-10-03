@@ -2,8 +2,19 @@
 name = "bizcard-logic"
 version = "0.1.0"
 edition = "2021"
-description = "名刺管理: OCRに依存しないロジック(ルール抽出・重複検知・CSV・DBスキーマ)。Tauri 2 の殻は未作成"
+description = "名刺管理: OCRロジックと Tauri 2 の殻"
 publish = false
+
+[lib]
+name = "bizcard_logic"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "bizcard"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 factory-core = { path = "../core/engine" }
@@ -12,11 +23,13 @@ serde_json = "1"
 regex = "1"
 sha2 = "0.10"
 base64 = "0.22"
+tauri = { version = "2", features = [] }
 
 [features]
+default = ["tauri"]
 # 実OCR(ONNX Runtime 上の PP-OCR)を使う評価用の例(examples/ocr_eval.rs)と測定に必要
 onnx = ["factory-core/onnx"]
-# Tauri 2 の包み(tauri_glue.rs)。この環境ではビルドできず未検証。有効にするには tauri 依存の追加が要る
+# Tauri 2 の包み(tauri_glue.rs、main.rs)。Mac(M2)で接続・確認済み(段階3)
 tauri = []
 
 [dev-dependencies]

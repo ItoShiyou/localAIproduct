@@ -1,3 +1,13 @@
 target/
 node_modules/
 dist/
+
+# 実データ・大きいファイル(docs/MAC_KICKOFF.md の方針でコミットしない)
+testset-real/
+*.onnx
+*.dylib
+*.pdmodel
+*.pdiparams
+*.safetensors
+*.bin
+.venv/

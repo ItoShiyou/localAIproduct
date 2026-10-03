@@ -1,7 +1,5 @@
 //! Tauri 2 の `#[tauri::command]` の薄い包み。feature `tauri` のときだけビルドする。
-//! **この環境(Linux クラウド)では tauri をビルドできないため、未検証**(コンパイルも確認していない)。
-//! 殻(`tauri.conf.json`、`main.rs`、`Builder::manage(AppState)`)は未作成。
-//! 使い方の想定: `tauri::Builder::default().manage(AppState{..}).invoke_handler(tauri::generate_handler![import_card, confirm_card, discard_draft, search])`
+//! 殻は `lib.rs` の `run()`(`main.rs` から呼ぶ)。Mac(M2)で `tauri dev` によりビルド・起動を確認済み(段階3)。
 
 use crate::commands::{AppState, ConfirmInput, ReadResultDto, SearchHitDto};
 use tauri::State;
