@@ -428,6 +428,42 @@ pub fn extract(card: &OcrPage) -> Extraction {
         w.rest = String::new();
     }
 
+    // 6b) 会社名が2行に折り返された場合: 直後の、大きさが近い文字だけの行をつなぐ
+    if let Some(ci) = works.iter().position(|w| w.role == Role::Company) {
+        let base_size = works[ci].line.char_size();
+        let base_box = works[ci].line.bbox;
+        let base_vert = works[ci].line.vertical;
+        if let Some(nj) = works.get_mut(ci + 1) {
+            let t = nj.rest.trim().to_string();
+            let similar = (nj.line.char_size() - base_size).abs() <= base_size * 0.15;
+            let near = base_box.gap(&nj.line.bbox) <= base_size * 0.8;
+            let (d, ti, _) = classify_dept_title(&t);
+            if nj.role == Role::None && nj.line.vertical == base_vert && similar && near && !t.is_empty()
+                && !t.chars().any(|c| c.is_ascii_digit() || c == '@')
+                && name_shape(&t).is_none() && d.is_none() && ti.is_none()
+            {
+                if let Some(c) = ex.company.as_mut() {
+                    c.value = format!("{}{}", c.value, t);
+                }
+                nj.role = Role::Company;
+                nj.rest = String::new();
+            }
+        }
+    }
+
+    // 6c) 法人格の語がない社名: 事業を表す語で終わる行を、弱い根拠(要確認の印が付く信頼度)で採る
+    if ex.company.is_none() {
+        let biz = re!(r"(商事|商会|商店|工房|製作所|製造|工業|電機|電気|運輸|食品|建設|設計|事務所|印刷|出版|研究所|銀行|証券|病院|大学|組合|協会|不動産|産業|物産|観光|水産|農園|書店|薬局|工務店|企画|システム|デザイン|コンサルティング|ソリューションズ?|ホールディングス)$");
+        if let Some(w) = works.iter_mut().find(|w| {
+            let t = w.rest.trim();
+            w.role == Role::None && !t.contains(char::is_whitespace) && biz.is_match(t) && name_shape(t).is_none() && classify_dept_title(t).0.is_none() && classify_dept_title(t).1.is_none()
+        }) {
+            ex.company = Some(Field { value: w.rest.trim().to_string(), confidence: w.line.confidence * 0.6, line: w.idx });
+            w.role = Role::Company;
+            w.rest = String::new();
+        }
+    }
+
     // 7) 部署・役職の候補を集める
     struct Cand {
         line: usize,
@@ -732,6 +768,39 @@ mod tests {
         assert_eq!(x.company.unwrap().value, "Acme Widgets Inc.");
         assert_eq!(x.name.unwrap().value, "Sam Rivera");
         assert!(x.title.unwrap().value.contains("Vice President"));
+    }
+
+    #[test]
+    fn ハイフンなしの電話とカタカナ氏名と法人格のない社名を拾う() {
+        let c = card(vec![
+            line("サンプル商事", 0.0, 0.0, 32.0),
+            line("ジョン・スミス", 0.0, 60.0, 48.0),
+            line("TEL 0300001222 / 09000001223", 0.0, 400.0, 18.0),
+        ]);
+        let x = extract(&c);
+        assert_eq!(vals(&x.phones), vec!["0300001222"]);
+        assert_eq!(vals(&x.mobiles), vec!["09000001223"]);
+        assert_eq!(x.name.unwrap().value, "ジョン・スミス");
+        let co = x.company.unwrap();
+        assert_eq!(co.value, "サンプル商事");
+        assert!(co.confidence < REVIEW_THRESHOLD, "根拠が弱いので要確認の印が付く");
+    }
+
+    #[test]
+    fn 二行に折り返された社名をつなぐ_ただし小さい行や数字を含む行はつながない() {
+        let c = card(vec![line("株式会社ひまわり", 0.0, 0.0, 28.0), line("システム開発", 0.0, 34.0, 28.0), line("森 康介", 0.0, 120.0, 50.0)]);
+        assert_eq!(extract(&c).company.unwrap().value, "株式会社ひまわりシステム開発");
+        let c = card(vec![line("株式会社ひまわり", 0.0, 0.0, 28.0), line("設計部門", 0.0, 34.0, 14.0)]);
+        assert_eq!(extract(&c).company.unwrap().value, "株式会社ひまわり");
+    }
+
+    #[test]
+    fn 人名を社名と取り違えない() {
+        // 「田中設計」(漢字4字)は氏名の形でもあるので、事業語で終わっていても社名にしない
+        let c = card(vec![line("田中設計", 0.0, 0.0, 50.0)]);
+        let x = extract(&c);
+        assert!(x.company.is_none());
+        assert_eq!(x.name.unwrap().value, "田中設計");
     }
 
     #[test]
