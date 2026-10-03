@@ -1,0 +1,15 @@
+[package]
+name = "receipt-db"
+version = "0.1.0"
+edition = "2021"
+description = "領収書DB(アプリ固有のロジック。Tauri の殻は未接続)"
+publish = false
+
+[lib]
+name = "receipt_db"
+
+[dependencies]
+factory-core = { path = "../core/engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"

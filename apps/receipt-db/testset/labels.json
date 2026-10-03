@@ -1,0 +1,402 @@
+{
+ "01_receipt_clean.png": {
+  "category": "receipt_clean",
+  "date": "2024-10-01",
+  "total": 1166,
+  "tax_rate": 8,
+  "invoice_no": "T2748196840076",
+  "vendor": "株式会社あけぼの商会"
+ },
+ "02_receipt_clean.png": {
+  "category": "receipt_clean",
+  "date": "2025-03-08",
+  "total": 3974,
+  "tax_rate": 8,
+  "invoice_no": "T5504280575031",
+  "vendor": "株式会社ほくと事務機"
+ },
+ "03_receipt_clean.png": {
+  "category": "receipt_clean",
+  "date": "2025-09-07",
+  "total": 770,
+  "tax_rate": 10,
+  "invoice_no": "T3218808182604",
+  "vendor": "株式会社ほくと事務機"
+ },
+ "04_receipt_clean.png": {
+  "category": "receipt_clean",
+  "date": "2026-07-26",
+  "total": 2473,
+  "tax_rate": 8,
+  "invoice_no": "T8838596412050",
+  "vendor": "有限会社まつかぜ酒店"
+ },
+ "05_receipt_clean.png": {
+  "category": "receipt_clean",
+  "date": "2026-09-03",
+  "total": 2145,
+  "tax_rate": null,
+  "invoice_no": "T2186730355332",
+  "vendor": "有限会社さくら書店"
+ },
+ "06_receipt_fade.png": {
+  "category": "receipt_fade",
+  "date": "2024-10-11",
+  "total": 4393,
+  "tax_rate": 8,
+  "invoice_no": "T3730143821086",
+  "vendor": "株式会社ひまわり文具"
+ },
+ "07_receipt_fade.png": {
+  "category": "receipt_fade",
+  "date": "2025-11-27",
+  "total": 3188,
+  "tax_rate": 10,
+  "invoice_no": "T7752654087646",
+  "vendor": "合同会社なごみ茶房"
+ },
+ "08_receipt_fade.png": {
+  "category": "receipt_fade",
+  "date": "2026-04-11",
+  "total": 3305,
+  "tax_rate": 8,
+  "invoice_no": null,
+  "vendor": "株式会社つばめ運輸"
+ },
+ "09_receipt_fade.png": {
+  "category": "receipt_fade",
+  "date": "2025-04-20",
+  "total": 2596,
+  "tax_rate": 10,
+  "invoice_no": "T9227247092743",
+  "vendor": "有限会社いずみ印刷"
+ },
+ "10_receipt_fade.png": {
+  "category": "receipt_fade",
+  "date": "2024-11-02",
+  "total": 2750,
+  "tax_rate": null,
+  "invoice_no": "T0305594454180",
+  "vendor": "合同会社やまびこ電機"
+ },
+ "11_receipt_skew.png": {
+  "category": "receipt_skew",
+  "date": "2026-08-07",
+  "total": 5203,
+  "tax_rate": 10,
+  "invoice_no": "T6121000312238",
+  "vendor": "株式会社はなまる薬局"
+ },
+ "12_receipt_skew.png": {
+  "category": "receipt_skew",
+  "date": "2026-04-11",
+  "total": 858,
+  "tax_rate": 10,
+  "invoice_no": "T9358467198946",
+  "vendor": "有限会社さくら書店"
+ },
+ "13_receipt_skew.png": {
+  "category": "receipt_skew",
+  "date": "2025-07-17",
+  "total": 4255,
+  "tax_rate": 8,
+  "invoice_no": "T5522745669252",
+  "vendor": "有限会社かもめ園芸"
+ },
+ "14_receipt_skew.png": {
+  "category": "receipt_skew",
+  "date": "2025-02-25",
+  "total": 4202,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "株式会社ほくと事務機"
+ },
+ "15_receipt_skew.png": {
+  "category": "receipt_skew",
+  "date": "2025-05-16",
+  "total": 4331,
+  "tax_rate": 8,
+  "invoice_no": "T1178360853165",
+  "vendor": "有限会社まつかぜ酒店"
+ },
+ "16_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2026-04-21",
+  "total": 2244,
+  "tax_rate": 10,
+  "invoice_no": "T1202315426884",
+  "vendor": "有限会社かもめ園芸"
+ },
+ "17_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2026-11-16",
+  "total": 770,
+  "tax_rate": 10,
+  "invoice_no": "T2680968207273",
+  "vendor": "株式会社ほくと事務機"
+ },
+ "18_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2026-11-14",
+  "total": 1626,
+  "tax_rate": 10,
+  "invoice_no": "T0939889438783",
+  "vendor": "有限会社みどり商店"
+ },
+ "19_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-11-16",
+  "total": 4444,
+  "tax_rate": 10,
+  "invoice_no": "T8283959529871",
+  "vendor": "合同会社なごみ茶房"
+ },
+ "20_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2025-12-10",
+  "total": 3927,
+  "tax_rate": 10,
+  "invoice_no": "T6755510429446",
+  "vendor": "株式会社つばめ運輸"
+ },
+ "21_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-04-07",
+  "total": 2101,
+  "tax_rate": null,
+  "invoice_no": "T4353995692546",
+  "vendor": "有限会社さくら書店"
+ },
+ "22_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-12-05",
+  "total": 3608,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "有限会社さくら書店"
+ },
+ "23_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2025-12-28",
+  "total": 3914,
+  "tax_rate": 10,
+  "invoice_no": "T8648394031530",
+  "vendor": "有限会社さくら書店"
+ },
+ "24_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-10-07",
+  "total": 3190,
+  "tax_rate": 10,
+  "invoice_no": "T1945694394332",
+  "vendor": "株式会社あけぼの商会"
+ },
+ "25_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2025-07-08",
+  "total": 3850,
+  "tax_rate": 10,
+  "invoice_no": "T9686333400947",
+  "vendor": "有限会社まつかぜ酒店"
+ },
+ "26_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2026-11-09",
+  "total": 3839,
+  "tax_rate": 10,
+  "invoice_no": "T3637164816452",
+  "vendor": "株式会社あけぼの商会"
+ },
+ "27_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-01-12",
+  "total": 3845,
+  "tax_rate": 8,
+  "invoice_no": "T4568634630637",
+  "vendor": "有限会社さくら書店"
+ },
+ "28_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2025-06-05",
+  "total": 4290,
+  "tax_rate": 10,
+  "invoice_no": "T9997180566031",
+  "vendor": "有限会社いずみ印刷"
+ },
+ "29_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2025-10-17",
+  "total": 1815,
+  "tax_rate": 10,
+  "invoice_no": "T8248701558352",
+  "vendor": "有限会社みどり商店"
+ },
+ "30_invoice_textpdf.pdf": {
+  "category": "invoice_textpdf",
+  "date": "2024-09-28",
+  "total": 968,
+  "tax_rate": null,
+  "invoice_no": "T6522004027190",
+  "vendor": "株式会社あけぼの商会"
+ },
+ "31_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2024-12-01",
+  "total": 495,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "株式会社ひまわり文具"
+ },
+ "32_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-03-05",
+  "total": 1738,
+  "tax_rate": null,
+  "invoice_no": "T8693331173470",
+  "vendor": "合同会社あおぞら食品"
+ },
+ "33_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2024-08-01",
+  "total": 1242,
+  "tax_rate": 8,
+  "invoice_no": "T0159840572864",
+  "vendor": "有限会社まつかぜ酒店"
+ },
+ "34_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-02-25",
+  "total": 1393,
+  "tax_rate": 8,
+  "invoice_no": "T5962315864540",
+  "vendor": "株式会社ほくと事務機"
+ },
+ "35_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-09-24",
+  "total": 3476,
+  "tax_rate": null,
+  "invoice_no": "T0973951777723",
+  "vendor": "株式会社こもれび珈琲"
+ },
+ "36_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-11-12",
+  "total": 4189,
+  "tax_rate": 10,
+  "invoice_no": "T8265458755590",
+  "vendor": "有限会社みどり商店"
+ },
+ "37_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-10-13",
+  "total": 4796,
+  "tax_rate": 10,
+  "invoice_no": "T6053331003188",
+  "vendor": "株式会社ふじみ工業"
+ },
+ "38_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2025-06-13",
+  "total": 858,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "有限会社いずみ印刷"
+ },
+ "39_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2024-11-28",
+  "total": 2024,
+  "tax_rate": 10,
+  "invoice_no": "T0861368021360",
+  "vendor": "株式会社こもれび珈琲"
+ },
+ "40_invoice_scanpdf.pdf": {
+  "category": "invoice_scanpdf",
+  "date": "2026-09-14",
+  "total": 5692,
+  "tax_rate": 8,
+  "invoice_no": null,
+  "vendor": "有限会社いずみ印刷"
+ },
+ "41_screenshot.png": {
+  "category": "screenshot",
+  "date": "2024-08-08",
+  "total": 1131,
+  "tax_rate": 10,
+  "invoice_no": "T7776798576368",
+  "vendor": "株式会社ふじみ工業"
+ },
+ "42_screenshot.png": {
+  "category": "screenshot",
+  "date": "2024-07-14",
+  "total": 2088,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "有限会社まつかぜ酒店"
+ },
+ "43_screenshot.png": {
+  "category": "screenshot",
+  "date": "2026-01-27",
+  "total": 924,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "有限会社いずみ印刷"
+ },
+ "44_screenshot.png": {
+  "category": "screenshot",
+  "date": "2025-01-03",
+  "total": 3278,
+  "tax_rate": 10,
+  "invoice_no": null,
+  "vendor": "株式会社はなまる薬局"
+ },
+ "45_screenshot.png": {
+  "category": "screenshot",
+  "date": "2026-02-08",
+  "total": 2321,
+  "tax_rate": 10,
+  "invoice_no": "T8550792605725",
+  "vendor": "有限会社みどり商店"
+ },
+ "46_screenshot.png": {
+  "category": "screenshot",
+  "date": "2024-11-01",
+  "total": 2264,
+  "tax_rate": 10,
+  "invoice_no": "T4327626395481",
+  "vendor": "株式会社ひまわり文具"
+ },
+ "47_screenshot.png": {
+  "category": "screenshot",
+  "date": "2025-04-06",
+  "total": 1826,
+  "tax_rate": 10,
+  "invoice_no": "T2408957203834",
+  "vendor": "株式会社ひまわり文具"
+ },
+ "48_screenshot.png": {
+  "category": "screenshot",
+  "date": "2024-05-20",
+  "total": 2596,
+  "tax_rate": 10,
+  "invoice_no": "T6577461290043",
+  "vendor": "合同会社やまびこ電機"
+ },
+ "49_screenshot.png": {
+  "category": "screenshot",
+  "date": "2026-10-22",
+  "total": 2968,
+  "tax_rate": 8,
+  "invoice_no": null,
+  "vendor": "有限会社かもめ園芸"
+ },
+ "50_screenshot.png": {
+  "category": "screenshot",
+  "date": "2026-03-26",
+  "total": 3518,
+  "tax_rate": null,
+  "invoice_no": "T6383196569854",
+  "vendor": "株式会社つばめ運輸"
+ }
+}
