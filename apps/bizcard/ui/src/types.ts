@@ -29,6 +29,8 @@ export interface ReadResult {
   fields: Fields;
   /** 項目ごとの信頼度(0〜1)。検出できなかった項目は無い */
   confidence: Partial<Record<FieldKey, number>>;
+  /** 会社名の候補(信頼度の高い順)。ワンタップで選べる。読み取りは確認が前提 */
+  companyCandidates: { value: string; confidence: number }[];
   /** 複数あったメールの2つ目以降(選ぶのは利用者) */
   extraEmails: string[];
   /** 同じ人かもしれない確定済みの人。統合はしない */

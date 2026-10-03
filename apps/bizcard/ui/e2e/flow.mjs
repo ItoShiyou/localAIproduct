@@ -60,7 +60,12 @@ async function run(label, ctxOpts, args) {
   await page.getByTestId("shutter").click();
   await page.waitForFunction(() => document.querySelector("#f-name")?.value === "井上 健太");
   assert.equal(await page.getByTestId("queue-item").count(), 2);
-  // 信頼度が低い項目に印
+  // 信頼度が低い項目に印。会社名は候補をワンタップで選べる
+  assert.ok(await page.getByTestId("low-company").isVisible());
+  assert.equal(await page.getByTestId("company-candidate").count(), 2);
+  await page.getByTestId("company-candidate").first().click(); // 「合同会社設計」を選ぶ
+  assert.equal(await page.locator("#f-company").inputValue(), "合同会社設計");
+  await page.locator("#f-company").fill("合同会社みなと設計"); // 自由入力で打ち替えもできる
   assert.ok(await page.getByTestId("low-nameKana").isVisible());
   assert.ok(await page.getByTestId("low-address").isVisible());
   await shot("05-queue-low-confidence");

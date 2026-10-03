@@ -62,6 +62,21 @@ export function Review({ item, onEdit, onResetField, onUndo, onEncounter, onConf
               </label>
               <input id={`f-${k}`} value={item.fields[k]} disabled={done} inputMode={k === "email" ? "email" : k === "phone" || k === "mobile" || k === "postalCode" ? "tel" : "text"}
                 autoComplete="off" onChange={(e) => onEdit(k, e.target.value)} />
+              {k === "company" && !done && (() => {
+                const cands = read.companyCandidates.filter((c) => c.value !== item.fields.company);
+                return cands.length > 0 ? (
+                  <div className="extra" data-testid="company-candidates">
+                    会社名の候補(タップで選択、自由入力もできます):
+                    <div className="chips">
+                      {cands.map((c) => (
+                        <button key={c.value} type="button" className="chip" data-testid="company-candidate" onClick={() => onEdit("company", c.value)}>
+                          {c.value}<small>{Math.round(c.confidence * 100)}%</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               {k === "email" && read.extraEmails.length > 0 && !done && (
                 <div className="extra">他のメール: {read.extraEmails.map((m) => (
                   <button key={m} type="button" className="chip" onClick={() => onEdit("email", m)}>{m}</button>

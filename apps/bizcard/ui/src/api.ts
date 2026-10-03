@@ -41,6 +41,7 @@ interface Sample {
   fields: Partial<Fields>;
   confidence: Partial<Record<FieldKey, number>>;
   extraEmails?: string[];
+  companyCandidates?: { value: string; confidence: number }[];
 }
 
 const SAMPLES: Sample[] = [
@@ -57,7 +58,12 @@ const SAMPLES: Sample[] = [
       name: "井上 健太", nameKana: "イノウエヶンタ", company: "合同会社みなと設計", department: "営業部", title: "部長",
       email: "inoue@minato-sekkei.example.org", phone: "045-000-2201", postalCode: "000-0002", address: "神奈川県横浜市中区4-5-6", url: "www.minato-sekkei.example.org",
     },
-    confidence: { name: 0.9, nameKana: 0.55, company: 0.9, department: 0.62, title: 0.85, email: 0.95, phone: 0.95, postalCode: 0.9, address: 0.5, url: 0.88 },
+    confidence: { name: 0.9, nameKana: 0.55, company: 0.62, department: 0.62, title: 0.85, email: 0.95, phone: 0.95, postalCode: 0.9, address: 0.5, url: 0.88 },
+    companyCandidates: [
+      { value: "合同会社みなと設計", confidence: 0.62 },
+      { value: "合同会社設計", confidence: 0.43 },
+      { value: "みなと設計事務所", confidence: 0.3 },
+    ],
   },
   {
     fields: {
@@ -102,7 +108,10 @@ export function makeMockApi(delayMs = 500): Api {
         if (fields.name && norm(p.fields.name) === norm(fields.name) && norm(p.fields.company) === norm(fields.company)) reasons.push("sameNameAndCompany");
         if (reasons.length) duplicates.push({ existingId: p.id, name: p.fields.name, company: p.fields.company, reasons });
       }
-      return { personId: id, fields, confidence: s.confidence, extraEmails: s.extraEmails ?? [], duplicates };
+      return {
+        personId: id, fields, confidence: s.confidence, extraEmails: s.extraEmails ?? [], duplicates,
+        companyCandidates: s.companyCandidates ?? (fields.company ? [{ value: fields.company, confidence: s.confidence.company ?? 0.5 }] : []),
+      };
     },
     async confirm(input) {
       const p = people.get(input.personId);

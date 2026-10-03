@@ -81,3 +81,6 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
   .fields { grid-template-columns: 1fr 1fr; }
   .field.wide { grid-column: 1 / -1; }
 }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip small { margin-left: 6px; color: var(--sub); }
