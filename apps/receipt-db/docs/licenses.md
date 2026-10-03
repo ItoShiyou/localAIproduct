@@ -68,6 +68,10 @@
 3. 代わりに、モデルの出力文字集合である辞書ファイルを比較した。PaddleOCR 公式リポジトリの `ppocr/utils/dict/japan_dict.txt`(モデル一覧にも紐づけ先として明記されている)を取得し、npm 版の同梱 `japan_dict.txt` と比較した結果、**4399文字すべて完全一致**(順序・内容ともに同じ。npm 版は末尾改行がない点のみ差分)。
 4. 以上から、npm 版の `japan_PP-OCRv3_rec_infer.onnx` は PaddleOCR 公式の `japan_PP-OCRv3_rec` モデル(Apache-2.0、PaddleOCR 本体の LICENSE ファイルで確認)を ONNX 形式に変換したものである可能性が高いと判断する。**断定はできない**(変換元のバイナリ自体の一致は未確認)。より確実にするには、`paddle2onnx` で手順2の tar を変換し、npm 版と出力(推論結果)を同じテストセットで突き合わせる追加確認が望ましい。
 
+## Mac(M2)での実推論確認(2026-10-04)
+
+上記のモデル(ch_PP-OCRv4_det + japan_PP-OCRv3_rec)と、GitHub `microsoft/onnxruntime` の公式リリース `onnxruntime-osx-arm64-1.30.0.tgz`(`libonnxruntime.dylib`、MIT、Linux 版と同じ 1.30.0)を使い、`core/engine/examples/ocr_dump.rs` で bizcard の合成テストセット50枚を実際に推論した。**onnxruntime の読み込み・推論とも成功**(macOS Apple Silicon 固有の問題なし)。1枚あたり 0.14〜0.53秒(4スレッド、M2)。出力テキストは日本語の名刺らしい内容が読めている(例: 「株式会社ひなた工房」「青木遥」「あおきはるか」)。この時間は M2 のものなので合格判定の基準にはしない(`docs/spike-results.md` 側に既に記載の方針と同じ)。
+
 ## PP-OCRv5 日本語認識との比較(未実施)
 
 PaddleOCR 公式ドキュメント(`docs/version3.x/module_usage/text_recognition.en.md`)によると、PP-OCRv5 は `japan_PP-OCRv3_rec` のような言語別モデルではなく、**簡体字・繁体字・英語・日本語・手書き・縦書き・ピンインを1つのモデル(`PP-OCRv5_mobile_rec` / `PP-OCRv5_server_rec`)で認識する方式**に変わっている。配布元(Paddle 推論形式)は到達確認済み:
