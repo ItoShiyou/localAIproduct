@@ -14,7 +14,9 @@ fn main() {
     let mut stat: BTreeMap<String, [u32; 7]> = BTreeMap::new();
     for (file, l) in labels.as_object().unwrap() {
         let text = std::fs::read_to_string(format!("{dir}/{file}.txt")).unwrap_or_default();
-        let r = extract_by_rules(&text);
+        // 併用モデルの読み取り(.alt.txt)があれば、数字の項目はそちらから、支払先は通常の結果から取る
+        let num_text = std::fs::read_to_string(format!("{dir}/{file}.alt.txt")).unwrap_or_else(|_| text.clone());
+        let r = extract_by_rules(&num_text);
         let ok_date = r.date.as_deref() == l["date"].as_str();
         let ok_total = r.total == l["total"].as_i64();
         let ok_rate = r.tax_rate.map(|x| x as i64) == l["tax_rate"].as_i64();
