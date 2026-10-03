@@ -1,6 +1,6 @@
 # 依存ライブラリとモデルのライセンス
 
-確認日: 2026-10-03。ライセンス表記は、クレート・パッケージのメタデータと配布物の同梱ファイルで確認した範囲。
+確認日: 2026-10-03(2026-10-04 に Mac(M2)で japan_PP-OCRv3_rec の出所確認を追記)。ライセンス表記は、クレート・パッケージのメタデータと配布物の同梱ファイルで確認した範囲。
 法的な判断ではない。配布前に、各ライセンス全文と通知(NOTICE)を同梱物に入れる作業が要る。
 **確認できないものは使わず、「要確認」に書いてある。**
 
@@ -40,7 +40,7 @@
 |---|---|---|---|---|---|
 | ch_PP-OCRv4_det(検出) | 文字領域の検出 | Apache-2.0(PaddleOCR 由来) | Apache-2.0 全文、PaddleOCR への帰属表示 | d2a7720d45a54257 / 4.7MB | `rapidocr-onnxruntime` 1.4.4(PyPI、Apache-2.0)の同梱ファイル。RapidOCR の公開一覧にある `ch_PP-OCRv4_det_mobile.onnx` のハッシュと**一致**を確認 |
 | ch_PP-OCRv4_rec(認識、中国語・英数字) | 数字・英字・記号の認識 | Apache-2.0(PaddleOCR 由来) | 同上 | 48fc40f24f6d2a20 / 10.9MB | 同上。`ch_PP-OCRv4_rec_mobile.onnx` のハッシュと**一致**を確認 |
-| japan_PP-OCRv3_rec(認識、日本語) と japan_dict.txt | 仮名・漢字の認識 | PaddleOCR 由来で Apache-2.0 の見込み。**再配布パッケージ側は ISC で、モデル自体の表記がない** | 同上 | 329eec1da950c729 / 10.1MB(辞書 0b9c9e34527116e9) | npm `multilingual-purejs-ocr` 1.0.1(ISC)の同梱ファイル。**公式の配布元に通信制限で届かず、ハッシュを公式値と照合できていない → 要確認** |
+| japan_PP-OCRv3_rec(認識、日本語) と japan_dict.txt | 仮名・漢字の認識 | PaddleOCR(公式リポジトリの LICENSE で Apache-2.0 を確認) | Apache-2.0 全文、PaddleOCR への帰属表示 | 329eec1da950c729 / 10.1MB(辞書 0b9c9e34527116e9) | npm `multilingual-purejs-ocr` 1.0.1(ISC)の同梱ファイル。**出所確認済み(2026-10-04、Mac で公式配布元に到達できた)**。詳細は下の「出所確認の詳細」 |
 | jpn.traineddata(Tesseract 用、予備) | 日本語の認識 | Apache-2.0(tesseract-ocr/tessdata_fast・tessdata_best) | Apache-2.0 全文 | fast: 1f5de9236d2e85f5 / 2.4MB、best: 36bdf9ac823f5911 / 14MB | GitHub の raw 配信 / Ubuntu パッケージ |
 
 ### 予備の外部実行ファイル(同梱する場合のみ)
@@ -59,11 +59,26 @@
 | onnxruntime(Python)1.30.0 | MIT | 共有ライブラリの取り出しと比較のため |
 | Pillow(MIT-CMU)、NumPy(BSD-3-Clause ほか)、OpenCV(Apache-2.0)、ReportLab(BSD) | 各右記 | テストセットの生成と比較のみ |
 
+## 出所確認の詳細(japan_PP-OCRv3_rec、2026-10-04・Mac(M2)で実施)
+
+クラウド環境では配布元に通信が届かなかったため未確認だったが、Mac(M2、実インターネット接続)から再確認した。
+
+1. PaddleOCR 公式リポジトリ(`PaddlePaddle/PaddleOCR`、`release/2.6` ブランチ)のモデル一覧 `doc/doc_en/models_list_en.md` に、`japan_PP-OCRv3_rec` の配布元として `https://paddleocr.bj.bcebos.com/PP-OCRv3/multilingual/japan_PP-OCRv3_rec_infer.tar` が載っている。このURLから実際に取得できた(HTTP 200、11,376,640 バイト、SHA-256 `78d41e98...`)。
+2. この tar は Paddle 推論形式(`inference.pdmodel` / `inference.pdiparams`)で、npm 版の ONNX とはファイル形式が異なるため、**バイト単位のハッシュは直接比較できない**(ONNX への変換が必要。`paddle2onnx` 等の追加環境構築が必要なため今回は未実施)。
+3. 代わりに、モデルの出力文字集合である辞書ファイルを比較した。PaddleOCR 公式リポジトリの `ppocr/utils/dict/japan_dict.txt`(モデル一覧にも紐づけ先として明記されている)を取得し、npm 版の同梱 `japan_dict.txt` と比較した結果、**4399文字すべて完全一致**(順序・内容ともに同じ。npm 版は末尾改行がない点のみ差分)。
+4. 以上から、npm 版の `japan_PP-OCRv3_rec_infer.onnx` は PaddleOCR 公式の `japan_PP-OCRv3_rec` モデル(Apache-2.0、PaddleOCR 本体の LICENSE ファイルで確認)を ONNX 形式に変換したものである可能性が高いと判断する。**断定はできない**(変換元のバイナリ自体の一致は未確認)。より確実にするには、`paddle2onnx` で手順2の tar を変換し、npm 版と出力(推論結果)を同じテストセットで突き合わせる追加確認が望ましい。
+
+## PP-OCRv5 日本語認識との比較(未実施)
+
+PaddleOCR 公式ドキュメント(`docs/version3.x/module_usage/text_recognition.en.md`)によると、PP-OCRv5 は `japan_PP-OCRv3_rec` のような言語別モデルではなく、**簡体字・繁体字・英語・日本語・手書き・縦書き・ピンインを1つのモデル(`PP-OCRv5_mobile_rec` / `PP-OCRv5_server_rec`)で認識する方式**に変わっている。配布元(Paddle 推論形式)は到達確認済み:
+- `https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_rec_infer.tar`
+
+このモデルは Paddle 推論形式のみで配布されており、現在の Rust 実装(`ort`/ONNX Runtime)で使うには ONNX への変換(`paddle2onnx`)が必要。**今回は変換環境の構築(`paddlepaddle` 本体のインストールなど)まで手が回らず、比較は未実施。** 次回の作業候補として残す。
+
 ## 要確認
 
-- (方針) japan_PP-OCRv3 は出所確認が済むまで製品に同梱しない。**未解決**
-
-- japan_PP-OCRv3 モデルの出所とライセンス(公式の配布元から取り直してハッシュを照合する。届かない場合は、モデルの出所を PaddleOCR の公式配布で確認できるまで製品に入れない)
+- japan_PP-OCRv3_rec_infer.onnx を `paddle2onnx` で自前変換し、npm 版と推論結果を突き合わせる(上の4の追加確認、今回は未実施)
+- PP-OCRv5_mobile_rec(日英中台+日本語統合モデル)を ONNX に変換し、同じテストセットで `japan_PP-OCRv3_rec` と精度・速度を比較する(会社名の精度が上がるか)
 - macOS(Apple Silicon)・Windows(x64)用の ONNX Runtime 共有ライブラリの入手経路と同梱方法
 - `ort` がリリース候補版(2.0.0-rc.13)であること。安定版が出た時点で更新を検討する
 - PDFium(画像のみのPDFの画像化に使う場合)のバイナリの入手経路。BSD-3-Clause / Apache-2.0 の見込みだが、未取得で未確認
