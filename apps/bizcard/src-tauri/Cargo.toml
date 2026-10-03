@@ -10,9 +10,11 @@ factory-core = { path = "../core/engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
-csv = "1"
-encoding_rs = "0.8"
+
+[features]
+# 実OCR(ONNX Runtime 上の PP-OCR)を使う評価用の例(examples/ocr_eval.rs)と測定に必要
+onnx = ["factory-core/onnx"]
 
 [dev-dependencies]
-# スキーマのテスト用(SQLite 本体を同梱ビルド)。製品側のDB層は core の db(未実装)に合わせる
-rusqlite = { version = "0.32", features = ["bundled"] }
+csv = "1"
+encoding_rs = "0.8"

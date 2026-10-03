@@ -1,13 +1,8 @@
-//! 連絡先のCSV書き出し。数式として解釈される先頭文字の無害化は `core` の
-//! `factory_core::export::sanitize_cell` を使い、文字コードの種類も `core` の `CsvEncoding` を使う。
-//!
-//! 要確認: `core/README.md` は「`journal_to_csv` を汎用の `write_csv(header, rows, encoding)` に
-//! 切り出す」と書いているが、いまの `core` には汎用版が無い。`core/` は変更しない決まりなので、
-//! 暫定で行の組み立てと文字コード変換だけをここに持つ(無害化は core のものを必ず通す)。
-//! core に `write_csv` が入ったら、`write_rows` を core の呼び出しに置き換える。
+//! 連絡先のCSV書き出し。無害化(`= + - @` などで始まるセル)・文字コード(UTF-8 BOM / Shift_JIS)は
+//! `core` の `factory_core::export::write_csv` に任せる。ここでは列の並びを決めるだけ。
 
 use factory_core::error::CoreError;
-use factory_core::export::{sanitize_cell, CsvEncoding};
+use factory_core::export::{write_csv, Cell, CsvEncoding};
 
 pub const HEADER: [&str; 15] = [
     "氏名", "ふりがな", "会社", "部署", "役職", "メール", "電話", "携帯", "郵便番号", "住所", "URL", "最初に会った日", "場所",
@@ -42,45 +37,20 @@ fn memo_text(m: &[(String, String)]) -> String {
 
 /// 連絡先をCSVにする。すべてのセルを無害化してから書く。
 pub fn people_to_csv(people: &[ExportPerson], enc: CsvEncoding) -> Result<Vec<u8>, CoreError> {
-    let rows: Vec<Vec<String>> = people
+    let rows: Vec<Vec<Cell>> = people
         .iter()
         .map(|p| {
-            vec![
+            [
                 p.name.clone(), p.name_kana.clone(), p.company.clone(), p.department.clone(), p.title.clone(),
                 p.email.clone(), p.phone.clone(), p.mobile.clone(), p.postal_code.clone(), p.address.clone(),
                 p.url.clone(), p.first_met_on.clone(), p.place.clone(), p.tags.join(" "), memo_text(&p.memos),
             ]
+            .into_iter()
+            .map(Cell::Text)
+            .collect()
         })
         .collect();
-    write_rows(&HEADER, &rows, enc)
-}
-
-/// 暫定の汎用書き出し(core に `write_csv` が入るまで)。ヘッダ以外の全セルを無害化する。
-fn write_rows(header: &[&str], rows: &[Vec<String>], enc: CsvEncoding) -> Result<Vec<u8>, CoreError> {
-    let mut w = csv::WriterBuilder::new().terminator(csv::Terminator::CRLF).from_writer(Vec::new());
-    w.write_record(header).map_err(|e| CoreError::Csv(e.to_string()))?;
-    for r in rows {
-        let cells: Vec<String> = r.iter().map(|c| sanitize_cell(c)).collect();
-        w.write_record(&cells).map_err(|e| CoreError::Csv(e.to_string()))?;
-    }
-    let bytes = w.into_inner().map_err(|e| CoreError::Csv(e.to_string()))?;
-    let text = String::from_utf8(bytes).map_err(|e| CoreError::Csv(e.to_string()))?;
-    match enc {
-        CsvEncoding::Utf8Bom => {
-            let mut out = vec![0xEF, 0xBB, 0xBF];
-            out.extend_from_slice(text.as_bytes());
-            Ok(out)
-        }
-        CsvEncoding::ShiftJis => {
-            let (bytes, _, had_errors) = encoding_rs::SHIFT_JIS.encode(&text);
-            if had_errors {
-                return Err(CoreError::Encoding(
-                    "Shift_JISで表せない文字が含まれています。UTF-8(BOMつき)で書き出してください".to_string(),
-                ));
-            }
-            Ok(bytes.into_owned())
-        }
-    }
+    write_csv(&HEADER, &rows, enc)
 }
 
 #[cfg(test)]

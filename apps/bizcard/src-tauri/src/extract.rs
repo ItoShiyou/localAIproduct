@@ -11,7 +11,7 @@
 //! - OCRの誤認識(「.」が「,」になる等)は直さない
 //! - 同じ面に複数人の名前がある名刺は、最も大きい1人だけを候補の先頭にする
 
-use crate::ocr_input::{BBox, OcrCard, OcrLine};
+use crate::ocr_input::{BBox, OcrLine, OcrPage};
 use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -152,6 +152,9 @@ struct Work<'a> {
     line: &'a OcrLine,
     norm: String,
     rest: String,
+    /// 併用モデルの読み取り(正規化済み)。無ければ None
+    alt: Option<String>,
+    alt_norm: Option<String>,
     role: Role,
 }
 
@@ -172,7 +175,99 @@ fn strip_labels(s: &str) -> String {
     t.chars().filter(|c| c.is_alphanumeric() || (!c.is_whitespace() && !":/・|()[]-,.;".contains(*c))).collect::<String>()
 }
 
-fn reading_order(card: &OcrCard) -> Vec<usize> {
+/// 併用モデルの読み取り(`alt_text`)があれば両方に同じ処理をかけ、見つかったほうを返す。
+/// 両方で見つかったときは `alt`(数字・記号に強いモデル)を優先する。どちらの文字列にも印(マスク)が付く。
+fn both<T>(w: &mut Work, f: impl Fn(&mut String) -> Vec<T>) -> Vec<T> {
+    let t = f(&mut w.rest);
+    match w.alt.as_mut() {
+        Some(a) => {
+            let r = f(a);
+            if r.is_empty() {
+                t
+            } else {
+                r
+            }
+        }
+        None => t,
+    }
+}
+
+fn emails_in(s: &mut String) -> Vec<String> {
+    let re = re!(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}");
+    let spans: Vec<(usize, usize)> = re.find_iter(s).map(|m| (m.start(), m.end())).collect();
+    let mut out = vec![];
+    for (a, b) in spans {
+        out.push(s[a..b].trim_end_matches('.').to_string());
+        mask(s, a, b);
+    }
+    out
+}
+
+fn urls_in(s: &mut String) -> Vec<String> {
+    let re = re!(r"(?i)(https?://[^\s]+|www\.[^\s]+)");
+    let mut spans: Vec<(usize, usize)> = re.find_iter(s).map(|m| (m.start(), m.end())).collect();
+    if spans.is_empty() {
+        let lab = re!(r"(?i)(?:\burl|\bweb(?:site)?|\bhp|ホームページ)\s*[:：]?\s*([a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)+(?:/[^\s]*)?)");
+        if let Some(c) = lab.captures(s) {
+            let m = c.get(1).unwrap();
+            spans.push((m.start(), m.end()));
+        }
+    }
+    let mut out = vec![];
+    for (a, b) in spans {
+        out.push(s[a..b].trim_end_matches(|c| ",.;)".contains(c)).to_string());
+        mask(s, a, b);
+    }
+    out
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PhoneKind {
+    Tel,
+    Mobile,
+    Fax,
+}
+
+fn phones_in(s: &mut String) -> Vec<(String, PhoneKind, bool)> {
+    let re = re!(
+        r"\+\d{1,3}[-\s.]?\(?\d{1,4}\)?(?:[-\s.]\d{2,4}){1,3}|\(\d{2,5}\)\s?\d{1,4}[-.]\d{3,4}|0\d{1,4}-\d{1,4}-\d{3,4}|\d{3}[-.]\d{3}[-.]\d{4}"
+    );
+    let spans: Vec<(usize, usize)> =
+        re.find_iter(s).filter(|m| boundary_ok(s, m.start(), m.end())).map(|m| (m.start(), m.end())).collect();
+    let mut out = vec![];
+    let mut prev_end = 0;
+    for (a, b) in &spans {
+        let ctx = s[prev_end..*a].to_lowercase();
+        prev_end = *b;
+        let num = s[*a..*b].trim().to_string();
+        let digits: String = num.chars().filter(|c| c.is_ascii_digit()).collect();
+        let jp_mobile = digits.starts_with("070") || digits.starts_with("080") || digits.starts_with("090")
+            || digits.starts_with("8170") || digits.starts_with("8180") || digits.starts_with("8190");
+        let is_fax = ctx.contains("fax") || ctx.contains("ファックス") || ctx.contains("ファクス");
+        let is_mobile = !is_fax && (ctx.contains("携帯") || ctx.contains("mobile") || ctx.contains("cell") || jp_mobile);
+        let kind = if is_fax { PhoneKind::Fax } else if is_mobile { PhoneKind::Mobile } else { PhoneKind::Tel };
+        out.push((num, kind, !(ctx.trim().is_empty() && !jp_mobile)));
+    }
+    for (a, b) in spans {
+        mask(s, a, b);
+    }
+    out
+}
+
+fn postal_in(s: &mut String) -> Option<String> {
+    let re = re!(r"^\s*(?:〒\s*)?(\d{3})-?(\d{4})(?:\s|$)|〒\s*(\d{3})-?(\d{4})");
+    let found = re.captures(s).map(|c| {
+        let (x, y) = if let Some(x) = c.get(1) { (x.as_str(), c.get(2).unwrap().as_str()) } else { (c.get(3).unwrap().as_str(), c.get(4).unwrap().as_str()) };
+        let m = c.get(0).unwrap();
+        (format!("{x}-{y}"), m.start(), m.end())
+    });
+    found.map(|(v, a, b)| {
+        mask(s, a, b);
+        v
+    })
+}
+
+fn reading_order(card: &OcrPage) -> Vec<usize> {
     let mut v: Vec<usize> = (0..card.lines.len()).collect();
     let all_vertical = !card.lines.is_empty() && card.lines.iter().all(|l| l.vertical);
     v.sort_by(|&a, &b| {
@@ -186,100 +281,55 @@ fn reading_order(card: &OcrCard) -> Vec<usize> {
 
 // ---------- 抽出本体 ----------
 
-pub fn extract(card: &OcrCard) -> Extraction {
+pub fn extract(card: &OcrPage) -> Extraction {
     let order = reading_order(card);
     let mut works: Vec<Work> = order
         .iter()
         .map(|&i| {
             let l = &card.lines[i];
             let norm = normalize(&l.text);
-            Work { idx: i, line: l, rest: norm.clone(), norm, role: Role::None }
+            let alt = l.alt_text.as_deref().map(normalize);
+            Work { idx: i, line: l, rest: norm.clone(), norm, alt: alt.clone(), alt_norm: alt, role: Role::None }
         })
         .collect();
     let mut ex = Extraction::default();
 
-    // 1) メール
+    // 1) メール(併用モデルの読み取りがあれば、数字・記号に強いそちらを優先する)
     for w in works.iter_mut() {
-        let re = re!(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}");
-        let spans: Vec<(usize, usize)> = re.find_iter(&w.rest).map(|m| (m.start(), m.end())).collect();
-        for (s, e) in spans {
-            let v = w.rest[s..e].trim_end_matches('.').to_string();
+        for v in both(w, emails_in) {
             let lv = v.to_lowercase();
             if !ex.emails.iter().any(|f| f.value.to_lowercase() == lv) {
                 ex.emails.push(Field { value: v, confidence: w.line.confidence * 0.98, line: w.idx });
             }
-            mask(&mut w.rest, s, e);
         }
     }
 
     // 2) URL
     for w in works.iter_mut() {
-        let re = re!(r"(?i)(https?://[^\s]+|www\.[^\s]+)");
-        let mut spans: Vec<(usize, usize)> = re.find_iter(&w.rest).map(|m| (m.start(), m.end())).collect();
-        if spans.is_empty() {
-            let lab = re!(r"(?i)(?:\burl|\bweb(?:site)?|\bhp|ホームページ)\s*[:：]?\s*([a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)+(?:/[^\s]*)?)");
-            if let Some(c) = lab.captures(&w.rest) {
-                let m = c.get(1).unwrap();
-                spans.push((m.start(), m.end()));
-            }
-        }
-        for (s, e) in spans {
-            let v = w.rest[s..e].trim_end_matches(|c| ",.;)".contains(c)).to_string();
+        for v in both(w, urls_in) {
             ex.urls.push(Field { value: v, confidence: w.line.confidence * 0.9, line: w.idx });
-            mask(&mut w.rest, s, e);
         }
     }
 
     // 3) 電話・携帯・FAX
     for w in works.iter_mut() {
-        let re = re!(
-            r"\+\d{1,3}[-\s.]?\(?\d{1,4}\)?(?:[-\s.]\d{2,4}){1,3}|\(\d{2,5}\)\s?\d{1,4}[-.]\d{3,4}|0\d{1,4}-\d{1,4}-\d{3,4}|\d{3}[-.]\d{3}[-.]\d{4}"
-        );
-        let spans: Vec<(usize, usize)> = re
-            .find_iter(&w.rest)
-            .filter(|m| boundary_ok(&w.rest, m.start(), m.end()))
-            .map(|m| (m.start(), m.end()))
-            .collect();
-        let mut prev_end = 0;
-        for (s, e) in &spans {
-            let ctx = w.rest[prev_end..*s].to_lowercase();
-            prev_end = *e;
-            let num = w.rest[*s..*e].trim().to_string();
-            let digits: String = num.chars().filter(|c| c.is_ascii_digit()).collect();
-            let jp_mobile = digits.starts_with("070") || digits.starts_with("080") || digits.starts_with("090")
-                || digits.starts_with("8170") || digits.starts_with("8180") || digits.starts_with("8190");
-            let is_fax = ctx.contains("fax") || ctx.contains("ファックス") || ctx.contains("ファクス");
-            let is_mobile = !is_fax
-                && (ctx.contains("携帯") || ctx.contains("mobile") || ctx.contains("cell") || jp_mobile);
-            let strength = if ctx.trim().is_empty() && !jp_mobile { 0.9 } else { 0.95 };
-            let f = Field { value: num, confidence: w.line.confidence * strength, line: w.idx };
-            if is_fax {
-                ex.faxes.push(f)
-            } else if is_mobile {
-                ex.mobiles.push(f)
-            } else {
-                ex.phones.push(f)
+        for (num, kind, strong) in both(w, phones_in) {
+            let f = Field { value: num, confidence: w.line.confidence * if strong { 0.95 } else { 0.9 }, line: w.idx };
+            match kind {
+                PhoneKind::Fax => ex.faxes.push(f),
+                PhoneKind::Mobile => ex.mobiles.push(f),
+                PhoneKind::Tel => ex.phones.push(f),
             }
-        }
-        for (s, e) in spans {
-            mask(&mut w.rest, s, e);
         }
     }
 
     // 4) 郵便番号(〒付き、または行頭の 000-0000)
     for w in works.iter_mut() {
-        if ex.postal_code.is_some() {
-            break;
-        }
-        let re = re!(r"^\s*(?:〒\s*)?(\d{3})-?(\d{4})(?:\s|$)|〒\s*(\d{3})-?(\d{4})");
-        let found = re.captures(&w.rest).map(|c| {
-            let (a, b) = if let Some(a) = c.get(1) { (a.as_str(), c.get(2).unwrap().as_str()) } else { (c.get(3).unwrap().as_str(), c.get(4).unwrap().as_str()) };
-            let m = c.get(0).unwrap();
-            (format!("{a}-{b}"), m.start(), m.end())
-        });
-        if let Some((v, s, e)) = found {
-            ex.postal_code = Some(Field { value: v, confidence: w.line.confidence * 0.95, line: w.idx });
-            mask(&mut w.rest, s, e);
+        let found = both(w, |s| postal_in(s).into_iter().collect());
+        if ex.postal_code.is_none() {
+            if let Some(v) = found.into_iter().next() {
+                ex.postal_code = Some(Field { value: v, confidence: w.line.confidence * 0.95, line: w.idx });
+            }
         }
     }
 
@@ -318,7 +368,9 @@ pub fn extract(card: &OcrCard) -> Extraction {
 
     // 連絡先の行(ラベルしか残らない行)を確定
     for w in works.iter_mut() {
-        if w.role == Role::None && w.rest != w.norm && strip_labels(&w.rest).is_empty() {
+        let alt_touched = w.alt.is_some() && w.alt != w.alt_norm;
+        let src = if alt_touched { w.alt.as_deref().unwrap_or(&w.rest) } else { w.rest.as_str() };
+        if w.role == Role::None && (w.rest != w.norm || alt_touched) && strip_labels(src).is_empty() {
             w.role = Role::Contact;
         }
     }
@@ -574,10 +626,10 @@ mod tests {
 
     fn line(text: &str, x: f32, y: f32, size: f32) -> OcrLine {
         let w = text.chars().count() as f32 * size * 0.8;
-        OcrLine { text: text.into(), bbox: BBox { x, y, w, h: size }, vertical: false, confidence: 0.97 }
+        OcrLine { text: text.into(), bbox: BBox { x, y, w, h: size }, vertical: false, confidence: 0.97, alt_text: None }
     }
-    fn card(lines: Vec<OcrLine>) -> OcrCard {
-        OcrCard { id: "t".into(), side: "front".into(), width: 1050.0, height: 600.0, lines }
+    fn card(lines: Vec<OcrLine>) -> OcrPage {
+        OcrPage { width: 1050.0, height: 600.0, lines }
     }
     fn vals(v: &[Field]) -> Vec<&str> {
         v.iter().map(|f| f.value.as_str()).collect()

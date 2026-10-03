@@ -22,7 +22,7 @@ fn main() {
     if std::env::args().any(|a| a == "--time") {
         // ルール抽出だけの時間(OCRは含まない)。ビルド種別と環境によって大きく変わるので参考値
         let dir = testset_dir();
-        let cards: Vec<bizcard_logic::ocr_input::OcrCard> = rs
+        let cards: Vec<bizcard_logic::ocr_input::OcrPage> = rs
             .iter()
             .map(|r| serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{}.ocr.json", r.id))).unwrap()).unwrap())
             .collect();

@@ -1,7 +1,6 @@
 -- 0001_init.sql: 名刺管理の初期スキーマ(案)。
 --
--- 前提(接続ごとに必要):
---   PRAGMA foreign_keys = ON;   -- SQLite は接続ごとに外部キーが既定で無効。人の削除で画像・メモ・タグ紐づけを消すために必須
+-- 前提: core の `Db::open` が `PRAGMA foreign_keys = ON` と `user_version` の管理を行う(このファイルに書かない)。
 --   SQLite 3.34 以上(FTS5 の trigram トークナイザ)
 -- 日時は UTC の ISO 8601 文字列(TEXT)。会った日 met_on は 'YYYY-MM-DD'(不明なら NULL)。
 -- 個人情報を含む。ログにこの表の値を書かない。
@@ -78,111 +77,16 @@ CREATE TABLE jobs (
   payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload_json))
 );
 
--- 全文検索。trigram は3文字以上の部分一致のみ(2文字の語は MATCH に当たらない。下の注記を参照)
+-- 全文検索。trigram は3文字以上の部分一致のみ。3文字未満の語は core の `Db::search_rowids` が LIKE に切り替える。
+-- 索引の更新は、SQLite のトリガーではなくアプリ側(`Store::reindex`)が行う:
+-- 保存する文字列と検索語を NFKC でそろえる(core の `fold_for_search`)必要があり、SQL では書けないため。
 CREATE VIRTUAL TABLE people_fts USING fts5(
   name, name_kana, company, department, title, memo_all, place_all, tags_all,
   tokenize = 'trigram'
 );
--- 注記: 「田中」のような2文字の検索語は trigram の MATCH では見つからない。
---       アプリ側で、3文字未満の語は people の各列への LIKE にフォールバックすること。
 
 CREATE TRIGGER people_touch AFTER UPDATE ON people
 WHEN NEW.updated_at = OLD.updated_at
 BEGIN
   UPDATE people SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
-
-CREATE TRIGGER fts_people_ai AFTER INSERT ON people
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (NEW.id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (NEW.id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_people_au AFTER UPDATE ON people
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (NEW.id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (NEW.id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_people_ad AFTER DELETE ON people
-BEGIN
-  DELETE FROM people_fts WHERE rowid = OLD.id;
-END;
-
-CREATE TRIGGER fts_enc_ai AFTER INSERT ON encounters
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (NEW.person_id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (NEW.person_id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_enc_au AFTER UPDATE ON encounters
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (NEW.person_id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (NEW.person_id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_enc_ad AFTER DELETE ON encounters
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (OLD.person_id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (OLD.person_id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_pt_ai AFTER INSERT ON person_tags
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (NEW.person_id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (NEW.person_id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_pt_ad AFTER DELETE ON person_tags
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (OLD.person_id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (OLD.person_id) AND p.status = 'confirmed';
-END;
-
-CREATE TRIGGER fts_tag_au AFTER UPDATE OF name ON tags
-BEGIN
-  DELETE FROM people_fts WHERE rowid IN (SELECT person_id FROM person_tags WHERE tag_id = NEW.id);
-  INSERT INTO people_fts(rowid, name, name_kana, company, department, title, memo_all, place_all, tags_all)
-  SELECT p.id, p.name, p.name_kana, p.company, p.department, p.title,
-         COALESCE((SELECT group_concat(trim(e.memo || ' ' || e.how_met), char(10)) FROM encounters e WHERE e.person_id = p.id), ''),
-         COALESCE((SELECT group_concat(e.place, ' ') FROM encounters e WHERE e.person_id = p.id AND e.place <> ''), ''),
-         COALESCE((SELECT group_concat(t.name, ' ') FROM person_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.person_id = p.id), '')
-  FROM people p WHERE p.id IN (SELECT person_id FROM person_tags WHERE tag_id = NEW.id) AND p.status = 'confirmed';
-END;
-
-PRAGMA user_version = 1;

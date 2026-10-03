@@ -5,7 +5,7 @@
 //! 「ルールが想定した形にどれだけ合っているか」を示すだけで、実際の名刺での精度を表さない。
 
 use crate::extract::{extract, squash, Extraction};
-use crate::ocr_input::OcrCard;
+use crate::ocr_input::OcrPage;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -102,7 +102,7 @@ pub fn run_testset() -> Vec<CardResult> {
     ids.into_iter()
         .map(|id| {
             let ocr_txt = std::fs::read_to_string(dir.join(format!("{id}.ocr.json"))).unwrap();
-            let card: OcrCard = serde_json::from_str(&ocr_txt).unwrap();
+            let card: OcrPage = serde_json::from_str(&ocr_txt).unwrap();
             let meta: Meta = serde_json::from_str(&ocr_txt).unwrap();
             let expected: Expected =
                 serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{id}.expected.json"))).unwrap()).unwrap();
