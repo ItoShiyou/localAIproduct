@@ -1,0 +1,20 @@
+{
+ "name": "井上 健太",
+ "name_kana": "イノウエ ケンタ",
+ "company": "合同会社みなと設計",
+ "department": "営業部",
+ "title": "部長",
+ "emails": [
+  "inoue@minato-sekkei.example.org"
+ ],
+ "phones": [
+  "045-000-2201"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": "000-0002",
+ "address": "神奈川県横浜市中区4-5-6",
+ "urls": [
+  "www.minato-sekkei.example.org"
+ ]
+}

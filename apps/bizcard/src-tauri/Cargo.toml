@@ -1,0 +1,18 @@
+[package]
+name = "bizcard-logic"
+version = "0.1.0"
+edition = "2021"
+description = "名刺管理: OCRに依存しないロジック(ルール抽出・重複検知・CSV・DBスキーマ)。Tauri 2 の殻は未作成"
+publish = false
+
+[dependencies]
+factory-core = { path = "../core/engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+csv = "1"
+encoding_rs = "0.8"
+
+[dev-dependencies]
+# スキーマのテスト用(SQLite 本体を同梱ビルド)。製品側のDB層は core の db(未実装)に合わせる
+rusqlite = { version = "0.32", features = ["bundled"] }

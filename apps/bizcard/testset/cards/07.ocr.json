@@ -1,0 +1,104 @@
+{
+ "id": "07",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "en"
+ ],
+ "hard": true,
+ "note": "住所が2行に分かれる(連結の期待は『住所行+次行』)",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "Larkspur Analytics Inc.",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 380,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Jordan Ellis",
+   "bbox": {
+    "x": 60,
+    "y": 150,
+    "w": 343,
+    "h": 52
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Director of Operations",
+   "bbox": {
+    "x": 60,
+    "y": 215,
+    "w": 266,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "1200 Example Avenue, Suite 400",
+   "bbox": {
+    "x": 60,
+    "y": 380,
+    "w": 297,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Springfield, ST 00000",
+   "bbox": {
+    "x": 60,
+    "y": 408,
+    "w": 208,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "T: (555) 010-0147",
+   "bbox": {
+    "x": 60,
+    "y": 440,
+    "w": 168,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "jordan.ellis@larkspur-analytics.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 470,
+    "w": 426,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "www.larkspur-analytics.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 500,
+    "w": 337,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

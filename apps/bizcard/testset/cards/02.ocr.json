@@ -1,0 +1,104 @@
+{
+ "id": "02",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "合同会社みなと設計",
+   "bbox": {
+    "x": 80,
+    "y": 60,
+    "w": 252,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "営業部 部長",
+   "bbox": {
+    "x": 80,
+    "y": 120,
+    "w": 111,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "井上 健太",
+   "bbox": {
+    "x": 80,
+    "y": 180,
+    "w": 218,
+    "h": 48
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "イノウエ ケンタ",
+   "bbox": {
+    "x": 80,
+    "y": 236,
+    "w": 121,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0002 神奈川県横浜市中区4-5-6",
+   "bbox": {
+    "x": 80,
+    "y": 380,
+    "w": 319,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Tel: 045-000-2201",
+   "bbox": {
+    "x": 80,
+    "y": 410,
+    "w": 168,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Mail: inoue@minato-sekkei.example.org",
+   "bbox": {
+    "x": 80,
+    "y": 440,
+    "w": 366,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "www.minato-sekkei.example.org",
+   "bbox": {
+    "x": 80,
+    "y": 470,
+    "w": 287,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

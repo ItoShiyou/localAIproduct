@@ -1,0 +1,21 @@
+{
+ "name": "伊藤 沙織",
+ "name_kana": null,
+ "company": "株式会社グリーンリーフ",
+ "department": null,
+ "title": "代表取締役社長",
+ "emails": [
+  "ito@greenleaf.example.com",
+  "saori.ito@greenleaf.example.com"
+ ],
+ "phones": [
+  "03-0000-1501"
+ ],
+ "mobiles": [
+  "080-0000-1502"
+ ],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": []
+}

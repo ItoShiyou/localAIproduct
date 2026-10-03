@@ -1,0 +1,94 @@
+{
+ "id": "15",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "en"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社グリーンリーフ",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 330,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "代表取締役社長",
+   "bbox": {
+    "x": 60,
+    "y": 100,
+    "w": 140,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "伊藤 沙織",
+   "bbox": {
+    "x": 60,
+    "y": 150,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "SAORI ITO",
+   "bbox": {
+    "x": 60,
+    "y": 210,
+    "w": 89,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "main: ito@greenleaf.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 307,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "sub: saori.ito@greenleaf.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 356,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 03-0000-1501 / 080-0000-1502",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 317,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

@@ -1,0 +1,61 @@
+{
+ "id": "25",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "vertical",
+  "ja",
+  "ocr-noise"
+ ],
+ "hard": true,
+ "note": "縦書きでOCRが文字ごとに空白を入れた想定",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社なぎさ観光",
+   "bbox": {
+    "x": 920,
+    "y": 60,
+    "w": 26,
+    "h": 234
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "代表取締役",
+   "bbox": {
+    "x": 870,
+    "y": 60,
+    "w": 20,
+    "h": 100
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "岡田 蓮",
+   "bbox": {
+    "x": 790,
+    "y": 120,
+    "w": 54,
+    "h": 216
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "電話 0 3 - 0 0 0 0 - 2 5 0 1",
+   "bbox": {
+    "x": 100,
+    "y": 60,
+    "w": 18,
+    "h": 468
+   },
+   "vertical": true,
+   "confidence": 0.95
+  }
+ ]
+}

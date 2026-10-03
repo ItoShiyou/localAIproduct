@@ -1,0 +1,83 @@
+{
+ "id": "04",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "fullwidth"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "(株)つばき運輸",
+   "bbox": {
+    "x": 70,
+    "y": 50,
+    "w": 199,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "物流企画室 係長",
+   "bbox": {
+    "x": 70,
+    "y": 100,
+    "w": 151,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "小林 大地",
+   "bbox": {
+    "x": 70,
+    "y": 160,
+    "w": 209,
+    "h": 46
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒０００−０００４ 愛知県名古屋市中区１−１０−１",
+   "bbox": {
+    "x": 70,
+    "y": 380,
+    "w": 418,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "ＴＥＬ：０５２−０００−４４０１　ＦＡＸ：０５２−０００−４４０２",
+   "bbox": {
+    "x": 70,
+    "y": 410,
+    "w": 562,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Ｅ−ｍａｉｌ：kobayashi＠tsubaki-unyu.example.net",
+   "bbox": {
+    "x": 70,
+    "y": 440,
+    "w": 463,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

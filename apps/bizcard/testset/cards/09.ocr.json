@@ -1,0 +1,105 @@
+{
+ "id": "09",
+ "side": "back",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "en",
+  "back"
+ ],
+ "hard": true,
+ "note": "海外式の住所表記。郵便番号は住所内に埋まる(postal_code は期待しない)",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "Hinata Kobo Co., Ltd.",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 323,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Design Section",
+   "bbox": {
+    "x": 60,
+    "y": 100,
+    "w": 139,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Haruka Aoki",
+   "bbox": {
+    "x": 60,
+    "y": 160,
+    "w": 278,
+    "h": 46
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Manager",
+   "bbox": {
+    "x": 60,
+    "y": 215,
+    "w": 77,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "1-2-3 Sample Building 5F, Chiyoda-ku, Tokyo 000-0001, Japan",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 519,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Tel: +81-3-0000-1101  Fax: +81-3-0000-1102",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 370,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Mobile: +81-90-0000-1101",
+   "bbox": {
+    "x": 60,
+    "y": 455,
+    "w": 211,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "aoki@hinata-kobo.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 480,
+    "w": 246,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "name": "Jordan Ellis",
+ "name_kana": null,
+ "company": "Larkspur Analytics Inc.",
+ "department": null,
+ "title": "Director of Operations",
+ "emails": [
+  "jordan.ellis@larkspur-analytics.example.com"
+ ],
+ "phones": [
+  "(555) 010-0147"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": null,
+ "address": "1200 Example Avenue, Suite 400 Springfield, ST 00000",
+ "urls": [
+  "www.larkspur-analytics.example.com"
+ ]
+}

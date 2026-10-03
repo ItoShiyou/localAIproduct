@@ -1,0 +1,82 @@
+{
+ "id": "14",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "デザイナー",
+   "bbox": {
+    "x": 80,
+    "y": 120,
+    "w": 100,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "藤田 大輔",
+   "bbox": {
+    "x": 80,
+    "y": 160,
+    "w": 237,
+    "h": 52
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "フジタ ダイスケ",
+   "bbox": {
+    "x": 80,
+    "y": 220,
+    "w": 121,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "090-0000-1401",
+   "bbox": {
+    "x": 80,
+    "y": 400,
+    "w": 129,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "fujita@fujita-design.example.net",
+   "bbox": {
+    "x": 80,
+    "y": 430,
+    "w": 317,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "https://fujita-design.example.net",
+   "bbox": {
+    "x": 80,
+    "y": 460,
+    "w": 327,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

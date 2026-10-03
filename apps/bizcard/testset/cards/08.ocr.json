@@ -1,0 +1,104 @@
+{
+ "id": "08",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "en"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "Brightwater Software Co., Ltd.",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 462,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Morgan Reyes",
+   "bbox": {
+    "x": 60,
+    "y": 140,
+    "w": 330,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Senior Software Engineer",
+   "bbox": {
+    "x": 60,
+    "y": 200,
+    "w": 290,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Platform Engineering Department",
+   "bbox": {
+    "x": 60,
+    "y": 230,
+    "w": 307,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Tel +1-555-010-0182   Fax +1-555-010-0183",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 406,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Mobile +1-555-010-0184",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 218,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "morgan.reyes@brightwater.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 356,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "https://brightwater.example.com/team",
+   "bbox": {
+    "x": 60,
+    "y": 490,
+    "w": 356,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

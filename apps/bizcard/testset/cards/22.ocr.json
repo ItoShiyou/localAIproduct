@@ -1,0 +1,60 @@
+{
+ "id": "22",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": true,
+ "note": "ハイフンのない電話番号。ルールはハイフン区切りだけを拾う",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社くじら企画",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 252,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "坂本 陽介",
+   "bbox": {
+    "x": 60,
+    "y": 130,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 0300001222 / 09000001223",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 277,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "sakamoto@kujira-kikaku.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 337,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

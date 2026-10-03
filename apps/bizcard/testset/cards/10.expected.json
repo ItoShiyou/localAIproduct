@@ -1,0 +1,16 @@
+{
+ "name": null,
+ "name_kana": null,
+ "company": "株式会社ひなた工房",
+ "department": null,
+ "title": null,
+ "emails": [],
+ "phones": [],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": [
+  "https://hinata-kobo.example.com"
+ ]
+}

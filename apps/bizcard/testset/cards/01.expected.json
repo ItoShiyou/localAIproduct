@@ -1,0 +1,24 @@
+{
+ "name": "青木 遥",
+ "name_kana": "あおき はるか",
+ "company": "株式会社ひなた工房",
+ "department": "制作部 デザイン課",
+ "title": "課長",
+ "emails": [
+  "aoki@hinata-kobo.example.com"
+ ],
+ "phones": [
+  "03-0000-1101"
+ ],
+ "mobiles": [
+  "090-0000-1101"
+ ],
+ "faxes": [
+  "03-0000-1102"
+ ],
+ "postal_code": "000-0001",
+ "address": "東京都千代田区1-2-3 サンプルビル5F",
+ "urls": [
+  "https://hinata-kobo.example.com"
+ ]
+}

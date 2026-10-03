@@ -1,0 +1,24 @@
+{
+ "name": "Morgan Reyes",
+ "name_kana": null,
+ "company": "Brightwater Software Co., Ltd.",
+ "department": "Platform Engineering Department",
+ "title": "Senior Software Engineer",
+ "emails": [
+  "morgan.reyes@brightwater.example.com"
+ ],
+ "phones": [
+  "+1-555-010-0182"
+ ],
+ "mobiles": [
+  "+1-555-010-0184"
+ ],
+ "faxes": [
+  "+1-555-010-0183"
+ ],
+ "postal_code": null,
+ "address": null,
+ "urls": [
+  "https://brightwater.example.com/team"
+ ]
+}

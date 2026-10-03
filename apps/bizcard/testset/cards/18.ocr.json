@@ -1,0 +1,93 @@
+{
+ "id": "18",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社そよ風ベーカリー",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 336,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "店長",
+   "bbox": {
+    "x": 60,
+    "y": 100,
+    "w": 40,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "山口 朋美",
+   "bbox": {
+    "x": 60,
+    "y": 150,
+    "w": 218,
+    "h": 48
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0018 広島県広島市中区2-2-2",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 301,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL (082) 000-1801",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 178,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "URL: soyokaze-bakery.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 317,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "info@soyokaze-bakery.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 490,
+    "w": 317,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+{
+ "name": "森田 一郎",
+ "name_kana": null,
+ "company": "有限会社あさひ商会",
+ "department": null,
+ "title": "代表取締役",
+ "emails": [
+  "morita@asahi-shokai.example.com"
+ ],
+ "phones": [
+  "06-0000-3301"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": "000-0003",
+ "address": "大阪府大阪市北区7-8-9 テスト会館2階",
+ "urls": []
+}

@@ -1,0 +1,83 @@
+{
+ "id": "10",
+ "side": "back",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "back"
+ ],
+ "hard": false,
+ "note": "氏名のない裏面。氏名を誤って拾わないこと",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社ひなた工房",
+   "bbox": {
+    "x": 80,
+    "y": 60,
+    "w": 270,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "私たちの仕事",
+   "bbox": {
+    "x": 80,
+    "y": 130,
+    "w": 132,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "・ウェブサイト制作",
+   "bbox": {
+    "x": 80,
+    "y": 170,
+    "w": 162,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "・パンフレット・ロゴのデザイン",
+   "bbox": {
+    "x": 80,
+    "y": 200,
+    "w": 270,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "・撮影ディレクション",
+   "bbox": {
+    "x": 80,
+    "y": 230,
+    "w": 180,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "https://hinata-kobo.example.com",
+   "bbox": {
+    "x": 80,
+    "y": 500,
+    "w": 307,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

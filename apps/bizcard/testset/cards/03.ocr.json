@@ -1,0 +1,104 @@
+{
+ "id": "03",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": true,
+ "note": "同一面に2人分の表記があるが正解は左の1人(大きい文字)のみ。右側の2人目は対象外",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "有限会社あさひ商会",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 270,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "代表取締役",
+   "bbox": {
+    "x": 60,
+    "y": 110,
+    "w": 110,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "森田 一郎",
+   "bbox": {
+    "x": 60,
+    "y": 160,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "専務取締役",
+   "bbox": {
+    "x": 560,
+    "y": 110,
+    "w": 100,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "営業部長 石川 美咲",
+   "bbox": {
+    "x": 560,
+    "y": 150,
+    "w": 218,
+    "h": 24
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0003 大阪府大阪市北区7-8-9 テスト会館2階",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 428,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "電話 06-0000-3301",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 165,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "morita@asahi-shokai.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 307,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

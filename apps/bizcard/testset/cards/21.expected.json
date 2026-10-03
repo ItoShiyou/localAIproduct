@@ -1,0 +1,16 @@
+{
+ "name": "ジョン・スミス",
+ "name_kana": null,
+ "company": "株式会社ブルーレイク",
+ "department": "海外営業部",
+ "title": "部長",
+ "emails": [
+  "john.smith@bluelake.example.com"
+ ],
+ "phones": [],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": []
+}

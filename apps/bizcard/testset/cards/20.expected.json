@@ -1,0 +1,16 @@
+{
+ "name": "阿部 花子",
+ "name_kana": "アベ ハナコ",
+ "company": "株式会社ことり印刷",
+ "department": "営業部",
+ "title": "担当",
+ "emails": [
+  "abe@kotori-insatsu.example.com"
+ ],
+ "phones": [],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": []
+}

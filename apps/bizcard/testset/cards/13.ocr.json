@@ -1,0 +1,94 @@
+{
+ "id": "13",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "decorative"
+ ],
+ "hard": true,
+ "note": "キャッチコピーが氏名より大きい装飾デザインの想定",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "暮らしに、ひと工夫を。",
+   "bbox": {
+    "x": 60,
+    "y": 40,
+    "w": 484,
+    "h": 44
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "株式会社こもれび家具",
+   "bbox": {
+    "x": 60,
+    "y": 110,
+    "w": 240,
+    "h": 24
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "営業部",
+   "bbox": {
+    "x": 60,
+    "y": 150,
+    "w": 54,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "中村 恵",
+   "bbox": {
+    "x": 60,
+    "y": 210,
+    "w": 128,
+    "h": 36
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 075-000-9901",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 158,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "nakamura@komorebi-kagu.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 337,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0009 京都府京都市中京区9-9-9",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 319,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

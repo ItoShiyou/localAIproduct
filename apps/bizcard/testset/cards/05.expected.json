@@ -1,0 +1,18 @@
+{
+ "name": "渡辺 優子",
+ "name_kana": "わたなべ ゆうこ",
+ "company": "株式会社さくら食品",
+ "department": null,
+ "title": "取締役",
+ "emails": [
+  "watanabe@sakura-shokuhin.example.com"
+ ],
+ "phones": [
+  "092-000-5501"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": "000-0005",
+ "address": "福岡県福岡市博多区2-3-4",
+ "urls": []
+}

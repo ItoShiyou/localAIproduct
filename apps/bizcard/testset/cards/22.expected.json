@@ -1,0 +1,20 @@
+{
+ "name": "坂本 陽介",
+ "name_kana": null,
+ "company": "株式会社くじら企画",
+ "department": null,
+ "title": null,
+ "emails": [
+  "sakamoto@kujira-kikaku.example.com"
+ ],
+ "phones": [
+  "0300001222"
+ ],
+ "mobiles": [
+  "09000001223"
+ ],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": []
+}

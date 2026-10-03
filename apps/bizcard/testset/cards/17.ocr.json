@@ -1,0 +1,83 @@
+{
+ "id": "17",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "vertical",
+  "ja",
+  "low-confidence"
+ ],
+ "hard": true,
+ "note": "OCR信頼度が低い想定(0.6〜0.74)。『営業部長』は 部署=営業部・役職=部長 に分ける期待",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社うみねこ水産",
+   "bbox": {
+    "x": 900,
+    "y": 70,
+    "w": 26,
+    "h": 260
+   },
+   "vertical": true,
+   "confidence": 0.71
+  },
+  {
+   "text": "営業部長",
+   "bbox": {
+    "x": 850,
+    "y": 70,
+    "w": 20,
+    "h": 80
+   },
+   "vertical": true,
+   "confidence": 0.68
+  },
+  {
+   "text": "加藤 直樹",
+   "bbox": {
+    "x": 770,
+    "y": 140,
+    "w": 54,
+    "h": 270
+   },
+   "vertical": true,
+   "confidence": 0.74
+  },
+  {
+   "text": "〒000-0017 宮城県仙台市青葉区1-7-7",
+   "bbox": {
+    "x": 140,
+    "y": 70,
+    "w": 18,
+    "h": 432
+   },
+   "vertical": true,
+   "confidence": 0.62
+  },
+  {
+   "text": "TEL 022-000-1701",
+   "bbox": {
+    "x": 100,
+    "y": 70,
+    "w": 18,
+    "h": 288
+   },
+   "vertical": true,
+   "confidence": 0.66
+  },
+  {
+   "text": "kato@umineko-suisan.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 70,
+    "w": 16,
+    "h": 496
+   },
+   "vertical": true,
+   "confidence": 0.6
+  }
+ ]
+}

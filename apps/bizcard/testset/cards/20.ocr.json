@@ -1,0 +1,71 @@
+{
+ "id": "20",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": false,
+ "note": "姓が部で終わっても部署と誤認しないこと",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社ことり印刷",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 252,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "阿部 花子",
+   "bbox": {
+    "x": 60,
+    "y": 130,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "アベ ハナコ",
+   "bbox": {
+    "x": 60,
+    "y": 190,
+    "w": 89,
+    "h": 16
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "営業部 担当",
+   "bbox": {
+    "x": 60,
+    "y": 230,
+    "w": 111,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "abe@kotori-insatsu.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 297,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

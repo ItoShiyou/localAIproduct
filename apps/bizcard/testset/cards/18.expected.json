@@ -1,0 +1,20 @@
+{
+ "name": "山口 朋美",
+ "name_kana": null,
+ "company": "株式会社そよ風ベーカリー",
+ "department": null,
+ "title": "店長",
+ "emails": [
+  "info@soyokaze-bakery.example.com"
+ ],
+ "phones": [
+  "(082) 000-1801"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": "000-0018",
+ "address": "広島県広島市中区2-2-2",
+ "urls": [
+  "soyokaze-bakery.example.com"
+ ]
+}

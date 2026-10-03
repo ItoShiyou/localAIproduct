@@ -1,0 +1,20 @@
+{
+ "name": "高橋 誠",
+ "name_kana": null,
+ "company": "一般社団法人あおぞら文化協会",
+ "department": "企画部",
+ "title": "事務局長",
+ "emails": [
+  "takahashi@aozora-bunka.example.org"
+ ],
+ "phones": [
+  "011-000-6601"
+ ],
+ "mobiles": [],
+ "faxes": [
+  "011-000-6602"
+ ],
+ "postal_code": "000-0006",
+ "address": "北海道札幌市中央区5-6-7",
+ "urls": []
+}

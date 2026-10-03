@@ -1,0 +1,18 @@
+{
+ "name": "中村 恵",
+ "name_kana": null,
+ "company": "株式会社こもれび家具",
+ "department": "営業部",
+ "title": null,
+ "emails": [
+  "nakamura@komorebi-kagu.example.com"
+ ],
+ "phones": [
+  "075-000-9901"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": "000-0009",
+ "address": "京都府京都市中京区9-9-9",
+ "urls": []
+}

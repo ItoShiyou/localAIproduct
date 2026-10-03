@@ -1,0 +1,20 @@
+{
+ "name": "小林 大地",
+ "name_kana": null,
+ "company": "(株)つばき運輸",
+ "department": "物流企画室",
+ "title": "係長",
+ "emails": [
+  "kobayashi@tsubaki-unyu.example.net"
+ ],
+ "phones": [
+  "052-000-4401"
+ ],
+ "mobiles": [],
+ "faxes": [
+  "052-000-4402"
+ ],
+ "postal_code": "000-0004",
+ "address": "愛知県名古屋市中区1-10-1",
+ "urls": []
+}

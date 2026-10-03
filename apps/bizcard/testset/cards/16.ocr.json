@@ -1,0 +1,71 @@
+{
+ "id": "16",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "en"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "Cedar & Pine LLC",
+   "bbox": {
+    "x": 70,
+    "y": 50,
+    "w": 264,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Alex Kim",
+   "bbox": {
+    "x": 70,
+    "y": 140,
+    "w": 220,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Founder",
+   "bbox": {
+    "x": 70,
+    "y": 200,
+    "w": 85,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "alex@cedarpine.example.org",
+   "bbox": {
+    "x": 70,
+    "y": 380,
+    "w": 257,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "+1 555 010 0166",
+   "bbox": {
+    "x": 70,
+    "y": 410,
+    "w": 148,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

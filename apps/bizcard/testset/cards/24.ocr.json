@@ -1,0 +1,60 @@
+{
+ "id": "24",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": true,
+ "note": "会社名が2行に折り返された想定。ルールは1行ずつ見る",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社ひまわり",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 224,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "システム開発",
+   "bbox": {
+    "x": 60,
+    "y": 84,
+    "w": 168,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "森 康介",
+   "bbox": {
+    "x": 60,
+    "y": 170,
+    "w": 178,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 03-0000-2401",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 158,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

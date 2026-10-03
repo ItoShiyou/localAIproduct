@@ -1,0 +1,18 @@
+{
+ "name": "Alex Kim",
+ "name_kana": null,
+ "company": "Cedar & Pine LLC",
+ "department": null,
+ "title": "Founder",
+ "emails": [
+  "alex@cedarpine.example.org"
+ ],
+ "phones": [
+  "+1 555 010 0166"
+ ],
+ "mobiles": [],
+ "faxes": [],
+ "postal_code": null,
+ "address": null,
+ "urls": []
+}

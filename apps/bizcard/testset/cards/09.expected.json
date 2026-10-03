@@ -1,0 +1,22 @@
+{
+ "name": "Haruka Aoki",
+ "name_kana": null,
+ "company": "Hinata Kobo Co., Ltd.",
+ "department": "Design Section",
+ "title": "Manager",
+ "emails": [
+  "aoki@hinata-kobo.example.com"
+ ],
+ "phones": [
+  "+81-3-0000-1101"
+ ],
+ "mobiles": [
+  "+81-90-0000-1101"
+ ],
+ "faxes": [
+  "+81-3-0000-1102"
+ ],
+ "postal_code": null,
+ "address": "1-2-3 Sample Building 5F, Chiyoda-ku, Tokyo 000-0001, Japan",
+ "urls": []
+}

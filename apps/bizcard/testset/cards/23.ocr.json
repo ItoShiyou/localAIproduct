@@ -1,0 +1,61 @@
+{
+ "id": "23",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "en",
+  "ocr-noise"
+ ],
+ "hard": true,
+ "note": "OCRがメールの@の前後に空白を入れた想定",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "Quartz Labs Ltd.",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 246,
+    "h": 28
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Riley Chen",
+   "bbox": {
+    "x": 60,
+    "y": 130,
+    "w": 275,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "CTO",
+   "bbox": {
+    "x": 60,
+    "y": 190,
+    "w": 36,
+    "h": 22
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "riley.chen @ quartzlabs.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 347,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

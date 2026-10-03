@@ -1,0 +1,104 @@
+{
+ "id": "06",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "vertical",
+  "ja"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "一般社団法人あおぞら文化協会",
+   "bbox": {
+    "x": 940,
+    "y": 60,
+    "w": 24,
+    "h": 336
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "企画部",
+   "bbox": {
+    "x": 890,
+    "y": 60,
+    "w": 18,
+    "h": 54
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "事務局長",
+   "bbox": {
+    "x": 860,
+    "y": 60,
+    "w": 20,
+    "h": 80
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "高橋 誠",
+   "bbox": {
+    "x": 780,
+    "y": 120,
+    "w": 56,
+    "h": 224
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "〒000-0006 北海道札幌市中央区5-6-7",
+   "bbox": {
+    "x": 150,
+    "y": 60,
+    "w": 18,
+    "h": 432
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "TEL 011-000-6601",
+   "bbox": {
+    "x": 110,
+    "y": 60,
+    "w": 18,
+    "h": 288
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "FAX 011-000-6602",
+   "bbox": {
+    "x": 75,
+    "y": 60,
+    "w": 18,
+    "h": 288
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "takahashi@aozora-bunka.example.org",
+   "bbox": {
+    "x": 40,
+    "y": 60,
+    "w": 16,
+    "h": 544
+   },
+   "vertical": true,
+   "confidence": 0.95
+  }
+ ]
+}

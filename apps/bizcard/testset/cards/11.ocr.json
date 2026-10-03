@@ -1,0 +1,94 @@
+{
+ "id": "11",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "en"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社かもめ物産",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 270,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "海外事業部 マネージャー",
+   "bbox": {
+    "x": 60,
+    "y": 100,
+    "w": 231,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "佐々木 翔太",
+   "bbox": {
+    "x": 60,
+    "y": 160,
+    "w": 278,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "Shota Sasaki",
+   "bbox": {
+    "x": 60,
+    "y": 220,
+    "w": 132,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0007 兵庫県神戸市中央区3-3-3",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 319,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 078-000-7701",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 158,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "sasaki@kamome-bussan.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 317,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

@@ -1,0 +1,71 @@
+{
+ "id": "19",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja"
+ ],
+ "hard": true,
+ "note": "会社名に法人格の語がない(ルールは拾えない想定)",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "サンプル商事",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 192,
+    "h": 32
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "営業部 課長",
+   "bbox": {
+    "x": 60,
+    "y": 110,
+    "w": 111,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "長谷川 亮",
+   "bbox": {
+    "x": 60,
+    "y": 170,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 03-0000-1901",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 158,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "hasegawa@sample-shoji.example.com",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 327,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

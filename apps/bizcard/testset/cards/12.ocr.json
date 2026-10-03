@@ -1,0 +1,83 @@
+{
+ "id": "12",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "horizontal",
+  "ja",
+  "ocr-noise"
+ ],
+ "hard": true,
+ "note": "OCRが '.' を ',' に誤認識した想定。ルールでは直せないので期待は不一致になりうる",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社やまびこ電機",
+   "bbox": {
+    "x": 60,
+    "y": 50,
+    "w": 300,
+    "h": 30
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "技術部 主任",
+   "bbox": {
+    "x": 60,
+    "y": 100,
+    "w": 111,
+    "h": 20
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "松本 里奈",
+   "bbox": {
+    "x": 60,
+    "y": 160,
+    "w": 228,
+    "h": 50
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "TEL 0263-00-8801",
+   "bbox": {
+    "x": 60,
+    "y": 400,
+    "w": 158,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "matsumoto@yamabiko-denki,example.com",
+   "bbox": {
+    "x": 60,
+    "y": 430,
+    "w": 356,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  },
+  {
+   "text": "〒000-0008 長野県松本市1-1-1",
+   "bbox": {
+    "x": 60,
+    "y": 460,
+    "w": 265,
+    "h": 18
+   },
+   "vertical": false,
+   "confidence": 0.97
+  }
+ ]
+}

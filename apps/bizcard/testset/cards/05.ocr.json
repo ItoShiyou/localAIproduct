@@ -1,0 +1,93 @@
+{
+ "id": "05",
+ "side": "front",
+ "width": 1050,
+ "height": 600,
+ "tags": [
+  "vertical",
+  "ja"
+ ],
+ "hard": false,
+ "note": "",
+ "fictional": true,
+ "source": "手で書いた架空のデータ。実画像・実OCR出力ではない(OCRの出力形式を模したもの)",
+ "lines": [
+  {
+   "text": "株式会社さくら食品",
+   "bbox": {
+    "x": 920,
+    "y": 60,
+    "w": 28,
+    "h": 252
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "取締役",
+   "bbox": {
+    "x": 860,
+    "y": 60,
+    "w": 20,
+    "h": 60
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "渡辺 優子",
+   "bbox": {
+    "x": 790,
+    "y": 140,
+    "w": 52,
+    "h": 260
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "わたなべ ゆうこ",
+   "bbox": {
+    "x": 740,
+    "y": 140,
+    "w": 16,
+    "h": 128
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "〒000-0005 福岡県福岡市博多区2-3-4",
+   "bbox": {
+    "x": 120,
+    "y": 60,
+    "w": 18,
+    "h": 432
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "電話 092-000-5501",
+   "bbox": {
+    "x": 80,
+    "y": 60,
+    "w": 18,
+    "h": 270
+   },
+   "vertical": true,
+   "confidence": 0.95
+  },
+  {
+   "text": "watanabe@sakura-shokuhin.example.com",
+   "bbox": {
+    "x": 40,
+    "y": 60,
+    "w": 16,
+    "h": 576
+   },
+   "vertical": true,
+   "confidence": 0.95
+  }
+ ]
+}
