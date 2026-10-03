@@ -50,6 +50,9 @@ pub struct OcrLine {
     /// 信頼度(0〜1)。エンジンが返さなければ 1.0
     #[serde(default = "one")]
     pub confidence: f32,
+    /// 別の認識モデルによる読み取り(数字・記号に強いモデルを併用したときだけ)。無ければ None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt_text: Option<String>,
 }
 
 fn one() -> f32 {
@@ -78,6 +81,15 @@ impl OcrPage {
     /// 読み順(上から下、同じ高さなら左から右)の本文。横書きだけを使い、同じ高さの断片は
     /// 空白2つでつなぐ(表の「品名  ¥580」のような並びを1行にするため)。縦書きは末尾に1行ずつ。
     pub fn to_text(&self) -> String {
+        self.text_of(|l| l.text.as_str())
+    }
+
+    /// `to_text` の、`alt_text`(併用した別モデルの読み取り)版。無い行は通常の `text` を使う。
+    pub fn to_alt_text(&self) -> String {
+        self.text_of(|l| l.alt_text.as_deref().unwrap_or(l.text.as_str()))
+    }
+
+    fn text_of<'a>(&'a self, pick: impl Fn(&'a OcrLine) -> &'a str) -> String {
         let mut horiz: Vec<&OcrLine> = self.lines.iter().filter(|l| !l.vertical).collect();
         horiz.sort_by(|a, b| a.bbox.cy().total_cmp(&b.bbox.cy()));
         let mut rows: Vec<(f32, f32, Vec<&OcrLine>)> = Vec::new(); // (中心y, 文字の大きさ, 断片)
@@ -94,11 +106,11 @@ impl OcrPage {
             .into_iter()
             .map(|(_, _, mut items)| {
                 items.sort_by(|a, b| a.bbox.x.total_cmp(&b.bbox.x));
-                items.iter().map(|l| l.text.trim()).collect::<Vec<_>>().join("  ")
+                items.iter().map(|l| pick(l).trim()).collect::<Vec<_>>().join("  ")
             })
             .collect();
         for l in self.lines.iter().filter(|l| l.vertical) {
-            out.push(l.text.trim().to_string());
+            out.push(pick(l).trim().to_string());
         }
         out.join("\n")
     }
@@ -158,7 +170,7 @@ mod tests {
     use super::*;
 
     fn line(text: &str, x: f32, y: f32, w: f32, h: f32) -> OcrLine {
-        OcrLine { text: text.into(), bbox: BBox { x, y, w, h }, vertical: false, confidence: 0.9 }
+        OcrLine { text: text.into(), bbox: BBox { x, y, w, h }, vertical: false, confidence: 0.9, alt_text: None }
     }
 
     #[test]
@@ -174,6 +186,16 @@ mod tests {
             ],
         };
         assert_eq!(page.to_text(), "コピー用紙  ¥580\n合計  ¥1,320");
+    }
+
+    #[test]
+    fn 併用モデルの読み取りで本文を作れる() {
+        let mut a = line("登録番号15522", 20.0, 10.0, 100.0, 20.0);
+        a.alt_text = Some("登录番号T5522".into());
+        let b = line("山田商店", 20.0, 50.0, 100.0, 20.0);
+        let page = OcrPage { width: 200.0, height: 100.0, lines: vec![a, b] };
+        assert_eq!(page.to_text(), "登録番号15522\n山田商店");
+        assert_eq!(page.to_alt_text(), "登录番号T5522\n山田商店");
     }
 
     #[test]

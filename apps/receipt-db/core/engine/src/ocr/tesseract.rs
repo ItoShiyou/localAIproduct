@@ -124,6 +124,7 @@ pub fn parse_tsv(tsv: &str, width: f32, height: f32) -> OcrPage {
                 bbox: BBox { x: a.x0, y: a.y0, w, h },
                 vertical: h > 2.0 * w && a.words.len() == 1 && h > 40.0,
                 confidence: a.conf / a.n,
+                alt_text: None,
             }
         })
         .collect();

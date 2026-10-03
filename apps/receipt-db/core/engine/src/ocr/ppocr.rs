@@ -23,15 +23,24 @@ pub struct PpOcrConfig {
     pub rec_model: PathBuf,
     /// 1文字1行の辞書。None なら認識モデルの metadata `character` を使う
     pub dict: Option<PathBuf>,
+    /// 数字・記号に強い認識モデルを併用する場合の2つ目(辞書は metadata から)。
+    /// 日本語モデルは「T」を「1」、「¥」を「半」と読み違えることがあり、中国語モデルは仮名を落とす。
+    /// 両方で読み、2つ目の結果は `OcrLine::alt_text` に入れる(使い分けは呼び出し側)。
+    pub alt_rec_model: Option<PathBuf>,
     /// 推論のスレッド数(最低ラインの機械では 6)
     pub threads: usize,
 }
 
-pub struct PpOcr {
-    det: Mutex<Session>,
-    rec: Mutex<Session>,
+struct Recognizer {
+    sess: Mutex<Session>,
     /// 0 = CTC の空白、最後 = 空白文字
     chars: Vec<String>,
+}
+
+pub struct PpOcr {
+    det: Mutex<Session>,
+    rec: Recognizer,
+    alt: Option<Recognizer>,
 }
 
 fn ort_err<E: std::fmt::Display>(e: E) -> CoreError {
@@ -60,23 +69,16 @@ impl PpOcr {
                 .map_err(ort_err)
         };
         let det = load(&cfg.det_model)?;
-        let rec = load(&cfg.rec_model)?;
-        let dict_text = match &cfg.dict {
-            Some(p) => std::fs::read_to_string(p).map_err(ort_err)?,
-            None => rec
-                .metadata()
-                .map_err(ort_err)?
-                .custom("character")
-                .ok_or_else(|| CoreError::Ocr("認識モデルに辞書(character)がありません。辞書ファイルを指定してください".into()))?,
+        let rec = recognizer(load(&cfg.rec_model)?, cfg.dict.as_ref())?;
+        let alt = match &cfg.alt_rec_model {
+            Some(p) => Some(recognizer(load(p)?, None)?),
+            None => None,
         };
-        let mut chars = vec![String::new()];
-        chars.extend(dict_text.lines().map(|s| s.to_string()));
-        chars.push(" ".to_string());
-        Ok(Self { det: Mutex::new(det), rec: Mutex::new(rec), chars })
+        Ok(Self { det: Mutex::new(det), rec, alt })
     }
 
     /// 検出: 文字がありそうな領域(元画像の座標)を返す
-    fn detect(&self, rgb: &RgbImage) -> Result<Vec<BBox>, CoreError> {
+    fn detect(&self, rgb: &RgbImage) -> Result<Vec<DetBox>, CoreError> {
         let (w, h) = rgb.dimensions();
         let (rw, rh, sx, sy) = det_size(w, h);
         let resized = imageops::resize(rgb, rw, rh, FilterType::Triangle);
@@ -95,21 +97,32 @@ impl PpOcr {
         let shape = prob.shape().to_vec();
         let (ph, pw) = (shape[shape.len() - 2], shape[shape.len() - 1]);
         let flat: Vec<f32> = prob.iter().copied().collect();
-        let boxes = boxes_from_prob(&flat, pw, ph, 0.3, 0.5, 1.6);
-        Ok(boxes
+        Ok(boxes_from_prob(&flat, pw, ph, 0.3, 0.5, 1.6, sx, sy)
             .into_iter()
-            .filter_map(|b| {
-                let x0 = (b.x / sx).max(0.0);
-                let y0 = (b.y / sy).max(0.0);
-                let x1 = ((b.x + b.w) / sx).min(w as f32);
-                let y1 = ((b.y + b.h) / sy).min(h as f32);
-                (x1 - x0 >= 4.0 && y1 - y0 >= 4.0).then_some(BBox { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
-            })
+            .filter(|b| b.len >= 4.0 && b.thick >= 4.0)
             .collect())
     }
 
+}
+
+fn recognizer(sess: Session, dict: Option<&PathBuf>) -> Result<Recognizer, CoreError> {
+    let dict_text = match dict {
+        Some(p) => std::fs::read_to_string(p).map_err(ort_err)?,
+        None => sess
+            .metadata()
+            .map_err(ort_err)?
+            .custom("character")
+            .ok_or_else(|| CoreError::Ocr("認識モデルに辞書(character)がありません。辞書ファイルを指定してください".into()))?,
+    };
+    let mut chars = vec![String::new()];
+    chars.extend(dict_text.lines().map(|s| s.to_string()));
+    chars.push(" ".to_string());
+    Ok(Recognizer { sess: Mutex::new(sess), chars })
+}
+
+impl Recognizer {
     /// 認識: 切り出した1行の画像から (文字列, 信頼度)
-    fn recognize_crop(&self, crop: &RgbImage) -> Result<(String, f32), CoreError> {
+    fn run(&self, crop: &RgbImage) -> Result<(String, f32), CoreError> {
         let (cw, ch) = crop.dimensions();
         let new_w = ((48.0 * cw as f32 / ch as f32).ceil() as u32).clamp(8, 2048);
         let pad_w = new_w.max(320);
@@ -120,7 +133,7 @@ impl PpOcr {
                 input[[0, c, y as usize, x as usize]] = (p[*src] as f32 / 255.0 - 0.5) / 0.5;
             }
         }
-        let mut sess = self.rec.lock().map_err(|_| CoreError::Ocr("認識モデルが使えません".into()))?;
+        let mut sess = self.sess.lock().map_err(|_| CoreError::Ocr("認識モデルが使えません".into()))?;
         let outputs = sess
             .run(ort::inputs![Tensor::from_array(input).map_err(ort_err)?])
             .map_err(ort_err)?;
@@ -142,15 +155,16 @@ impl Ocr for PpOcr {
         let (w, h) = rgb.dimensions();
         let mut lines = Vec::new();
         for b in self.detect(&rgb)? {
-            let crop = imageops::crop_imm(&rgb, b.x as u32, b.y as u32, (b.w as u32).max(1), (b.h as u32).max(1)).to_image();
-            // 縦長の領域は縦書きとみなし、横にして読む(反時計回りに90度)
-            let vertical = b.h >= 2.0 * b.w;
-            let crop = if vertical { imageops::rotate270(&crop) } else { crop };
-            let (text, conf) = self.recognize_crop(&crop)?;
-            if text.trim().is_empty() {
+            let crop = rotated_crop(&rgb, &b);
+            let (text, conf) = self.rec.run(&crop)?;
+            let alt_text = match &self.alt {
+                Some(a) => Some(a.run(&crop)?.0).filter(|t| !t.trim().is_empty()),
+                None => None,
+            };
+            if text.trim().is_empty() && alt_text.is_none() {
                 continue;
             }
-            lines.push(OcrLine { text, bbox: b, vertical, confidence: conf });
+            lines.push(OcrLine { text, bbox: b.aabb(w as f32, h as f32), vertical: b.vertical(), confidence: conf, alt_text });
         }
         lines.sort_by(|a, b| a.bbox.y.total_cmp(&b.bbox.y).then(a.bbox.x.total_cmp(&b.bbox.x)));
         Ok(OcrPage { width: w as f32, height: h as f32, lines })
@@ -170,9 +184,39 @@ pub fn det_size(w: u32, h: u32) -> (u32, u32, f32, f32) {
     (rw, rh, rw as f32 / wf, rh as f32 / hf)
 }
 
+/// 検出した1行の領域。向きのついた長方形(元画像の座標)。
+/// `len` は読む方向の長さ、`thick` は文字の高さ(縦書きなら幅)。(ux, uy) は読む方向の単位ベクトル。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DetBox {
+    pub cx: f32,
+    pub cy: f32,
+    pub len: f32,
+    pub thick: f32,
+    pub ux: f32,
+    pub uy: f32,
+}
+
+impl DetBox {
+    /// 縦書き: 読む方向が縦に近く、細長い
+    pub fn vertical(&self) -> bool {
+        self.uy.abs() > self.ux.abs() && self.len >= 2.0 * self.thick
+    }
+    /// 回転した長方形を囲む、軸に平行な長方形
+    pub fn aabb(&self, max_w: f32, max_h: f32) -> BBox {
+        let (hl, ht) = (self.len / 2.0, self.thick / 2.0);
+        let ex = hl * self.ux.abs() + ht * self.uy.abs();
+        let ey = hl * self.uy.abs() + ht * self.ux.abs();
+        let (x0, y0) = ((self.cx - ex).max(0.0), (self.cy - ey).max(0.0));
+        let (x1, y1) = ((self.cx + ex).min(max_w), (self.cy + ey).min(max_h));
+        BBox { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+}
+
 /// DB の確率マップから文字領域を作る。しきい値で2値化 → 2x2膨張 → 連結成分 → 平均スコアで選別 →
-/// 周長と面積から外側へ広げる(unclip)。戻り値は確率マップ上の座標。
-pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh: f32, unclip: f32) -> Vec<BBox> {
+/// 主成分で向きを求め、周長と面積から外側へ広げる(unclip)。`sx`, `sy` は元画像から確率マップへの倍率で、
+/// 戻り値は元画像の座標。
+#[allow(clippy::too_many_arguments)]
+pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh: f32, unclip: f32, sx: f32, sy: f32) -> Vec<DetBox> {
     let bin: Vec<bool> = prob.iter().map(|p| *p > thresh).collect();
     let mut dil = vec![false; w * h];
     for y in 0..h {
@@ -190,23 +234,19 @@ pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh
     }
     let mut seen = vec![false; w * h];
     let mut out = Vec::new();
-    for sy in 0..h {
-        for sx in 0..w {
-            let i = sy * w + sx;
+    for sy0 in 0..h {
+        for sx0 in 0..w {
+            let i = sy0 * w + sx0;
             if !dil[i] || seen[i] {
                 continue;
             }
-            let (mut x0, mut y0, mut x1, mut y1) = (sx, sy, sx, sy);
-            let (mut sum, mut n) = (0.0f32, 0usize);
-            let mut q = VecDeque::from([(sx, sy)]);
+            let mut pts: Vec<(f32, f32)> = Vec::new(); // 元画像の座標
+            let mut sum = 0.0f32;
+            let mut q = VecDeque::from([(sx0, sy0)]);
             seen[i] = true;
             while let Some((x, y)) = q.pop_front() {
-                x0 = x0.min(x);
-                x1 = x1.max(x);
-                y0 = y0.min(y);
-                y1 = y1.max(y);
+                pts.push(((x as f32 + 0.5) / sx, (y as f32 + 0.5) / sy));
                 sum += prob[y * w + x];
-                n += 1;
                 for ny in y.saturating_sub(1)..=(y + 1).min(h - 1) {
                     for nx in x.saturating_sub(1)..=(x + 1).min(w - 1) {
                         let j = ny * w + nx;
@@ -217,14 +257,77 @@ pub fn boxes_from_prob(prob: &[f32], w: usize, h: usize, thresh: f32, box_thresh
                     }
                 }
             }
-            let (bw, bh) = ((x1 - x0 + 1) as f32, (y1 - y0 + 1) as f32);
-            if bw.min(bh) < 3.0 || (sum / n as f32) < box_thresh {
+            if pts.len() < 9 || sum / (pts.len() as f32) < box_thresh {
                 continue;
             }
-            let d = bw * bh * unclip / (2.0 * (bw + bh));
-            let (ex0, ey0) = ((x0 as f32 - d).max(0.0), (y0 as f32 - d).max(0.0));
-            let (ex1, ey1) = ((x1 as f32 + 1.0 + d).min(w as f32), (y1 as f32 + 1.0 + d).min(h as f32));
-            out.push(BBox { x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 });
+            // 主成分(共分散行列の最大固有ベクトル)= 読む方向
+            let n = pts.len() as f32;
+            let (mx, my) = (pts.iter().map(|p| p.0).sum::<f32>() / n, pts.iter().map(|p| p.1).sum::<f32>() / n);
+            let (mut sxx, mut syy, mut sxy) = (0.0f32, 0.0f32, 0.0f32);
+            for p in &pts {
+                let (dx, dy) = (p.0 - mx, p.1 - my);
+                sxx += dx * dx;
+                syy += dy * dy;
+                sxy += dx * dy;
+            }
+            let theta = 0.5 * (2.0 * sxy).atan2(sxx - syy);
+            let (mut ux, mut uy) = (theta.cos(), theta.sin());
+            if ux < -1e-6 || (ux.abs() < 1e-6 && uy < 0.0) {
+                ux = -ux;
+                uy = -uy;
+            }
+            let (vx, vy) = (-uy, ux);
+            let (mut u0, mut u1, mut v0, mut v1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+            for p in &pts {
+                let (dx, dy) = (p.0 - mx, p.1 - my);
+                let (a, b) = (dx * ux + dy * uy, dx * vx + dy * vy);
+                u0 = u0.min(a);
+                u1 = u1.max(a);
+                v0 = v0.min(b);
+                v1 = v1.max(b);
+            }
+            let (len, thick) = (u1 - u0, v1 - v0);
+            if len.min(thick) < 3.0 / sx.max(sy) {
+                continue;
+            }
+            let d = len * thick * unclip / (2.0 * (len + thick));
+            let (cu, cv) = ((u0 + u1) / 2.0, (v0 + v1) / 2.0);
+            out.push(DetBox {
+                cx: mx + cu * ux + cv * vx,
+                cy: my + cu * uy + cv * vy,
+                len: len + 2.0 * d,
+                thick: thick + 2.0 * d,
+                ux,
+                uy,
+            });
+        }
+    }
+    out
+}
+
+/// 回転した領域を、読む方向が左から右になるように切り出す(双一次補間)。
+pub fn rotated_crop(img: &RgbImage, b: &DetBox) -> RgbImage {
+    let (ow, oh) = ((b.len.ceil() as u32).max(1), (b.thick.ceil() as u32).max(1));
+    let (vx, vy) = (-b.uy, b.ux);
+    let (w, h) = img.dimensions();
+    let mut out = RgbImage::new(ow, oh);
+    for j in 0..oh {
+        for i in 0..ow {
+            let (du, dv) = (i as f32 + 0.5 - ow as f32 / 2.0, j as f32 + 0.5 - oh as f32 / 2.0);
+            let x = (b.cx + du * b.ux + dv * vx - 0.5).clamp(0.0, (w - 1) as f32);
+            let y = (b.cy + du * b.uy + dv * vy - 0.5).clamp(0.0, (h - 1) as f32);
+            let (x0, y0) = (x.floor() as u32, y.floor() as u32);
+            let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+            let (fx, fy) = (x - x0 as f32, y - y0 as f32);
+            let mut px = [0u8; 3];
+            for (c, slot) in px.iter_mut().enumerate() {
+                let v = img.get_pixel(x0, y0)[c] as f32 * (1.0 - fx) * (1.0 - fy)
+                    + img.get_pixel(x1, y0)[c] as f32 * fx * (1.0 - fy)
+                    + img.get_pixel(x0, y1)[c] as f32 * (1.0 - fx) * fy
+                    + img.get_pixel(x1, y1)[c] as f32 * fx * fy;
+                *slot = v.round() as u8;
+            }
+            out.put_pixel(i, j, image::Rgb(px));
         }
     }
     out
@@ -274,12 +377,49 @@ mod tests {
         }
         // ノイズ(小さい点)は捨てる
         p[2 * w + 2] = 0.9;
-        let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6);
+        let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6, 1.0, 1.0);
         assert_eq!(b.len(), 1);
-        assert!(b[0].x <= 5.0 && b[0].x + b[0].w >= 35.0 && b[0].y <= 8.0 && b[0].y + b[0].h >= 12.0);
+        assert!(b[0].ux > 0.99 && b[0].len >= 30.0 && !b[0].vertical());
+        let bb = b[0].aabb(40.0, 20.0);
+        assert!(bb.x <= 5.0 && bb.x + bb.w >= 35.0 && bb.y <= 8.0 && bb.y + bb.h >= 12.0);
         // 低スコアの領域は捨てる
         let low: Vec<f32> = p.iter().map(|v| if *v > 0.0 { 0.4 } else { 0.0 }).collect();
-        assert!(boxes_from_prob(&low, w, h, 0.3, 0.5, 1.6).is_empty());
+        assert!(boxes_from_prob(&low, w, h, 0.3, 0.5, 1.6, 1.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn 傾いた行は向きを求めて水平に切り出す() {
+        // 約10度傾いた帯
+        let (w, h) = (120, 80);
+        let mut p = vec![0.0f32; w * h];
+        let slope = 10f32.to_radians().tan();
+        for x in 10..110 {
+            let yc = 20.0 + (x as f32 - 10.0) * slope;
+            for dy in -3..=3 {
+                p[((yc as i32 + dy) as usize) * w + x] = 0.9;
+            }
+        }
+        let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6, 1.0, 1.0);
+        assert_eq!(b.len(), 1);
+        let angle = b[0].uy.atan2(b[0].ux).to_degrees();
+        assert!((angle - 10.0).abs() < 2.0, "angle={angle}");
+        let img = RgbImage::from_pixel(w as u32, h as u32, image::Rgb([255, 255, 255]));
+        let crop = rotated_crop(&img, &b[0]);
+        assert!(crop.width() > crop.height() * 3);
+    }
+
+    #[test]
+    fn 縦長の領域は縦書きとして読む方向が下向き() {
+        let (w, h) = (40, 80);
+        let mut p = vec![0.0f32; w * h];
+        for y in 10..70 {
+            for x in 18..23 {
+                p[y * w + x] = 0.9;
+            }
+        }
+        let b = boxes_from_prob(&p, w, h, 0.3, 0.5, 1.6, 1.0, 1.0);
+        assert_eq!(b.len(), 1);
+        assert!(b[0].vertical() && b[0].uy > 0.99);
     }
 
     #[test]
@@ -312,6 +452,7 @@ mod tests {
             det_model: det.into(),
             rec_model: rec.into(),
             dict: None,
+            alt_rec_model: None,
             threads: 4,
         })
         .unwrap();
