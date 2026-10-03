@@ -13,3 +13,8 @@ factory-core = { path = "../core/engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
+sha2 = "0.10"
+lopdf = "0.45"
+pdf-extract = "0.12"
+rusqlite = { version = "0.40", features = ["bundled"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

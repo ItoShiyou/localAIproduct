@@ -24,7 +24,9 @@
 | rusqlite(`bundled` で SQLite を同梱) | 0.40 | MIT | 同上 |
 | SQLite 本体(rusqlite が同梱、3.53.2) | 3.53 | パブリックドメイン | 不要(任意で記載) |
 | unicode-normalization | 0.1 | MIT OR Apache-2.0 | 同上。依存の ICU データは Unicode-3.0(著作権表示と許諾文の同梱が必要) |
-| pdf-extract(PDFのテキスト層。**これから `src-tauri` に入れる**) | 0.12.1 | MIT | 同上(スパイクで 15/15 一致を確認。まだ依存には入れていない) |
+| pdf-extract(PDFのテキスト層。`src-tauri` で使用) | 0.12.1 | MIT | 同上 |
+| lopdf(画像のみPDFの埋め込みJPEG取り出し) | 0.45 | MIT | 同上 |
+| sha2(SHA-256) | 0.10 | MIT OR Apache-2.0 | 同上 |
 
 ### 実行時に読み込む共有ライブラリ
 
@@ -58,6 +60,8 @@
 | Pillow(MIT-CMU)、NumPy(BSD-3-Clause ほか)、OpenCV(Apache-2.0)、ReportLab(BSD) | 各右記 | テストセットの生成と比較のみ |
 
 ## 要確認
+
+- (方針) japan_PP-OCRv3 は出所確認が済むまで製品に同梱しない。**未解決**
 
 - japan_PP-OCRv3 モデルの出所とライセンス(公式の配布元から取り直してハッシュを照合する。届かない場合は、モデルの出所を PaddleOCR の公式配布で確認できるまで製品に入れない)
 - macOS(Apple Silicon)・Windows(x64)用の ONNX Runtime 共有ライブラリの入手経路と同梱方法
