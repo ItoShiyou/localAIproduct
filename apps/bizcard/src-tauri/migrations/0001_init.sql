@@ -7,7 +7,7 @@
 --
 -- 方針:
 --   * people.status = 'draft' の行は、確認画面を通す前の下書き。検索(people_fts)にも出さない。
---   * 全文検索は、確定済み(confirmed)の人だけを people_fts に入れる。更新はトリガーで行う。
+--   * 全文検索は、確定済み(confirmed)の人だけを people_fts に入れる。更新は `Store::reindex`(アプリ側)で行う。
 --   * 画像はファイルとして別に保存し、ここにはパスとSHA-256だけを持つ。
 
 CREATE TABLE people (
