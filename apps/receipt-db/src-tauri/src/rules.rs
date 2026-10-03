@@ -20,12 +20,14 @@ pub struct RuleExtract {
 
 /// 全角の英数字・記号を半角にそろえる(OCRの出力は全角が混ざる)。
 pub fn normalize(text: &str) -> String {
-    text.chars()
+    static GAP: OnceLock<Regex> = OnceLock::new();
+    let mapped: String = text
+        .chars()
         .map(|c| match c {
             '０'..='９' => char::from(b'0' + (c as u32 - '０' as u32) as u8),
             'Ａ'..='Ｚ' => char::from(b'A' + (c as u32 - 'Ａ' as u32) as u8),
             'ａ'..='ｚ' => char::from(b'a' + (c as u32 - 'ａ' as u32) as u8),
-            '￥' => '¥',
+            '￥' | '\\' | '＼' => '¥', // OCRは円記号をバックスラッシュで返すことがある
             '，' => ',',
             '．' => '.',
             '／' => '/',
@@ -34,7 +36,10 @@ pub fn normalize(text: &str) -> String {
             '　' => ' ',
             _ => c,
         })
-        .collect()
+        .collect();
+    // 「1, 080」のようにOCRがカンマの後ろに空白を入れた数字を直す
+    let gap = re(&GAP, r"(\d)[ \t]*,[ \t]+(\d{3})");
+    gap.replace_all(&mapped, "$1,$2").into_owned()
 }
 
 fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
@@ -46,7 +51,7 @@ fn find_date(text: &str) -> Option<String> {
     static ERA: OnceLock<Regex> = OnceLock::new();
 
     let western = re(&WESTERN, r"(20\d{2})\s*[/\-.年]\s*(\d{1,2})\s*[/\-.月]\s*(\d{1,2})");
-    let era = re(&ERA, r"(令和|平成|R|H)\s*(元|\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})");
+    let era = re(&ERA, r"([令合今]和|平成|[RH])\s*(元|\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})");
 
     // 文章中の出現順で、最初に実在する日付を採る
     let mut candidates: Vec<(usize, String)> = Vec::new();
@@ -61,8 +66,8 @@ fn find_date(text: &str) -> Option<String> {
         let pos = c.get(0).map(|m| m.start()).unwrap_or(0);
         let n: i32 = if &c[2] == "元" { 1 } else { c[2].parse().unwrap_or(0) };
         let base = match &c[1] {
-            "令和" | "R" => 2018,
-            _ => 1988, // 平成
+            "平成" | "H" => 1988,
+            _ => 2018, // 令和(OCRが「令」を「合」「今」と読み違える場合を含む)
         };
         let s = format!("{}-{:0>2}-{:0>2}", base + n, &c[3], &c[4]);
         if is_valid_date(&s) {
@@ -82,14 +87,27 @@ fn amounts_in(line: &str) -> Vec<i64> {
 }
 
 /// 合計金額。「小計」は税抜きのことがあるので使わない。キーワードは上から優先する。
+/// キーワードは、OCRの読み違い(「込」→「达」、「額」→「额」)を許す形で書く。
 fn find_total(text: &str) -> Option<i64> {
-    const KEYWORDS: [&str; 8] = [
-        "税込合計", "ご請求金額", "請求金額", "領収金額", "お買上", "ご利用金額", "総額", "合計",
-    ];
+    static KEYWORDS: OnceLock<Vec<Regex>> = OnceLock::new();
+    let kws = KEYWORDS.get_or_init(|| {
+        [
+            r"税[込达迄]合計",
+            r"ご?請求金",
+            r"領収金",
+            r"お買上",
+            r"ご利用金額",
+            r"総額",
+            r"合計",
+        ]
+        .iter()
+        .map(|p| Regex::new(p).expect("正規表現"))
+        .collect()
+    });
     let lines: Vec<&str> = text.lines().collect();
-    for kw in KEYWORDS {
+    for kw in kws {
         for (i, line) in lines.iter().enumerate() {
-            if !line.contains(kw) {
+            if !kw.is_match(line) {
                 continue;
             }
             // 同じ行に金額がなければ、次の行を見る(表形式のOCRで起きる)
@@ -106,7 +124,18 @@ fn find_total(text: &str) -> Option<i64> {
             }
         }
     }
-    None
+    find_total_fallback(&lines)
+}
+
+/// キーワードが読めなかったときの代わり: 円記号つきの金額のうち最大のもの。
+/// 当たる確率は下がるので、画面では信頼度を低く表示する前提(確定は人が行う)。
+fn find_total_fallback(lines: &[&str]) -> Option<i64> {
+    lines
+        .iter()
+        .filter(|l| l.contains('¥') || l.contains('円'))
+        .flat_map(|l| amounts_in(l))
+        .filter(|n| *n > 0)
+        .max()
 }
 
 /// 税率。10%と8%が両方あるときは(混在なので)決めない。
@@ -124,8 +153,14 @@ fn find_tax_rate(text: &str) -> Option<u8> {
 
 fn find_invoice_no(text: &str) -> Option<String> {
     static INV: OnceLock<Regex> = OnceLock::new();
+    static INV_NO_T: OnceLock<Regex> = OnceLock::new();
     let r = re(&INV, r"T[- ]?(\d{13})");
-    r.captures(text).map(|c| format!("T{}", &c[1]))
+    if let Some(c) = r.captures(text) {
+        return Some(format!("T{}", &c[1]));
+    }
+    // OCRが先頭の「T」を落とすことがある。「登録番号」の直後の13桁だけは補う
+    let r2 = re(&INV_NO_T, r"登[録錄录]番号[:： ]*(\d{13})");
+    r2.captures(text).map(|c| format!("T{}", &c[1]))
 }
 
 pub fn extract_by_rules(text: &str) -> RuleExtract {
@@ -198,5 +233,30 @@ mod tests {
     fn 見つからない項目はnoneのまま() {
         let r = extract_by_rules("何も書かれていない");
         assert_eq!(r, RuleExtract::default());
+    }
+
+    #[test]
+    fn ocrの癖_円記号がバックスラッシュ_カンマの後ろの空白() {
+        let r = extract_by_rules("合計 \\3, 940");
+        assert_eq!(r.total, Some(3940));
+    }
+
+    #[test]
+    fn ocrが令を合や今と読み違えても和暦を読む() {
+        assert_eq!(extract_by_rules("合和8年7月26日 10:26").date.as_deref(), Some("2026-07-26"));
+        assert_eq!(extract_by_rules("今和6年11月2日").date.as_deref(), Some("2024-11-02"));
+    }
+
+    #[test]
+    fn 登録番号のtが落ちていても直後の13桁は補う() {
+        assert_eq!(extract_by_rules("登録番号 2748196840076").invoice_no.as_deref(), Some("T2748196840076"));
+        // 「登録番号」の近くでない13桁は採らない
+        assert_eq!(extract_by_rules("管理 2748196840076").invoice_no, None);
+    }
+
+    #[test]
+    fn 合計の語が読めなくても円記号つきの最大額を拾う() {
+        assert_eq!(extract_by_rules("請求金额 ￥4,189\n電池 ￥698").total, Some(4189));
+        assert_eq!(extract_by_rules("品名 ￥698\n計 ￥1,298").total, Some(1298));
     }
 }

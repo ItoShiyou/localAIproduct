@@ -4,3 +4,4 @@
 pub mod journal;
 pub mod receipt;
 pub mod rules;
+pub mod vendor;

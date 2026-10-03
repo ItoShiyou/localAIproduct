@@ -5,11 +5,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 try: import shim  # torchaudio新版でdeepfilternetを読むための互換
 except ImportError: pass
 import numpy as np, soundfile as sf, scipy.signal as ss, torch
-TS, DFN, TH, OUT = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+TS, DFN, TH, OUT, ONLY = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]  # ONLY: rnnoise か dfn3(別プロセスで測る)
 torch.set_num_threads(TH); os.makedirs(OUT, exist_ok=True)
 
+def align(est, ref, maxlag=3000):  # 処理遅延(フレーム遅れ)を相互相関で補正
+    n = min(len(est), len(ref), 16000 * 30); c = ss.correlate(est[:n], ref[:n], mode="full", method="fft")
+    mid = n - 1; k = int(np.argmax(c[mid - maxlag: mid + maxlag + 1])) - maxlag  # k>0: estがk遅れ
+    return (est[k:], ref) if k >= 0 else (est, ref[-k:])
+
 def sisdr(est, ref):
-    n = min(len(est), len(ref)); est, ref = est[:n].astype(np.float64), ref[:n].astype(np.float64)
+    est, ref = align(est, ref); n = min(len(est), len(ref)); est, ref = est[:n].astype(np.float64), ref[:n].astype(np.float64)
     est -= est.mean(); ref -= ref.mean()
     a = np.dot(est, ref) / np.dot(ref, ref); t = a * ref; e = est - t
     return 10 * np.log10(np.dot(t, t) / np.dot(e, e))
@@ -38,12 +43,11 @@ for name in sorted(f for f in os.listdir(TS) if f.endswith(".wav") and not f.end
     ref = None
     if os.path.exists(os.path.join(TS, "t01_clean_ref.wav")) and name in ("t02_aircon.wav", "t03_keyboard.wav"):
         ref, _ = sf.read(os.path.join(TS, "t01_clean_ref.wav"), dtype="float32")
-    for tag, fn in (("rnnoise", rnnoise), ("dfn3", dfn3)):
-        if name == "t06_long10min.wav" or True:
-            t0 = time.perf_counter(); y = fn(x); dt = time.perf_counter() - t0
+    for tag, fn in ((ONLY, {"rnnoise": rnnoise, "dfn3": dfn3}[ONLY]),):
+        t0 = time.perf_counter(); c0 = time.process_time(); y = fn(x); dt = time.perf_counter() - t0; cpu = time.process_time() - c0
         sf.write(os.path.join(OUT, f"{name[:-4]}.{tag}.wav"), y, 16000, subtype="PCM_16")
-        r = dict(file=name, model=tag, dur_s=round(len(x) / 16000, 1), proc_s=round(dt, 1), rtf=round(dt / (len(x) / 16000), 3))
+        r = dict(file=name, model=tag, dur_s=round(len(x) / 16000, 1), proc_s=round(dt, 1), rtf=round(dt / (len(x) / 16000), 3), cpu_s=round(cpu, 1))
         if ref is not None: r["sisdr_in"] = round(sisdr(x, ref), 1); r["sisdr_out"] = round(sisdr(y, ref), 1)
-        r["peak_rss_mb_cum"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
+        r["peak_rss_mb"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
         res.append(r); print(json.dumps(r, ensure_ascii=False), flush=True)
-json.dump(res, open(os.path.join(OUT, "denoise_results.json"), "w"), indent=1)
+json.dump(res, open(os.path.join(OUT, f"denoise_results_{ONLY}.json"), "w"), indent=1)
