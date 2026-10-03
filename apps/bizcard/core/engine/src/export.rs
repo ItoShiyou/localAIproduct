@@ -27,23 +27,46 @@ pub fn sanitize_cell(s: &str) -> String {
     }
 }
 
-pub fn journal_to_csv(rows: &[JournalCandidate], enc: CsvEncoding) -> Result<Vec<u8>, CoreError> {
+/// CSVの1セル。文字列は書き出し時に無害化する。整数(金額など)はそのまま書く(負の数を壊さない)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Cell {
+    Text(String),
+    Int(i64),
+}
+
+impl From<&str> for Cell {
+    fn from(s: &str) -> Self {
+        Cell::Text(s.to_string())
+    }
+}
+impl From<String> for Cell {
+    fn from(s: String) -> Self {
+        Cell::Text(s)
+    }
+}
+impl From<i64> for Cell {
+    fn from(n: i64) -> Self {
+        Cell::Int(n)
+    }
+}
+
+/// 汎用のCSV書き出し。行ごとの列数は `header` と同じでなくてもよい(csv クレートの `flexible`)が、
+/// 通常は同じにする。文字列セルは `sanitize_cell` で無害化し、改行は CRLF。
+pub fn write_csv(header: &[&str], rows: &[Vec<Cell>], enc: CsvEncoding) -> Result<Vec<u8>, CoreError> {
     let mut w = csv::WriterBuilder::new()
         .terminator(csv::Terminator::CRLF)
+        .flexible(true)
         .from_writer(Vec::new());
-    w.write_record(HEADER).map_err(|e| CoreError::Csv(e.to_string()))?;
+    w.write_record(header).map_err(|e| CoreError::Csv(e.to_string()))?;
     for r in rows {
-        let amount = r.amount.to_string();
-        let flag = if r.needs_review { "要確認" } else { "" };
-        w.write_record([
-            sanitize_cell(&r.date).as_str(),
-            sanitize_cell(&r.debit_account).as_str(),
-            sanitize_cell(&r.credit_account).as_str(),
-            amount.as_str(),
-            sanitize_cell(&r.memo).as_str(),
-            flag,
-        ])
-        .map_err(|e| CoreError::Csv(e.to_string()))?;
+        let rec: Vec<String> = r
+            .iter()
+            .map(|c| match c {
+                Cell::Text(t) => sanitize_cell(t),
+                Cell::Int(n) => n.to_string(),
+            })
+            .collect();
+        w.write_record(&rec).map_err(|e| CoreError::Csv(e.to_string()))?;
     }
     let bytes = w.into_inner().map_err(|e| CoreError::Csv(e.to_string()))?;
     let text = String::from_utf8(bytes).map_err(|e| CoreError::Csv(e.to_string()))?;
@@ -64,6 +87,24 @@ pub fn journal_to_csv(rows: &[JournalCandidate], enc: CsvEncoding) -> Result<Vec
             Ok(bytes.into_owned())
         }
     }
+}
+
+/// 仕訳候補のCSV(互換のために残す。中身は `write_csv`)。
+pub fn journal_to_csv(rows: &[JournalCandidate], enc: CsvEncoding) -> Result<Vec<u8>, CoreError> {
+    let body: Vec<Vec<Cell>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                r.date.as_str().into(),
+                r.debit_account.as_str().into(),
+                r.credit_account.as_str().into(),
+                Cell::Int(r.amount),
+                r.memo.as_str().into(),
+                (if r.needs_review { "要確認" } else { "" }).into(),
+            ]
+        })
+        .collect();
+    write_csv(&HEADER, &body, enc)
 }
 
 #[cfg(test)]
@@ -135,5 +176,28 @@ mod tests {
         let out = journal_to_csv(&[r], CsvEncoding::Utf8Bom).unwrap();
         let text = String::from_utf8(out[3..].to_vec()).unwrap();
         assert!(text.contains(",x,要確認\r\n"));
+    }
+
+    #[test]
+    fn 汎用のwrite_csvは文字列を無害化し_整数はそのまま書く() {
+        let rows = vec![vec![Cell::from("=1+1"), Cell::Int(-500), Cell::from("a,b")]];
+        let out = write_csv(&["名前", "金額", "備考"], &rows, CsvEncoding::Utf8Bom).unwrap();
+        let text = String::from_utf8(out[3..].to_vec()).unwrap();
+        assert_eq!(text, "名前,金額,備考\r\n'=1+1,-500,\"a,b\"\r\n");
+    }
+
+    #[test]
+    fn 汎用のwrite_csvのshift_jis() {
+        let out = write_csv(&["a"], &[vec!["コピー".into()]], CsvEncoding::ShiftJis).unwrap();
+        assert!(encoding_rs::SHIFT_JIS.decode(&out).0.contains("コピー"));
+        assert!(matches!(write_csv(&["a"], &[vec!["😀".into()]], CsvEncoding::ShiftJis), Err(CoreError::Encoding(_))));
+    }
+
+    #[test]
+    fn 先頭が記号のセルは全部無害化される() {
+        for c in ["=a", "+a", "-a", "@a"] {
+            let out = write_csv(&["h"], &[vec![c.into()]], CsvEncoding::Utf8Bom).unwrap();
+            assert!(String::from_utf8(out[3..].to_vec()).unwrap().contains(&format!("'{c}")));
+        }
     }
 }

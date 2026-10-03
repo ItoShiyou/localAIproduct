@@ -14,4 +14,14 @@ encoding_rs = "0.8"
 base64 = "0.22"
 regex = "1"
 ureq = { version = "2", features = ["json"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray", "std"], optional = true }
+ndarray = { version = "0.17", optional = true }
+
+rusqlite = { version = "0.40", features = ["bundled"] }
+unicode-normalization = "0.1"
+
+[features]
+# ONNX Runtime 上の PP-OCR。実行時に onnxruntime の共有ライブラリを読み込む(load-dynamic)。
+onnx = ["dep:ort", "dep:ndarray"]
 
