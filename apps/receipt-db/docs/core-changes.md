@@ -15,10 +15,14 @@
 | `error` | `CoreError::Ocr`、`CoreError::Db` を追加 | 新しい部品のため |
 | `Cargo.toml` | `image`、`rusqlite`(bundled)、`unicode-normalization`、`ort`・`ndarray`(feature `onnx`、任意)を追加 | 同上。ライセンスは `docs/licenses.md` |
 
-テスト: `core/engine` は 42 件 → 60 件(feature なし)、66 件(`--features onnx`)。既存の 42 件は変更していない(`journal_to_csv` の既存テストはそのまま通る)。
+| `jobs`(新規) | `JOBS_SCHEMA`(アプリのマイグレーションに追加するSQL)、`Jobs`(enqueue / run_pending / recover / retry_failed / cancel_pending / summary)、`CancelToken` | 状態をDBに保存して中断・再開。1件の失敗(panic含む)で止めない。スレッドは作らず、呼び出し側が実行する |
+| `settings`(新規) | `AppData`(データフォルダ、目印ファイル、`settings.json` の読み書き、`network_list`、`update_check_allowed`、`delete_all`)、`NetworkEntry` | 通信一覧の表示、更新確認の停止、全データ削除。目印が無いフォルダは消さない |
+| `logging`(新規) | `Logger`(固定文字列と数値だけ書ける、サイズ上限で1世代退避) | 個人データをログに書けない作りにした |
+
+テスト: `core/engine` は 42 件 → 69 件(feature なし)、75 件(`--features onnx`)。既存の 42 件は変更していない(`journal_to_csv` の既存テストはそのまま通る)。
 
 ## まだやっていないこと(次の段階)
 
-- `jobs`、`model_manager`、`settings`、`logging`、`ui`(TypeScript)は未実装(🔲 のまま)。
+- `model_manager`、`ui`(TypeScript)は未実装(🔲 のまま)。
 - `receipt.rs`・`rules.rs`・`journal.rs` は `src-tauri/` に**コピー**してある。`core/engine/src/lib.rs` から外す変更は、`llm.rs` が `receipt` に依存しているため、`llm` の整理と一緒に行う(別のコア変更として、実施前に記録する)。
 - `license` は実接続を作らない(販売プラットフォームのアカウントが必要なため)。既存のトレイトとロジックはそのまま。
