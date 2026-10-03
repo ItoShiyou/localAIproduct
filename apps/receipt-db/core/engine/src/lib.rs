@@ -9,6 +9,7 @@ pub mod export;
 pub mod journal;
 pub mod license;
 pub mod llm;
+pub mod ocr;
 pub mod receipt;
 pub mod rules;
 

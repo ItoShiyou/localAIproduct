@@ -19,6 +19,8 @@ if engine == "rapidocr":
 
 def ocr_image(img: Image.Image) -> str:
     if engine == "tesseract":
+        if os.environ.get("UPSCALE"):
+            k = float(os.environ["UPSCALE"]); img = img.resize((int(img.width * k), int(img.height * k)), Image.LANCZOS)
         buf = io.BytesIO(); img.save(buf, "PNG")
         env = dict(os.environ, OMP_THREAD_LIMIT=str(THREADS))
         r = subprocess.run(["tesseract", "stdin", "stdout", "-l", "jpn", "--psm", os.environ.get("PSM", "6")] + (["--tessdata-dir", os.environ["TESSDATA"]] if os.environ.get("TESSDATA") else []),

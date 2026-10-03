@@ -14,6 +14,9 @@ pub enum CoreError {
     /// 文字コードの変換ができない
     #[error("文字コードを変換できません: {0}")]
     Encoding(String),
+    /// OCRの実行に失敗(画像が読めない、エンジンが見つからない、モデルが読めない)
+    #[error("文字認識に失敗しました: {0}")]
+    Ocr(String),
     /// CSVの組み立てに失敗
     #[error("CSVを作成できません: {0}")]
     Csv(String),
