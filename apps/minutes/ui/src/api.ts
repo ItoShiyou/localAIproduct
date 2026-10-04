@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, Progress, SearchHit, Segment, SettingsInfo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, ModelInfo, Progress, SearchHit, Segment, SettingsInfo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -39,6 +39,11 @@ export interface Api {
   settings(): Promise<SettingsInfo>;
   setFlag(key: Flag, on: boolean): Promise<SettingsInfo>;
   deleteAll(): Promise<number>;
+  modelStatus(): Promise<ModelInfo>;
+  /** モデルを取得する(利用者が押したときだけ)。終わるまで返らない */
+  downloadModel(): Promise<ModelInfo>;
+  cancelModelDownload(): Promise<void>;
+  deleteModel(): Promise<ModelInfo>;
 }
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -93,6 +98,10 @@ export function makeTauriApi(t: TauriGlobal): Api {
     settings: () => invoke("settings"),
     setFlag: (key, on) => invoke("set_flag", { key, on }),
     deleteAll: () => invoke("delete_all"),
+    modelStatus: () => invoke("model_status"),
+    downloadModel: () => invoke("download_model"),
+    cancelModelDownload: () => invoke("cancel_model_download"),
+    deleteModel: () => invoke("delete_model"),
   };
 }
 
@@ -117,6 +126,7 @@ export function makeMockApi(): Api {
       { purpose: "モデルの取得(操作したときのみ)", destination: "モデルの配布元", content: "モデル名", stoppable: false, enabled: true },
     ],
   };
+  let model: ModelInfo = { name: "Whisper large-v3-turbo(q5_0)", installed: true, downloaded: 574041195, size: 574041195, downloading: false, source: "managed", error: null };
   let current: Progress = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
   const wait = (ms = 200) => new Promise<void>((r) => setTimeout(r, ms));
   const gl = (t: string) => glossary.reduce((s, g) => s.split(g.wrong).join(g.right), t);
@@ -220,6 +230,15 @@ export function makeMockApi(): Api {
       return settings;
     },
     async deleteAll() { const n = meetings.length; meetings = []; segs.clear(); glossary = []; return n; },
+    async modelStatus() { return model; },
+    async downloadModel() {
+      model = { ...model, downloading: true, downloaded: 0, installed: false };
+      for (let i = 1; i <= 5; i++) { await wait(150); model = { ...model, downloaded: (model.size * i) / 5 }; }
+      model = { ...model, downloading: false, installed: true, source: "managed" };
+      return model;
+    },
+    async cancelModelDownload() {},
+    async deleteModel() { model = { ...model, installed: false, downloaded: 0, source: "none" }; return model; },
   };
 }
 

@@ -35,7 +35,7 @@
 | `llm` | ✅ trait と再試行 / 🔲 組み込みの推論エンジン | `TextModel` トレイト、JSON出力の検証と再試行。`OllamaModel` は**試作用**(製品には Ollama を同梱しない)。製品では llama.cpp 系をアプリに組み込み、同じトレイトの向こう側に置く。**初版の3アプリは生成モデルを必須にしない** |
 | `ocr` | ✅ ロジック(Linux で `cargo test`)/ 🔲 Mac・Windows での確認 | `Ocr` トレイト(画像→行ごとのテキスト・位置・縦書きフラグ・信頼度)。実装: ONNX Runtime 上の PP-OCR(`ocr::ppocr`、feature `onnx`、採用案)、Tesseract(`ocr::tesseract`、予備)、テスト用の `FakeOcr`。選定の根拠は `apps/receipt-db/docs/spike-results.md` |
 | `asr` | 🔲 | `Asr` トレイト(音声→時刻つきの文章)。議事録アプリで最初に作る。必要なら他アプリと共有 |
-| `model_manager` | 🔲 | モデルの取得・切替・削除・容量表示。ダウンロードの再開、ハッシュ検証、取得は利用者の明示操作のときだけ。小さいモデルはインストーラーに同梱、大きいものは任意取得 |
+| `model_manager` | ✅ ロジック(Mac で `cargo test`。ローカルの HTTP サーバーで再開・Range 非対応・ハッシュ不一致・中断を確認) | `ModelSpec`(名前・URL・SHA-256・大きさ)と `ModelManager`(状態・取得・削除)。ダウンロードの再開(`.part` と Range)、ハッシュ検証(照合済みの印)、空き容量不足の表示。取得は利用者の明示操作のときだけ呼ぶ。小さいモデルはインストーラーに同梱、大きいものは任意取得 |
 | `db` | ✅ ロジック(Linux で `cargo test`) | SQLite を開く・マイグレーション(`user_version`)・全文検索。FTS5 `trigram` は3文字未満の語が当たらないため、その語だけ LIKE に切り替える。検索語と保存文字列は NFKC でそろえる |
 | `jobs` | ✅ ロジック(Linux で `cargo test`) | 長い処理のバックグラウンド実行。進捗、中断、再開(状態はDBに保存)。1件の失敗で全体を止めない |
 | `settings` | ✅ ロジック(Linux で `cargo test`) | 通信の許可、更新確認の停止、データの全削除、「通信一覧」の画面表示 |

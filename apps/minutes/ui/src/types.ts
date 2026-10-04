@@ -46,3 +46,8 @@ export const hms = (ms: number) => {
 };
 
 export const STATE_LABEL: Record<Meeting["state"], string> = { queued: "待ち", processing: "処理中", done: "文字起こし済み", failed: "失敗" };
+
+export interface ModelInfo {
+  name: string; installed: boolean; downloaded: number; size: number;
+  downloading: boolean; source: "managed" | "env" | "none"; error: string | null;
+}

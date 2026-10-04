@@ -20,6 +20,7 @@ export function App({ api }: { api: Api }) {
   const [results, setResults] = useState<ImportResult[]>([]);
   const [askConsent, setAskConsent] = useState<null | (() => void)>(null);
   const [version, setVersion] = useState(0);
+  const [jobError, setJobError] = useState<string | null>(null);
   const running = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -35,7 +36,8 @@ export function App({ api }: { api: Api }) {
     running.current = true;
     const timer = setInterval(() => { refresh().catch(() => undefined); }, 800);
     try {
-      await api.runJobs();
+      setJobError(null);
+      await api.runJobs().catch((e) => setJobError(String(e)));
       // 画面を開き直したときなど、すでに裏で処理中なら(runJobs はすぐ戻る)、終わるまで進み具合を見続ける
       while ((await api.progress()).busy) await new Promise((r) => setTimeout(r, 1000));
     } finally {
@@ -132,6 +134,12 @@ export function App({ api }: { api: Api }) {
                   </div>
                 </div>
               )}
+              {jobError && (
+                <div className="pad" data-testid="job-error">
+                  <p className="msg err">{jobError}</p>
+                  {/モデル/.test(jobError) && <button className="btn small" onClick={() => setTab("settings")}>設定を開く</button>}
+                </div>
+              )}
               {results.some((r) => r.error) && (
                 <ul className="errors pad">{results.filter((r) => r.error).map((r, i) => <li key={i}>{r.name}: {r.error}</li>)}</ul>
               )}
@@ -158,7 +166,7 @@ export function App({ api }: { api: Api }) {
         )}
         {tab === "search" && <SearchView api={api} onOpen={openAt} />}
         {tab === "glossary" && <GlossaryView api={api} />}
-        {tab === "settings" && <SettingsView api={api} settings={settings} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} />}
+        {tab === "settings" && <SettingsView api={api} settings={settings} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}
       </main>
     </div>
   );

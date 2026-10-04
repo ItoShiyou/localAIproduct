@@ -9,20 +9,25 @@ pub mod store;
 #[cfg(feature = "tauri")]
 pub mod tauri_glue;
 
-/// 文字起こしエンジンを選ぶ。`MINUTES_WHISPER_MODEL`(whisper.cpp の ggml 形式のモデル)があれば whisper、
-/// 無ければ `MissingAsr`(画面は動くが、文字起こしは「モデルが未設定」で失敗する)。`MINUTES_THREADS` でスレッド数(既定 6)。
-pub fn build_asr() -> Box<dyn asr::Asr> {
-    #[cfg(feature = "whisper")]
-    {
-        if let Ok(model) = std::env::var("MINUTES_WHISPER_MODEL") {
+/// モデルの場所から文字起こしエンジンを作る(whisper.cpp)。`MINUTES_THREADS` でスレッド数(既定 6)。
+pub fn whisper_loader() -> commands::AsrLoader {
+    Box::new(|path: &std::path::Path| -> Result<Box<dyn asr::Asr>, String> {
+        #[cfg(feature = "whisper")]
+        {
             let threads = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
-            match asr::WhisperAsr::new(std::path::Path::new(&model), threads) {
-                Ok(a) => return Box::new(a),
-                Err(e) => return Box::new(asr::MissingAsr { reason: e }),
-            }
+            Ok(Box::new(asr::WhisperAsr::new(path, threads)?))
         }
-    }
-    Box::new(asr::MissingAsr { reason: "文字起こしのモデルが設定されていません".into() })
+        #[cfg(not(feature = "whisper"))]
+        {
+            let _ = path;
+            Err("このビルドには文字起こしのエンジンが含まれていません".into())
+        }
+    })
+}
+
+/// 開発用: 環境変数 `MINUTES_WHISPER_MODEL` でモデルの場所を指定できる(指定が無ければ、設定画面から取得したもの)。
+pub fn env_model() -> Option<std::path::PathBuf> {
+    std::env::var("MINUTES_WHISPER_MODEL").ok().map(std::path::PathBuf::from)
 }
 
 #[cfg(feature = "tauri")]
@@ -33,7 +38,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.manage(commands::AppState::new(data_dir, build_asr())?);
+            app.manage(commands::AppState::new(data_dir, None, whisper_loader(), env_model())?);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -66,6 +71,10 @@ pub fn run() {
             tauri_glue::settings,
             tauri_glue::set_flag,
             tauri_glue::delete_all,
+            tauri_glue::model_status,
+            tauri_glue::download_model,
+            tauri_glue::cancel_model_download,
+            tauri_glue::delete_model,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");

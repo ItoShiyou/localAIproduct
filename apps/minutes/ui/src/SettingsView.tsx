@@ -1,9 +1,60 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { Flag, SettingsInfo } from "./types";
+import type { Flag, ModelInfo, SettingsInfo } from "./types";
 
-export function SettingsView({ api, settings: s, onSettings, onDeleted }: {
-  api: Api; settings: SettingsInfo | null; onSettings: (s: SettingsInfo) => void; onDeleted: () => void;
+const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
+
+/** 文字起こしのモデルの取得・削除(取得は利用者が押したときだけ通信する) */
+function ModelSection({ api, onChanged }: { api: Api; onChanged: () => void }) {
+  const [m, setM] = useState<ModelInfo | null>(null);
+  const [delAsk, setDelAsk] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { api.modelStatus().then(setM).catch((e) => setMsg(String(e))); }, [api]);
+  useEffect(() => {
+    if (!m?.downloading) return;
+    const t = setInterval(() => api.modelStatus().then(setM).catch(() => undefined), 500);
+    return () => clearInterval(t);
+  }, [api, m?.downloading]);
+  if (!m) return null;
+  const start = async () => {
+    setMsg(null);
+    setM({ ...m, downloading: true, error: null });
+    try { const r = await api.downloadModel(); setM(r); if (r.installed) { setMsg("取得しました。待ちの文字起こしがあれば始まります"); onChanged(); } }
+    catch (e) { setMsg(String(e)); setM(await api.modelStatus()); }
+  };
+  return (
+    <section className="card" data-testid="model">
+      <h2>文字起こしのモデル</h2>
+      <p className="note">{m.name}・{mb(m.size)}。文字起こしはこのモデルを使って、このパソコンの中で行います。</p>
+      {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
+      {m.installed && m.source !== "env" && <p className="msg">取得済み</p>}
+      {!m.installed && !m.downloading && (
+        <>
+          <p className="note">まだ取得していません。取得には約 {mb(m.size)} の通信と空き容量が要ります。送るのはモデルの名前(取得先のアドレス)だけで、録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
+          <button className="btn primary" onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
+        </>
+      )}
+      {m.downloading && (
+        <div className="progress">
+          <div className="bar"><span style={{ width: `${(m.downloaded / m.size) * 100}%` }} /></div>
+          <p className="note">取得中 {mb(m.downloaded)} / {mb(m.size)}</p>
+          <button className="btn small" onClick={() => api.cancelModelDownload()}>中断</button>
+        </div>
+      )}
+      {m.error && <p className="msg err">{m.error}</p>}
+      {msg && <p className="msg">{msg}</p>}
+      {m.installed && m.source === "managed" && (!delAsk
+        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>モデルを削除…</button>
+        : <span className="ask">削除すると、文字起こしには再取得が必要です。
+            <button className="btn small danger" onClick={async () => { try { setM(await api.deleteModel()); } catch (e) { setMsg(String(e)); } setDelAsk(false); }}>削除する</button>
+            <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
+          </span>)}
+    </section>
+  );
+}
+
+export function SettingsView({ api, settings: s, onSettings, onDeleted, onModelReady }: {
+  api: Api; settings: SettingsInfo | null; onSettings: (s: SettingsInfo) => void; onDeleted: () => void; onModelReady: () => void;
 }) {
   const [ask, setAsk] = useState(false);
   const [typed, setTyped] = useState("");
@@ -13,13 +64,13 @@ export function SettingsView({ api, settings: s, onSettings, onDeleted }: {
 
   return (
     <div className="pane">
+      <ModelSection api={api} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       <section className="card">
         <h2>処理の設定</h2>
         <label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>
         <p className="note">ノイズ除去で文字起こしの精度が下がる録音もあります。結果が良くないときは、オフにして取り込み直してください。</p>
         <label className="check"><input type="checkbox" checked={s.keepAudio} onChange={(e) => set("keep_audio", e.target.checked)} /> 文字起こしの後も音声のコピーを残す(確認画面で再生するために必要)</label>
         <p className="note">オフにすると、文字起こしが終わった時点で音声のコピーを消し、文字だけを残します。</p>
-        <p className="note">文字起こしのモデル: {s.model === "none" ? "未設定(文字起こしはできません)" : s.model}</p>
       </section>
 
       <section className="card">
@@ -50,7 +101,7 @@ export function SettingsView({ api, settings: s, onSettings, onDeleted }: {
 
       <section className="card danger-zone">
         <h2>全データを削除</h2>
-        <p className="note">音声のコピー・議事録・用語辞書・設定をすべて消します。元に戻せません。取り込み元の録音ファイルは消えません。</p>
+        <p className="note">音声のコピー・議事録・用語辞書・設定と、取得した文字起こしのモデルをすべて消します。元に戻せません。取り込み元の録音ファイルは消えません。</p>
         {!ask ? <button className="btn danger" onClick={() => setAsk(true)}>全データを削除…</button> : (
           <div className="row">
             <input placeholder="「削除」と入力" value={typed} onChange={(e) => setTyped(e.target.value)} />

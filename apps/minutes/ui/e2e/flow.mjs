@@ -88,6 +88,13 @@ await page.getByLabel("タイトル").waitFor();
 // 5) 設定
 await page.getByRole("tab", { name: "設定" }).click();
 await page.getByText("通信一覧").waitFor();
+// モデル: 削除 → 取得(モックでは通信しない)
+const model = page.getByTestId("model");
+await model.getByText("取得済み").waitFor();
+await model.getByRole("button", { name: "モデルを削除…" }).click();
+await model.getByRole("button", { name: "削除する" }).click();
+await model.getByRole("button", { name: "取得する" }).click();
+await model.getByText("取得しました").waitFor();
 await page.getByLabel(/音声のコピーを残す/).uncheck();
 await page.getByRole("button", { name: "全データを削除…" }).click();
 assert.equal(await page.getByRole("button", { name: "削除する" }).isDisabled(), true);

@@ -184,3 +184,24 @@ pub fn set_flag(state: State<'_, AppState>, key: String, on: bool) -> Result<Set
 pub async fn delete_all(state: State<'_, AppState>) -> Result<usize, String> {
     state.delete_all()
 }
+
+#[tauri::command]
+pub async fn model_status(state: State<'_, AppState>) -> Result<ModelDto, String> {
+    Ok(state.model_status())
+}
+
+/// モデルを取得する(利用者が設定画面で押したときだけ)。終わるまで返らない。進み具合は model_status で見る。
+#[tauri::command]
+pub async fn download_model(state: State<'_, AppState>) -> Result<ModelDto, String> {
+    state.download_model()
+}
+
+#[tauri::command]
+pub fn cancel_model_download(state: State<'_, AppState>) {
+    state.cancel_model_download()
+}
+
+#[tauri::command]
+pub async fn delete_model(state: State<'_, AppState>) -> Result<ModelDto, String> {
+    state.delete_model()
+}

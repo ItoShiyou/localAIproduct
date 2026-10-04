@@ -9,6 +9,7 @@ use crate::export::{render, Format};
 use crate::pipeline::{self, Options, JOB_KIND};
 use crate::store::{GlossaryEntry, Meeting, SearchHit, Segment, Store};
 use factory_core::jobs::Jobs;
+use factory_core::model_manager::{ModelManager, ModelSpec, ModelStatus};
 use factory_core::settings::{AppData, NetworkEntry, Settings};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,30 @@ pub const UPDATE_PURPOSE: &str = "更新の確認";
 /// 取り込める拡張子(動画は音声だけを使う)
 pub const AUDIO_EXTS: [&str; 9] = ["m4a", "mp3", "wav", "mp4", "aac", "flac", "ogg", "mov", "m4v"];
 const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// 文字起こしのモデル(whisper.cpp 形式、Whisper large-v3-turbo の q5_0 量子化、MIT)。
+/// 取得元は whisper.cpp の公式の配布(Hugging Face `ggerganov/whisper.cpp`)。ハッシュは 2026-10-04 に取得して確認した値。
+pub const WHISPER_MODEL: ModelSpec = ModelSpec {
+    name: "Whisper large-v3-turbo(q5_0)",
+    file_name: "ggml-large-v3-turbo-q5_0.bin",
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+    sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+    size: 574_041_195,
+};
+
+/// モデルの場所から文字起こしエンジンを作る関数(本番は whisper、テストは差し替え)
+pub type AsrLoader = Box<dyn Fn(&Path) -> Result<Box<dyn Asr>, String> + Send + Sync>;
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDto {
+    #[serde(flatten)]
+    pub status: ModelStatus,
+    pub downloading: bool,
+    /// "managed"(アプリが取得したもの)| "env"(開発用に環境変数で指定)| "none"
+    pub source: &'static str,
+    pub error: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -66,7 +91,14 @@ pub fn network_entries() -> Vec<NetworkEntry> {
 
 pub struct AppState {
     pub store: Mutex<Store>,
-    pub asr: Box<dyn Asr>,
+    /// 文字起こしエンジン(初めて使うときに読み込む。モデルが無ければ None のまま)
+    asr: Mutex<Option<Arc<dyn Asr>>>,
+    loader: AsrLoader,
+    /// 開発用: 環境変数 MINUTES_WHISPER_MODEL で指定されたモデル
+    env_model: Option<PathBuf>,
+    pub models: ModelManager,
+    model_cancel: AtomicBool,
+    model_dl: Mutex<(bool, u64, Option<String>)>,
     pub app: AppData,
     pub cancel: Arc<AtomicBool>,
     pub busy: AtomicBool,
@@ -82,13 +114,27 @@ fn flag(s: &Settings, key: &str, default: bool) -> bool {
 }
 
 impl AppState {
-    pub fn new(data_dir: PathBuf, asr: Box<dyn Asr>) -> Result<Self, String> {
+    /// `asr` を渡すと、それを使う(テスト用)。None なら、モデルの場所から `loader` で読み込む。
+    pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, env_model: Option<PathBuf>) -> Result<Self, String> {
         let app = AppData::init(&data_dir).map_err(err)?;
+        let models = ModelManager::new(data_dir.join("models"));
         let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
         // 前回、処理の途中で終了していたら、続きの区間から再開できるようにする
         Jobs::new(&store.db).recover().map_err(err)?;
         store.db.conn.execute("UPDATE meetings SET state='queued' WHERE state='processing'", []).map_err(err)?;
-        Ok(Self { store: Mutex::new(store), asr, app, cancel: Arc::new(AtomicBool::new(false)), busy: AtomicBool::new(false), current: Mutex::new((None, 0, 0)) })
+        Ok(Self {
+            store: Mutex::new(store),
+            asr: Mutex::new(asr.map(Arc::from)),
+            loader,
+            env_model,
+            models,
+            model_cancel: AtomicBool::new(false),
+            model_dl: Mutex::new((false, 0, None)),
+            app,
+            cancel: Arc::new(AtomicBool::new(false)),
+            busy: AtomicBool::new(false),
+            current: Mutex::new((None, 0, 0)),
+        })
     }
 
     fn store(&self) -> std::sync::MutexGuard<'_, Store> {
@@ -137,8 +183,15 @@ impl AppState {
         }
         self.cancel.store(false, Ordering::SeqCst);
         let keep_audio = flag(&self.app.load_settings(), "keep_audio", true);
+        let asr = match self.engine() {
+            Ok(a) => a,
+            Err(e) => {
+                self.busy.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+        };
         let res = Store::open(&self.db_path()).map_err(err).and_then(|worker| {
-            pipeline::run_jobs(&worker, self.asr.as_ref(), &self.app.root.join("work"), &Options { keep_audio }, &self.cancel, |mid, d, t| {
+            pipeline::run_jobs(&worker, asr.as_ref(), &self.app.root.join("work"), &Options { keep_audio }, &self.cancel, |mid, d, t| {
                 *self.current.lock().unwrap_or_else(|p| p.into_inner()) = (Some(mid), d, t);
             })
         });
@@ -168,6 +221,76 @@ impl AppState {
         let s = Jobs::new(&self.store().db).summary(Some(JOB_KIND)).map_err(err)?;
         let (mid, d, t) = *self.current.lock().unwrap_or_else(|p| p.into_inner());
         Ok(ProgressDto { busy: self.busy.load(Ordering::SeqCst), pending: s.pending + s.running, meeting_id: mid, done_chunks: d, total_chunks: t })
+    }
+
+    /// 使うモデルの場所: 開発用の環境変数 → アプリが取得したもの の順。
+    fn model_path(&self) -> Option<PathBuf> {
+        self.env_model.clone().filter(|p| p.exists()).or_else(|| self.models.installed_path(&WHISPER_MODEL))
+    }
+
+    /// 文字起こしエンジン(初回に読み込む)。モデルが無ければ、その旨のエラー(待ちのジョブはそのまま残る)。
+    fn engine(&self) -> Result<Arc<dyn Asr>, String> {
+        let mut g = self.asr.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(a) = g.as_ref() {
+            return Ok(a.clone());
+        }
+        let path = self.model_path().ok_or("文字起こしのモデルがありません。設定の「文字起こしのモデル」から取得してください")?;
+        let a: Arc<dyn Asr> = Arc::from((self.loader)(&path)?);
+        *g = Some(a.clone());
+        Ok(a)
+    }
+
+    pub fn model_status(&self) -> ModelDto {
+        let (downloading, _, error) = self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let mut status = self.models.status(&WHISPER_MODEL);
+        let source = if self.env_model.as_ref().map(|p| p.exists()).unwrap_or(false) {
+            status.installed = true;
+            "env"
+        } else if status.installed {
+            "managed"
+        } else {
+            "none"
+        };
+        if downloading {
+            status.downloaded = self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).1;
+        }
+        ModelDto { status, downloading, source, error }
+    }
+
+    /// モデルを取得する(利用者が設定画面で押したときだけ呼ぶ。通信一覧の「モデルの取得」)。終わるまで返らない。
+    pub fn download_model(&self) -> Result<ModelDto, String> {
+        {
+            let mut g = self.model_dl.lock().unwrap_or_else(|p| p.into_inner());
+            if g.0 {
+                return Err("取得中です".into());
+            }
+            *g = (true, 0, None);
+        }
+        self.model_cancel.store(false, Ordering::SeqCst);
+        let res = self.models.download(&WHISPER_MODEL, &self.model_cancel, |done, _| {
+            self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).1 = done;
+        });
+        let error = match &res {
+            Ok(_) => None,
+            Err(factory_core::CoreError::Cancelled) => Some("取得を中断しました(続きから再開できます)".to_string()),
+            Err(e) => Some(e.to_string()),
+        };
+        *self.model_dl.lock().unwrap_or_else(|p| p.into_inner()) = (false, 0, error);
+        Ok(self.model_status())
+    }
+
+    pub fn cancel_model_download(&self) {
+        self.model_cancel.store(true, Ordering::SeqCst);
+    }
+
+    /// 取得したモデルを消す(処理中は消さない)。
+    pub fn delete_model(&self) -> Result<ModelDto, String> {
+        if self.busy.load(Ordering::SeqCst) || self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).0 {
+            return Err("処理中・取得中は消せません".into());
+        }
+        *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        self.models.delete(&WHISPER_MODEL).map_err(err)?;
+        Ok(self.model_status())
     }
 
     // ---------------- 議事録 ----------------
@@ -328,7 +451,7 @@ impl AppState {
             consent_shown: flag(&s, "consent_shown", false),
             network: self.app.network_list(&network_entries(), UPDATE_PURPOSE),
             data_dir: self.app.root.to_string_lossy().into(),
-            model: self.asr.name(),
+            model: self.model_path().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into()),
         }
     }
 
@@ -351,8 +474,15 @@ impl AppState {
         if self.busy.load(Ordering::SeqCst) {
             return Err("処理中です。中断してから消してください".into());
         }
+        if self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).0 {
+            return Err("モデルの取得中です。中断してから消してください".into());
+        }
         let mut store = self.store();
         *store = Store::open_in_memory().map_err(err)?;
+        // 取得したモデルもデータフォルダの中にあるので、一緒に消える
+        if self.env_model.is_none() {
+            *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        }
         let n = self.app.delete_all().map_err(err)?;
         *store = Store::open(&self.db_path()).map_err(err)?;
         Ok(n)
@@ -370,10 +500,40 @@ mod tests {
         d
     }
 
+    fn state(d: &Path, asr: Option<Box<dyn Asr>>) -> AppState {
+        let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
+        AppState::new(d.to_path_buf(), asr, loader, None).unwrap()
+    }
+
+    #[test]
+    fn モデルが無ければ処理は待ちのまま_取得済みなら初回に読み込む() {
+        let d = tmp("model");
+        let s = state(&d, None);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, false).unwrap();
+        let st = s.model_status();
+        assert_eq!((st.source, st.status.installed, st.status.size), ("none", false, WHISPER_MODEL.size));
+        assert!(s.run_jobs().unwrap_err().contains("モデルがありません"));
+        assert_eq!(s.progress().unwrap().pending, 1);
+        assert_eq!(s.meetings().unwrap()[0].state, "queued");
+        // 取得済みの状態を作る(中身は照合の印で判定する)
+        let dir = d.join("models");
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = std::fs::File::create(dir.join(WHISPER_MODEL.file_name)).unwrap();
+        f.set_len(WHISPER_MODEL.size).unwrap();
+        std::fs::write(dir.join(format!("{}.sha256", WHISPER_MODEL.file_name)), WHISPER_MODEL.sha256).unwrap();
+        assert_eq!(s.model_status().source, "managed");
+        assert_eq!(s.run_jobs().unwrap(), 1);
+        assert!(s.detail(id).unwrap().segments[0].text.starts_with("loaded "));
+        assert_eq!(s.settings().model, WHISPER_MODEL.file_name);
+        assert!(!s.delete_model().unwrap().status.installed);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
     #[test]
     fn 取り込み_処理_修正_確定_書き出し_検索_全削除まで通る() {
         let d = tmp("flow");
-        let s = AppState::new(d.clone(), Box::new(FakeAsr { text: "やまだ商事の件です".into() })).unwrap();
+        let s = state(&d, Some(Box::new(FakeAsr { text: "やまだ商事の件です".into() })));
         assert!(s.import_audio(Path::new("/nope/x.txt"), true).is_err());
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
         let id = s.import_audio(&src, false).unwrap();
@@ -414,7 +574,7 @@ mod tests {
     #[test]
     fn 設定のフラグを保存できる() {
         let d = tmp("set");
-        let s = AppState::new(d.clone(), Box::new(FakeAsr { text: String::new() })).unwrap();
+        let s = state(&d, Some(Box::new(FakeAsr { text: String::new() })));
         assert!(s.settings().keep_audio && !s.settings().consent_shown);
         assert!(!s.set_flag("keep_audio", false).unwrap().keep_audio);
         assert!(s.set_flag("consent_shown", true).unwrap().consent_shown);

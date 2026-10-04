@@ -23,4 +23,10 @@ pub enum CoreError {
     /// CSVの組み立てに失敗
     #[error("CSVを作成できません: {0}")]
     Csv(String),
+    /// モデルの取得・保存・照合に失敗
+    #[error("{0}")]
+    Model(String),
+    /// 利用者が中断した
+    #[error("中断しました")]
+    Cancelled,
 }
