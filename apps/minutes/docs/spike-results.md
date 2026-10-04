@@ -148,6 +148,13 @@
 - **未確認(Windows 実機が要る)**: インストーラの実行とアンインストール、アプリの起動、WebView2(ブートストラッパー既定)での動作、**マイク録音(getUserMedia。Windows では未検証。macOS 用の Info.plist に相当する設定は不要の想定だが、WebView2 の許可ダイアログの挙動は未確認)**、i5-12500 クラスでの速さ(RTF・メモリ)、SmartScreen の警告。
 - **コード署名は未実施**(止まる対象。証明書の取得が要る)。署名なしだと SmartScreen に止められる。
 
+## 9b. 要約アドオンの取り込み後の確認(2026-10-04)
+
+- `feat/summary` を `mac/verify` に取り込んだ。`cargo test --lib --no-default-features` と `cargo test --lib` はともに 54 件通過、UI は `tsc --noEmit` が通る。Playwright の `flow.mjs`(要約の流れを含む)と `free.mjs` は通る。
+- **e2e の録音の確認が落ちていた原因**: アプリの不具合ではなく、試験を動かした環境に音の出力装置が無かったこと。出力装置が無いと Chromium の AudioContext の時計が止まり(1.5 秒待っても currentTime が約 0.01)、AudioWorklet が呼ばれず、録音の音が `recordPush` に届かない(画面は「録音中 0:00」のまま)。起動引数に `--disable-audio-output` を足すと通る。`ui/e2e/flow.mjs` のみ変更。**留意**: 出力装置の無い Mac(スピーカー・ヘッドホンが無い構成)で実機の録音が止まるかは未確認。
+- **Windows(GitHub Actions)で要約のサイドカーをビルド**: `prepare_bundle.sh` が `build_summarizer.sh` を呼び、`minutes-summarizer-x86_64-pc-windows-msvc.exe`(4.2MB、CPU のみ、cmake + MSVC + LLVM)を作って `bundle.externalBin` に渡す。run 37199654045(https://github.com/ItoShiyou/localAIproduct/actions/runs/37199654045 )でテスト・NSIS・MSI がすべて成功。所要: テスト約 4 分、同梱物の用意(サイドカーの初回ビルド 3 分 58 秒を含む)約 8 分、NSIS 約 13 分、MSI 約 3 分、全体 約 30 分。成果物: NSIS 730,208,866 バイト(約 696MiB)、MSI 758,079,656 バイト(約 723MiB)。テストの job は debug のため `build.rs` が空の仮ファイルを置いて通る(release では置かない)。要約モデル(.gguf)は同梱せず後から取得する。Windows 実機での要約の動作・速度は未確認。
+- **Mac のアプリ(未署名・未公証)**: `minutes.app` 824MB、`minutes_0.1.0_aarch64.dmg` 736MB(サイドカー 4.1MB を同梱、いずれも `src-tauri/target/release/bundle/` 以下。コミットしない)。
+
 ## 10. 要約モデルの比較(Mac M2 16GB、CPU のみ、2026-10-04)
 
 条件: 架空の議事録 `testset/t01_clean.txt`(約 2,200 字)を、2人の話者ラベル付きの14段落にして要約(JSON の形を文法で縛り、温度 0)。llama.cpp(llama-cpp-2 0.1.158、GPU 不使用 = n_gpu_layers 0)、スレッド 4、文脈 8192(のち 6144)。**M2 は基準にしない近似。測定中に他の作業が走っており、数値は ±30% ほどぶれる。** 最大メモリは `/usr/bin/time -l` の maximum resident set size。

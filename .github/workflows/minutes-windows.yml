@@ -70,14 +70,10 @@ jobs:
             apps/minutes/src-tauri/resources/models
             apps/minutes/src-tauri/resources/onnxruntime
           key: minutes-resources-win-${{ hashFiles('apps/minutes/tools/prepare_bundle.sh', 'apps/minutes/src-tauri/examples/fetch_model.rs') }}
-      - name: 同梱物を用意
+      - name: 同梱物を用意(要約のサイドカーのビルドも含む。prepare_bundle.sh が build_summarizer.sh を呼ぶ)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
         run: ../tools/prepare_bundle.sh
-      - name: 要約のサイドカーをビルド(llama.cpp、CPU のみ。bundle.externalBin が参照する)
-        env:
-          LIBCLANG_PATH: C:\Program Files\LLVM\bin
-        run: ../tools/build_summarizer.sh
       - name: インストーラ(NSIS)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin

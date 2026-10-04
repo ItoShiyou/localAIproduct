@@ -159,7 +159,7 @@ jobs(id, kind, state, progress, error, payload_json)
 - (2026-10-04)ユーザーの指示で実装に入り、スコープの機能を実装した。残り: ライセンスの有効化(販売プラットフォームのアカウントが必要)、モデルの同梱・取得の仕組み(いまは環境変数 `MINUTES_WHISPER_MODEL` でモデルの場所を渡す開発用の形。`core` の model_manager は未着手)、Windows ビルド、最低ライン機での速度、実会議の録音での精度
 - (2026-10-04 決定)モデルはアプリに同梱して、アプリ単体で売る。設定画面からの取得は、同梱モデルが見つからない場合の予備として残す。第三者ライセンスの表記は `docs/legal-notices.md` のとおりアプリに同梱・表示
 - symphonia(MPL-2.0)の配布時の表記・ソース入手方法の告知の書き方
-- (2026-10-04)Windows: GitHub Actions(windows-latest)でテストと NSIS/MSI の作成まで通った(`docs/spike-results.md` の 9)。残り: Windows 実機でのインストール・起動・マイク録音(WebView2)・最低ライン機での速度の確認、Windows のコード署名(証明書の取得。止まる対象)、署名なしの SmartScreen 警告の扱い
+- (2026-10-04)Windows: GitHub Actions(windows-latest)でテストと NSIS/MSI の作成まで通った(`docs/spike-results.md` の 9。要約のサイドカーを含む構成でも通過、9b)。残り: Windows 実機でのインストール・起動・マイク録音(WebView2)・最低ライン機での速度の確認、Windows のコード署名(証明書の取得。止まる対象)、署名なしの SmartScreen 警告の扱い
 - 初期の論点: 採用する文字起こしモデル(候補3つの実測結果と、ライセンスの確認)、ffmpeg の同梱可否、話者分離の軽い手段の有無、要約を初版に入れるか(推奨: 入れない)
 
 ## リリース前チェック(`checklists/release.md`)の状況(2026-10-04、議事録)
@@ -172,7 +172,7 @@ jobs(id, kind, state, progress, error, payload_json)
 | 動作 | 最低スペック実機(Mac Apple Silicon / Windows x64)で時間・メモリ・発熱 | Mac M2 のみ(RTF 0.26〜0.39、1時間で 0.36、ピーク約 0.95GB)。Windows は CI でビルド・テストのみ通過、実機・最低ライン機は未実施 |
 | 動作 | 大きい・壊れた・空のファイルでエラー表示 | 済(壊れた・空・対応外の形式・4GB 超はテストあり) |
 | 動作 | モデルの取得の再開・容量不足の表示 | 済(予備の取得経路。実際の配布元で中断→再開→照合を確認) |
-| 配布 | macOS の署名・公証 | **未(止まる対象。Apple Developer Program への加入が要る)**。未署名の .app / .dmg は作成済み(569MB / 517MB、モデル同梱)。署名なしで配ると、ダウンロードしたものは Gatekeeper に止められる |
+| 配布 | macOS の署名・公証 | **未(止まる対象。Apple Developer Program への加入が要る)**。未署名の .app / .dmg は作成済み(要約のサイドカーを含む現在の版は 824MB / 736MB、モデル同梱。`docs/spike-results.md` の 9b)。署名なしで配ると、ダウンロードしたものは Gatekeeper に止められる |
 | 配布 | Windows のコード署名、インストール/アンインストールの確認 | 未(Windows 機が要る) |
 | 配布 | 配布先 | 未(販売登録と一緒に後で決める) |
 | 販売 | テスト商品での購入〜失効、価格表示、インボイス、特商法 | 未(販売登録は後で行う、と利用者の指示) |
