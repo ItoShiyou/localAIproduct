@@ -155,7 +155,7 @@ fn split_long(s: &dyn Summarizer, para: &str, budget: usize) -> Result<Vec<Strin
     let mut buf = String::new();
     for c in para.chars() {
         buf.push(c);
-        if matches!(c, '。' | '!' | '?' | '!' | '?' | '\n') {
+        if matches!(c, '。' | '!' | '?' | '！' | '？' | '\n') {
             sentences.push(std::mem::take(&mut buf));
         }
     }
@@ -961,6 +961,10 @@ mod tests {
         assert!(c.len() >= 8 && c.iter().all(|c| c.chars().count() <= 100));
         assert_eq!(c.concat(), long[0]);
         // 句点が無い長い文でも止まらない
+        // 全角の「！」「？」でも文の切れ目で分ける
+        let long = vec!["あ！".repeat(200), "い？".repeat(200)];
+        let c = chunk(&f, &long, 50).unwrap();
+        assert!(c.iter().all(|c| c.chars().count() <= 50) && c.iter().all(|c| c.ends_with('！') || c.ends_with('？')), "{c:?}");
         let c = chunk(&f, &["い".repeat(1000)], 100).unwrap();
         assert!(c.iter().all(|c| c.chars().count() <= 100) && c.concat().replace('\n', "").chars().count() == 1000);
     }
