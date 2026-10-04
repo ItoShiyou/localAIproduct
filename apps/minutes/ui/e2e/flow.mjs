@@ -14,7 +14,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const shots = path.resolve(here, "../../docs/ui");
 const URL = process.env.URL ?? "http://127.0.0.1:5175/";
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, // --disable-audio-output: 音の出力装置が無い環境(CI・出力先なしの Mac)では AudioContext の時計が止まり、AudioWorklet が呼ばれず録音の音が届かないため
+  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--disable-audio-output"] });
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
