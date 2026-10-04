@@ -38,7 +38,7 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
 .drop .row { justify-content: center; }
 .drop-title { font-weight: 600; margin: 0 0 4px; }
 .bar { height: 10px; background: #e7eaf0; border-radius: 999px; overflow: hidden; }
-.bar span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.bar span { display: block; height: 100%; background: var(--accent); }
 .results, .errors { list-style: none; margin: 0; padding: 0; font-size: 13px; max-height: 260px; overflow: auto; }
 .results li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid #eef0f3; }
 .results .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--ok); color: #fff; }
