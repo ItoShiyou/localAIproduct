@@ -205,3 +205,8 @@ pub fn cancel_model_download(state: State<'_, AppState>) {
 pub async fn delete_model(state: State<'_, AppState>) -> Result<ModelDto, String> {
     state.delete_model()
 }
+
+#[tauri::command]
+pub async fn third_party_notices(state: State<'_, AppState>) -> Result<String, String> {
+    state.third_party_notices()
+}

@@ -49,5 +49,5 @@ export const STATE_LABEL: Record<Meeting["state"], string> = { queued: "待ち",
 
 export interface ModelInfo {
   name: string; installed: boolean; downloaded: number; size: number;
-  downloading: boolean; source: "managed" | "env" | "none"; error: string | null;
+  downloading: boolean; source: "bundled" | "managed" | "env" | "none"; error: string | null;
 }

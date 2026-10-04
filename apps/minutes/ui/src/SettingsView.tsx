@@ -27,7 +27,9 @@ function ModelSection({ api, onChanged }: { api: Api; onChanged: () => void }) {
       <h2>文字起こしのモデル</h2>
       <p className="note">{m.name}・{mb(m.size)}。文字起こしはこのモデルを使って、このパソコンの中で行います。</p>
       {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
-      {m.installed && m.source !== "env" && <p className="msg">取得済み</p>}
+      {m.source === "bundled" && <p className="msg">アプリに同梱済み(追加の取得は不要です)</p>}
+      {m.source === "managed" && <p className="msg">取得済み</p>}
+      {m.source === "none" && <p className="note">アプリに同梱したモデルが見つかりません。インストールし直すか、ここから取得してください。</p>}
       {!m.installed && !m.downloading && (
         <>
           <p className="note">まだ取得していません。取得には約 {mb(m.size)} の通信と空き容量が要ります。送るのはモデルの名前(取得先のアドレス)だけで、録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
@@ -59,11 +61,21 @@ export function SettingsView({ api, settings: s, onSettings, onDeleted, onModelR
   const [ask, setAsk] = useState(false);
   const [typed, setTyped] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [notices, setNotices] = useState<string | null>(null);
   if (!s) return <div className="pane">読み込み中…</div>;
   const set = async (k: Flag, on: boolean) => { try { onSettings(await api.setFlag(k, on)); } catch (e) { setMsg(String(e)); } };
 
   return (
     <div className="pane">
+      {notices != null && (
+        <div className="modal" role="dialog" aria-label="ライセンスの全文">
+          <div className="modal-body wide">
+            <h2>第三者のソフトウェアとモデルのライセンス</h2>
+            <pre className="notices">{notices}</pre>
+            <button className="btn" onClick={() => setNotices(null)}>閉じる</button>
+          </div>
+        </div>
+      )}
       <ModelSection api={api} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       <section className="card">
         <h2>処理の設定</h2>
@@ -97,6 +109,27 @@ export function SettingsView({ api, settings: s, onSettings, onDeleted, onModelR
         <h2>データの保存場所</h2>
         <p className="mono">{s.dataDir}</p>
         <p className="note">音声のコピー・議事録・用語辞書・設定はこのフォルダに保存します。アプリ内では暗号化していません。パソコンのディスク暗号化(macOS は FileVault、Windows は BitLocker)を有効にしておくことをおすすめします。</p>
+      </section>
+
+      <section className="card">
+        <h2>使っているソフトウェアとモデル</h2>
+        <table className="table">
+          <thead><tr><th>名前</th><th>用途</th><th>ライセンス</th></tr></thead>
+          <tbody>
+            {[
+              ["Whisper large-v3-turbo(OpenAI)/ whisper.cpp 形式", "文字起こしのモデル", "MIT"],
+              ["whisper.cpp", "文字起こしの実行", "MIT"],
+              ["whisper-rs", "whisper.cpp の Rust 束ね", "Unlicense"],
+              ["nnnoiseless(RNNoise の移植)", "ノイズ除去", "BSD-3-Clause"],
+              ["Symphonia", "音声ファイルの読み込み", "MPL-2.0"],
+              ["SQLite / rusqlite", "データベース", "パブリックドメイン / MIT"],
+              ["Tauri", "アプリの枠組み", "Apache-2.0 または MIT"],
+              ["React", "画面", "MIT"],
+            ].map(([n, u, l]) => <tr key={n}><td>{n}</td><td>{u}</td><td>{l}</td></tr>)}
+          </tbody>
+        </table>
+        <p className="note">ここに挙げたもののほか、多数のオープンソースのライブラリを使っています。すべての著作権表示とライセンスの全文は、次のボタンから読めます(アプリにも同梱しています)。</p>
+        <button className="btn small" onClick={async () => { try { setNotices(await api.thirdPartyNotices()); } catch (e) { setMsg(String(e)); } }}>ライセンスの全文を表示</button>
       </section>
 
       <section className="card danger-zone">

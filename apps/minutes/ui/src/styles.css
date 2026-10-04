@@ -130,3 +130,5 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
 .modal-body { background: var(--panel); border-radius: 12px; padding: 20px 24px; max-width: 460px; }
 .modal-body h2 { font-size: 16px; margin: 0 0 8px; }
 .progress .bar { margin-top: 4px; }
+.modal-body.wide { max-width: 900px; width: 90vw; }
+.notices { max-height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 11px; background: #f6f7f9; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }

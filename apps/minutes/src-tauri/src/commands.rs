@@ -41,7 +41,7 @@ pub struct ModelDto {
     #[serde(flatten)]
     pub status: ModelStatus,
     pub downloading: bool,
-    /// "managed"(アプリが取得したもの)| "env"(開発用に環境変数で指定)| "none"
+    /// "bundled"(アプリに同梱)| "env"(開発用に環境変数で指定)| "managed"(設定画面から取得したもの)| "none"
     pub source: &'static str,
     pub error: Option<String>,
 }
@@ -94,9 +94,11 @@ pub struct AppState {
     /// 文字起こしエンジン(初めて使うときに読み込む。モデルが無ければ None のまま)
     asr: Mutex<Option<Arc<dyn Asr>>>,
     loader: AsrLoader,
-    /// 開発用: 環境変数 MINUTES_WHISPER_MODEL で指定されたモデル
-    env_model: Option<PathBuf>,
+    /// 決まった場所のモデル(優先順): 開発用の環境変数 → アプリに同梱したもの。(場所, "env" | "bundled")
+    fixed_models: Vec<(PathBuf, &'static str)>,
     pub models: ModelManager,
+    /// 第三者ライセンス表記(アプリに同梱した THIRD_PARTY_NOTICES.txt)
+    pub notices_path: Mutex<Option<PathBuf>>,
     model_cancel: AtomicBool,
     model_dl: Mutex<(bool, u64, Option<String>)>,
     pub app: AppData,
@@ -115,7 +117,7 @@ fn flag(s: &Settings, key: &str, default: bool) -> bool {
 
 impl AppState {
     /// `asr` を渡すと、それを使う(テスト用)。None なら、モデルの場所から `loader` で読み込む。
-    pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, env_model: Option<PathBuf>) -> Result<Self, String> {
+    pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, fixed_models: Vec<(PathBuf, &'static str)>) -> Result<Self, String> {
         let app = AppData::init(&data_dir).map_err(err)?;
         let models = ModelManager::new(data_dir.join("models"));
         let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
@@ -126,8 +128,9 @@ impl AppState {
             store: Mutex::new(store),
             asr: Mutex::new(asr.map(Arc::from)),
             loader,
-            env_model,
+            fixed_models,
             models,
+            notices_path: Mutex::new(None),
             model_cancel: AtomicBool::new(false),
             model_dl: Mutex::new((false, 0, None)),
             app,
@@ -223,9 +226,17 @@ impl AppState {
         Ok(ProgressDto { busy: self.busy.load(Ordering::SeqCst), pending: s.pending + s.running, meeting_id: mid, done_chunks: d, total_chunks: t })
     }
 
-    /// 使うモデルの場所: 開発用の環境変数 → アプリが取得したもの の順。
+    /// 使うモデル: 開発用の環境変数 → アプリに同梱 → 設定画面から取得したもの の順。
+    fn model_source(&self) -> Option<(PathBuf, &'static str)> {
+        self.fixed_models
+            .iter()
+            .find(|(p, _)| std::fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false))
+            .cloned()
+            .or_else(|| self.models.installed_path(&WHISPER_MODEL).map(|p| (p, "managed")))
+    }
+
     fn model_path(&self) -> Option<PathBuf> {
-        self.env_model.clone().filter(|p| p.exists()).or_else(|| self.models.installed_path(&WHISPER_MODEL))
+        self.model_source().map(|(p, _)| p)
     }
 
     /// 文字起こしエンジン(初回に読み込む)。モデルが無ければ、その旨のエラー(待ちのジョブはそのまま残る)。
@@ -243,13 +254,13 @@ impl AppState {
     pub fn model_status(&self) -> ModelDto {
         let (downloading, _, error) = self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let mut status = self.models.status(&WHISPER_MODEL);
-        let source = if self.env_model.as_ref().map(|p| p.exists()).unwrap_or(false) {
-            status.installed = true;
-            "env"
-        } else if status.installed {
-            "managed"
-        } else {
-            "none"
+        let source = match self.model_source() {
+            Some((_, src)) => {
+                status.installed = true;
+                status.downloaded = status.size;
+                src
+            }
+            None => "none",
         };
         if downloading {
             status.downloaded = self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).1;
@@ -291,6 +302,12 @@ impl AppState {
         *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.models.delete(&WHISPER_MODEL).map_err(err)?;
         Ok(self.model_status())
+    }
+
+    /// 第三者のソフトウェア・モデルのライセンス表記(全文)。
+    pub fn third_party_notices(&self) -> Result<String, String> {
+        let p = self.notices_path.lock().unwrap_or_else(|p| p.into_inner()).clone().ok_or("ライセンス表記のファイルが見つかりません")?;
+        std::fs::read_to_string(p).map_err(|_| "ライセンス表記のファイルを読めません".to_string())
     }
 
     // ---------------- 議事録 ----------------
@@ -480,7 +497,7 @@ impl AppState {
         let mut store = self.store();
         *store = Store::open_in_memory().map_err(err)?;
         // 取得したモデルもデータフォルダの中にあるので、一緒に消える
-        if self.env_model.is_none() {
+        if self.model_source().map(|(_, s)| s == "managed").unwrap_or(true) {
             *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
         let n = self.app.delete_all().map_err(err)?;
@@ -502,7 +519,7 @@ mod tests {
 
     fn state(d: &Path, asr: Option<Box<dyn Asr>>) -> AppState {
         let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
-        AppState::new(d.to_path_buf(), asr, loader, None).unwrap()
+        AppState::new(d.to_path_buf(), asr, loader, vec![]).unwrap()
     }
 
     #[test]
@@ -568,6 +585,25 @@ mod tests {
         s.delete_all().unwrap();
         assert!(s.meetings().unwrap().is_empty());
         assert!(s.glossary().unwrap().is_empty());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 同梱のモデルがあればそれを使う() {
+        let d = tmp("bundled");
+        let res = d.join("res");
+        std::fs::create_dir_all(&res).unwrap();
+        let bundled = res.join(WHISPER_MODEL.file_name);
+        let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
+        let s = AppState::new(d.join("data"), None, loader, vec![(d.join("none.bin"), "env"), (bundled.clone(), "bundled")]).unwrap();
+        assert_eq!(s.model_status().source, "none");
+        std::fs::write(&bundled, b"x").unwrap();
+        let st = s.model_status();
+        assert_eq!((st.source, st.status.installed), ("bundled", true));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, false).unwrap();
+        s.run_jobs().unwrap();
+        assert!(s.detail(id).unwrap().segments[0].text.contains("res"));
         std::fs::remove_dir_all(&d).ok();
     }
 

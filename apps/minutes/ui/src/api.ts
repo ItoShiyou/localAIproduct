@@ -44,6 +44,8 @@ export interface Api {
   downloadModel(): Promise<ModelInfo>;
   cancelModelDownload(): Promise<void>;
   deleteModel(): Promise<ModelInfo>;
+  /** 第三者のソフトウェア・モデルのライセンス表記(全文) */
+  thirdPartyNotices(): Promise<string>;
 }
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -102,6 +104,7 @@ export function makeTauriApi(t: TauriGlobal): Api {
     downloadModel: () => invoke("download_model"),
     cancelModelDownload: () => invoke("cancel_model_download"),
     deleteModel: () => invoke("delete_model"),
+    thirdPartyNotices: () => invoke("third_party_notices"),
   };
 }
 
@@ -239,6 +242,7 @@ export function makeMockApi(): Api {
     },
     async cancelModelDownload() {},
     async deleteModel() { model = { ...model, installed: false, downloaded: 0, source: "none" }; return model; },
+    async thirdPartyNotices() { return "THIRD-PARTY SOFTWARE NOTICES(モック)\n\nWhisper large-v3-turbo — MIT\n..."; },
   };
 }
 

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (dir, files) = args.split_first().expect("使い方: import <データフォルダ> <録音ファイル...>");
-    let s = AppState::new(PathBuf::from(dir), Some(Box::new(MissingAsr { reason: "取り込み専用".into() })), minutes::whisper_loader(), None).unwrap();
+    let s = AppState::new(PathBuf::from(dir), Some(Box::new(MissingAsr { reason: "取り込み専用".into() })), minutes::whisper_loader(), vec![]).unwrap();
     let denoise = s.settings().denoise_default;
     for f in files {
         match s.import_audio(Path::new(f), denoise) {

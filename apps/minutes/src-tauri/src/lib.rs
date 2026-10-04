@@ -38,7 +38,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.manage(commands::AppState::new(data_dir, None, whisper_loader(), env_model())?);
+            // モデルの場所: 開発用の環境変数 → アプリに同梱(resources/models/)の順。どちらも無ければ設定画面から取得
+            let mut fixed = Vec::new();
+            if let Some(p) = env_model() {
+                fixed.push((p, "env"));
+            }
+            let res = app.path().resource_dir().ok().map(|r| r.join("resources"));
+            if let Some(r) = &res {
+                fixed.push((r.join("models").join(commands::WHISPER_MODEL.file_name), "bundled"));
+            }
+            let state = commands::AppState::new(data_dir, None, whisper_loader(), fixed)?;
+            *state.notices_path.lock().unwrap() = res.map(|r| r.join("THIRD_PARTY_NOTICES.txt"));
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -75,6 +86,7 @@ pub fn run() {
             tauri_glue::download_model,
             tauri_glue::cancel_model_download,
             tauri_glue::delete_model,
+            tauri_glue::third_party_notices,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");
