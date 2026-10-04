@@ -155,6 +155,7 @@ jobs:
           "exit=$LASTEXITCODE"
           $out
           if ($LASTEXITCODE -ne 2) { throw "想定外の終了コード $LASTEXITCODE" }
+          exit 0  # 終了コード 2 が正しいので、ステップの終了コードに持ち越さない
 
       - name: 起動して 30 秒待ち、ウィンドウ・クラッシュ・データフォルダを確認(既定の版)
         run: ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag free -Shot "$PWD/shot-free.png"
