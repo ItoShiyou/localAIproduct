@@ -11,3 +11,7 @@ testset-real/
 *.safetensors
 *.bin
 .venv/
+
+# 作業用
+.claude/
+.DS_Store
