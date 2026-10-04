@@ -42,6 +42,12 @@ fn 実モデルでテストセットを文字起こしする() {
     std::fs::create_dir_all(&d).unwrap();
     for f in files.split(',') {
         for denoise in [false, true] {
+            // MINUTES_DENOISE=0/1 で片方だけにする(速度の測定を短くするため)
+            if let Ok(v) = std::env::var("MINUTES_DENOISE") {
+                if (v == "1") != denoise {
+                    continue;
+                }
+            }
             let st = Store::open_in_memory().unwrap();
             let copy = d.join(format!("{f}.wav"));
             std::fs::copy(ts.join(format!("{f}.wav")), &copy).unwrap();
