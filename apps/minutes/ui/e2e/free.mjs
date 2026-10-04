@@ -1,0 +1,35 @@
+// 無料版の画面(モックの ?free)を Playwright で確認する: 残り時間の表示、有料機能の鍵、書き出しはテキストのみ、プランの比較
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
+const require = createRequire(path.join(process.env.PLAYWRIGHT_DIR ?? process.cwd(), "node_modules/"));
+const { chromium } = require("playwright");
+const shots = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs/ui");
+
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
+const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e)));
+await page.goto((process.env.URL ?? "http://127.0.0.1:5175/") + "?free");
+await page.getByTestId("plan-strip").getByText("残り 60 分").waitFor();
+await page.getByRole("button", { name: /取り込みの設定/ }).click();
+const o = page.getByTestId("options");
+assert.equal(await o.getByLabel(/話者を判別/).isDisabled(), true);
+assert.equal(await o.getByLabel(/ノイズ除去/).isDisabled(), true);
+await page.getByRole("button", { name: "録音を取り込む" }).click();
+await page.getByRole("button", { name: "確認しました" }).click();
+await page.getByText("文字起こし済み").first().waitFor({ timeout: 10000 });
+await page.getByTestId("plan-strip").getByText("残り 59 分").waitFor();
+await page.getByRole("button", { name: "確定", exact: true }).click();
+const opts = await page.getByLabel("書き出し").locator("option").evaluateAll((os) => os.map((x) => [x.value, x.disabled]));
+assert.deepEqual(opts.filter(([v, d]) => v && !d).map(([v]) => v), ["txt"], "無料版はテキストのみ");
+await page.screenshot({ path: path.join(shots, "mock-free-1.png") });
+await page.getByRole("tab", { name: "用語辞書" }).click();
+assert.equal(await page.getByRole("button", { name: "追加" }).isDisabled(), true);
+await page.getByRole("tab", { name: "設定" }).click();
+await page.getByTestId("plan-card").getByText("ご利用のプラン: 無料版").waitFor();
+await page.screenshot({ path: path.join(shots, "mock-free-2.png") });
+assert.deepEqual(errors, []);
+console.log("ok: 無料版の制限");
+await browser.close();

@@ -53,7 +53,7 @@ fn 実モデルで4人の会議の話者を判別する() {
     st.set_options(mid, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
     enqueue(&st, mid).unwrap();
     let t0 = std::time::Instant::now();
-    run_jobs(&st, &asr, &d, &Options { keep_audio: true, embedder: Some(&emb) }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+    run_jobs(&st, &asr, &d, &Options { embedder: Some(&emb), ..Options::basic(true) }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
     let (acc, n) = score(&st, mid, &truth);
     println!("{{\"mode\":\"auto\",\"segments\":{},\"speakers\":{n},\"purity\":{acc:.3},\"proc_s\":{:.1}}}", st.segments(mid).unwrap().len(), t0.elapsed().as_secs_f64());
     relabel(&st, mid, Some(4), true).unwrap();

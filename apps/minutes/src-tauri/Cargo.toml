@@ -30,6 +30,8 @@ whisper-rs = { version = "0.15", optional = true }
 rustfft = "6"
 csv = "1"
 base64 = "0.22"
+hmac = "0.12"
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native"], optional = true }
 encoding_rs = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray", "std"], optional = true }
@@ -39,7 +41,7 @@ tauri-plugin-dialog = { version = "2", optional = true }
 
 [features]
 default = ["tauri", "whisper", "diarize"]
-tauri = ["dep:tauri", "dep:tauri-plugin-dialog"]
+tauri = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:keyring"]
 # whisper.cpp(whisper-rs)による文字起こし。ビルドに cmake と C/C++ コンパイラが要る
 whisper = ["dep:whisper-rs"]
 # 話者の判別(ONNX Runtime 上の WeSpeaker)。実行時に onnxruntime の共有ライブラリを読み込む

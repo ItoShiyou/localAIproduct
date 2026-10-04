@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { Flag, ModelInfo, SettingsInfo } from "./types";
+import type { Flag, ModelInfo, Plan, SettingsInfo } from "./types";
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 
@@ -55,8 +55,37 @@ function ModelSection({ api, onChanged }: { api: Api; onChanged: () => void }) {
   );
 }
 
-export function SettingsView({ api, settings: s, onSettings, onDeleted, onModelReady }: {
-  api: Api; settings: SettingsInfo | null; onSettings: (s: SettingsInfo) => void; onDeleted: () => void; onModelReady: () => void;
+/** 無料版と有料版の比較(有料版の購入・ライセンスの有効化は準備中) */
+function PlanCard({ plan }: { plan: Plan }) {
+  const min = (ms: number | null) => (ms == null ? "" : `${Math.floor(ms / 60000)} 分`);
+  const rows: [string, string, string][] = [
+    ["文字起こしの精度", "標準(小さなモデル)", "高精度(大きなモデル)"],
+    ["文字起こしできる時間", `累計 ${min(plan.totalLimitMs ?? 3_600_000)}・1件 ${min(plan.meetingLimitMs ?? 900_000)}まで`, "制限なし"],
+    ["マイク録音・取り込み・確認と修正・検索", "○", "○"],
+    ["書き出し", "テキストのみ(末尾に無料版の表示)", "Word・PDF・Markdown・テキスト・字幕・音声"],
+    ["話者の判別・ノイズ除去・用語辞書", "—", "○"],
+    ["要約(後から追加ダウンロード)", "—", "○(準備中)"],
+  ];
+  return (
+    <section className="card" data-testid="plan-card">
+      <h2>ご利用のプラン: {plan.tier === "pro" ? "有料版" : "無料版"}</h2>
+      {plan.tier === "free" && (
+        <p className="note">
+          無料版はお試し用です。これまでに文字起こしした時間 {min(plan.usage.usedMs)} / {min(plan.totalLimitMs)}(議事録を消しても戻りません)。
+          {plan.usage.tampered && " 使った量の記録が読めなかったため、上限に達した扱いになっています。"}
+        </p>
+      )}
+      <table className="table">
+        <thead><tr><th></th><th>無料版</th><th>有料版(買い切り)</th></tr></thead>
+        <tbody>{rows.map(([a, b, c]) => <tr key={a}><td>{a}</td><td>{b}</td><td>{c}</td></tr>)}</tbody>
+      </table>
+      {plan.tier === "free" && <p className="note">有料版の購入とライセンスの有効化は準備中です。</p>}
+    </section>
+  );
+}
+
+export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, onModelReady }: {
+  api: Api; settings: SettingsInfo | null; plan?: Plan | null; onSettings: (s: SettingsInfo) => void; onDeleted: () => void; onModelReady: () => void;
 }) {
   const [ask, setAsk] = useState(false);
   const [typed, setTyped] = useState("");
@@ -76,6 +105,7 @@ export function SettingsView({ api, settings: s, onSettings, onDeleted, onModelR
           </div>
         </div>
       )}
+      {plan && <PlanCard plan={plan} />}
       <ModelSection api={api} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       <section className="card">
         <h2>処理の設定</h2>

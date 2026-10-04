@@ -22,7 +22,23 @@ pub struct Options<'a> {
     pub keep_audio: bool,
     /// 話者の判別に使う(無ければ判別しない)
     pub embedder: Option<&'a dyn Embedder>,
+    /// 無料版の上限: 1件の最大の長さ(ミリ秒)
+    pub meeting_limit_ms: Option<u64>,
+    /// 無料版の上限: 累計の残り(ミリ秒)を返す
+    pub remaining_ms: Option<&'a dyn Fn() -> u64>,
+    /// 文字起こしした長さを記録する(長さ, その議事録の最初の区間か)
+    pub on_used: Option<&'a dyn Fn(u64, bool)>,
+    /// 用語辞書を認識のヒントに使う(無料版では使わない)
+    pub use_glossary: bool,
 }
+
+impl<'a> Options<'a> {
+    pub fn basic(keep_audio: bool) -> Self {
+        Self { keep_audio, embedder: None, meeting_limit_ms: None, remaining_ms: None, on_used: None, use_glossary: true }
+    }
+}
+
+pub const LIMIT_REACHED: &str = "無料版で文字起こしできる時間(累計 60 分)を使い切りました。有料版にすると、続きから文字起こしできます";
 
 /// 区間を、文字起こしする範囲に合わせる(範囲の外は無音扱いにして飛ばす。範囲の境目で区間を切る)。
 pub fn clip_chunks(chunks: Vec<audio::Chunk>, start: Option<i64>, end: Option<i64>) -> Vec<audio::Chunk> {
@@ -97,7 +113,12 @@ pub fn process_meeting(
                 let ms = audio::decode_to_pcm16k(Path::new(&src), &p)?;
                 store.set_pcm(meeting_id, Some(&p.to_string_lossy()), Some(ms as i64)).map_err(|e| e.to_string())?;
                 let rms = audio::frame_rms_of(&p)?;
-                let chunks = clip_chunks(audio::split_chunks(&rms), m.range_start_ms, m.range_end_ms);
+                // 無料版は1件の長さに上限がある(範囲の始まりから数える)
+                let end = match (opts.meeting_limit_ms, m.range_end_ms) {
+                    (Some(lim), e) => Some(e.unwrap_or(i64::MAX).min(m.range_start_ms.unwrap_or(0) + lim as i64)),
+                    (None, e) => e,
+                };
+                let chunks = clip_chunks(audio::split_chunks(&rms), m.range_start_ms, end);
                 if chunks.is_empty() {
                     return Err("文字起こしする範囲に音声がありません(範囲を確認してください)".into());
                 }
@@ -106,10 +127,18 @@ pub fn process_meeting(
             }
         };
         // 2) 区間ごとに
-        let hint = store.glossary_hint().map_err(|e| e.to_string())?;
+        let hint = if opts.use_glossary { store.glossary_hint().map_err(|e| e.to_string())? } else { String::new() };
+        let mut first = store.chunk_progress(meeting_id).map_err(|e| e.to_string())?.0 == 0;
         for (idx, start, end, silent) in store.pending_chunks(meeting_id).map_err(|e| e.to_string())? {
             if cancel.load(Ordering::SeqCst) {
                 return Err(CANCELLED.into());
+            }
+            if !silent {
+                if let Some(rem) = opts.remaining_ms {
+                    if rem() == 0 {
+                        return Err(LIMIT_REACHED.into());
+                    }
+                }
             }
             let segs = if silent {
                 vec![]
@@ -121,6 +150,12 @@ pub fn process_meeting(
                 asr.transcribe(&x, &hint, &m.language, cancel)?
             };
             store.save_chunk(meeting_id, idx, start, end, &segs).map_err(|e| e.to_string())?;
+            if !silent {
+                if let Some(f) = opts.on_used {
+                    f((end - start).max(0) as u64, first);
+                }
+                first = false;
+            }
             let (done, total) = store.chunk_progress(meeting_id).map_err(|e| e.to_string())?;
             on_chunk(done, total);
         }
@@ -129,6 +164,7 @@ pub fn process_meeting(
         // 3) 話者の判別(作業用の音声があるうちに)
         if m.diarize {
             if let Some(emb) = opts.embedder {
+                // (無料版では embedder を渡さないので判別しない)
                 if cancel.load(Ordering::SeqCst) {
                     return Err(CANCELLED.into());
                 }
@@ -241,7 +277,7 @@ mod tests {
 
         let cancel = Arc::new(AtomicBool::new(false));
         let asr = StopAfter { n: Default::default(), stop_at: 2 };
-        run_jobs(&st, &asr, &d, &Options { keep_audio: true, embedder: None }, &cancel, |_, _, _| {}).unwrap();
+        run_jobs(&st, &asr, &d, &Options::basic(true), &cancel, |_, _, _| {}).unwrap();
         let m = st.meeting(mid).unwrap().unwrap();
         assert_eq!(m.state, "queued");
         let (done, total) = st.chunk_progress(mid).unwrap();
@@ -251,7 +287,7 @@ mod tests {
         // 再開: 残りの区間だけ処理する
         cancel.store(false, Ordering::SeqCst);
         let mut calls = Vec::new();
-        run_jobs(&st, &FakeAsr { text: "続き".into() }, &d, &Options { keep_audio: false, embedder: None }, &cancel, |_, dn, t| calls.push((dn, t))).unwrap();
+        run_jobs(&st, &FakeAsr { text: "続き".into() }, &d, &Options::basic(false), &cancel, |_, dn, t| calls.push((dn, t))).unwrap();
         let m = st.meeting(mid).unwrap().unwrap();
         assert_eq!(m.state, "done");
         assert!(!m.has_audio, "音声を残さない設定なのでコピーは消える");
@@ -306,11 +342,43 @@ mod tests {
         let st = Store::open(&d.join("db.sqlite3")).unwrap();
         let mid = st.add_meeting("t", "t05.wav", &audio.to_string_lossy(), false).unwrap();
         enqueue(&st, mid).unwrap();
-        run_jobs(&st, &TwoLines, &d, &Options { keep_audio: true, embedder: Some(&ByLoudness) }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+        run_jobs(&st, &TwoLines, &d, &Options { embedder: Some(&ByLoudness), ..Options::basic(true) }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
         assert!(!st.windows(mid).unwrap().is_empty());
         assert!(st.segments(mid).unwrap().iter().all(|s| s.speaker.starts_with("話者")));
         assert_eq!(relabel(&st, mid, Some(1), true).unwrap(), st.segments(mid).unwrap().len());
         assert!(st.segments(mid).unwrap().iter().all(|s| s.speaker == "話者1"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 無料版は1件の長さと累計で止まり_有料にすると続きから() {
+        use std::cell::Cell;
+        let d = tmp("free");
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t01_clean.wav"); // 165 秒
+        let audio = d.join("copy.wav");
+        std::fs::copy(&src, &audio).unwrap();
+        let st = Store::open(&d.join("db.sqlite3")).unwrap();
+        let mid = st.add_meeting("t", "t01.wav", &audio.to_string_lossy(), false).unwrap();
+        enqueue(&st, mid).unwrap();
+        // 1件 60 秒まで、累計の残り 40 秒
+        let used = std::sync::Mutex::new(0u64);
+        let rem = || 40_000u64.saturating_sub(*used.lock().unwrap());
+        let firsts = Cell::new(0);
+        let on = |ms: u64, first: bool| { *used.lock().unwrap() += ms; if first { firsts.set(firsts.get() + 1) } };
+        let o = Options { meeting_limit_ms: Some(60_000), remaining_ms: Some(&rem), on_used: Some(&on), ..Options::basic(true) };
+        run_jobs(&st, &FakeAsr { text: "a".into() }, &d, &o, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+        let m = st.meeting(mid).unwrap().unwrap();
+        assert_eq!(m.state, "failed");
+        assert_eq!(m.error.as_deref(), Some(LIMIT_REACHED));
+        assert_eq!(firsts.get(), 1);
+        let (done, total) = st.chunk_progress(mid).unwrap();
+        assert!(done >= 1 && done < total);
+        assert!(st.segments(mid).unwrap().iter().all(|s| s.end_ms <= 60_000), "1件の上限で切れる");
+        // 有料にして、やり直すと続きの区間から(上限なし)
+        st.db.conn.execute("DELETE FROM jobs", []).unwrap();
+        enqueue(&st, mid).unwrap();
+        run_jobs(&st, &FakeAsr { text: "b".into() }, &d, &Options::basic(true), &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+        assert_eq!(st.meeting(mid).unwrap().unwrap().state, "done");
         std::fs::remove_dir_all(&d).ok();
     }
 
@@ -322,7 +390,7 @@ mod tests {
         let st = Store::open_in_memory().unwrap();
         let mid = st.add_meeting("x", "bad.m4a", &bad.to_string_lossy(), false).unwrap();
         enqueue(&st, mid).unwrap();
-        run_jobs(&st, &FakeAsr { text: "".into() }, &d, &Options { keep_audio: true, embedder: None }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+        run_jobs(&st, &FakeAsr { text: "".into() }, &d, &Options::basic(true), &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
         let m = st.meeting(mid).unwrap().unwrap();
         assert_eq!(m.state, "failed");
         assert!(m.error.unwrap().contains("形式"));

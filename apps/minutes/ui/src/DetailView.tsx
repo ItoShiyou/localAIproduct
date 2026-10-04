@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api";
 import { OptionsForm, optionsValid } from "./OptionsForm";
-import type { Detail, ExportFormat, ProcessOptions, Segment, SettingsInfo, Todo } from "./types";
+import type { Detail, ExportFormat, Plan, ProcessOptions, Segment, SettingsInfo, Todo } from "./types";
 import { LANGUAGE_LABEL, STATE_LABEL, hms, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
@@ -192,8 +192,8 @@ function PrintDialog({ value, onChange, onPrint, onClose }: { value: PrintOption
 }
 
 /** 1つの議事録の確認画面 */
-export function DetailView({ api, id, version, seekTo, settings, onChanged, onDeleted, onRetry, onReprocessed }: {
-  api: Api; id: number; version: number; seekTo: { ms: number; n: number } | null; settings: SettingsInfo | null;
+export function DetailView({ api, id, version, seekTo, settings, plan, onChanged, onDeleted, onRetry, onReprocessed }: {
+  api: Api; id: number; version: number; seekTo: { ms: number; n: number } | null; settings: SettingsInfo | null; plan: Plan | null;
   onChanged: () => void; onDeleted: () => void; onRetry: () => void; onReprocessed: () => void;
 }) {
   const [d, setD] = useState<Detail | null>(null);
@@ -388,7 +388,7 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
         <span className="grow" />
         <button className="btn small" disabled={!d.canUndo} onClick={() => run(() => api.undo(id))}>元に戻す</button>
         <button className="btn small" onClick={() => setFind((f) => ({ ...f, open: !f.open }))}>検索・置換</button>
-        <button className="btn small" disabled={!done} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); setMsg(`用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); } catch (e) { setMsg(String(e)); } }}>用語辞書を適用</button>
+        <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); setMsg(`用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); } catch (e) { setMsg(String(e)); } }}>用語辞書を適用</button>
         <button className="btn small" disabled={!m.hasAudio || m.state === "processing"} title={m.hasAudio ? "" : "音声を残していないため、やり直せません"}
           onClick={() => setRedo({ denoise: m.denoise, diarize: m.diarize, numSpeakers: m.numSpeakers, language: m.language, rangeStartMs: m.rangeStartMs, rangeEndMs: m.rangeEndMs })}>設定を変えてやり直す</button>
         {m.status === "draft"
@@ -396,12 +396,10 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
           : <button className="btn small" onClick={() => run(() => api.unconfirm(id))}>下書きに戻す</button>}
         <select aria-label="書き出し" value="" disabled={m.status !== "confirmed"} onChange={(e) => { if (e.target.value) exp(e.target.value as ExportFormat | "wav" | "pdf"); }}>
           <option value="">書き出し…</option>
-          <option value="docx">Word(.docx)</option>
-          <option value="pdf">PDF(印刷から保存)</option>
-          <option value="md">Markdown</option>
-          <option value="txt">テキスト</option>
-          <option value="srt">字幕(SRT)</option>
-          {m.hasAudio && <option value="wav">ノイズ除去後の音声(WAV)</option>}
+          {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
+            const ok = plan?.exports.includes(v) ?? true;
+            return <option key={v} value={v} disabled={!ok}>{label}{ok ? "" : "(有料版)"}</option>;
+          })}
         </select>
         {!delAsk ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>削除</button> : (
           <span className="ask">音声と文字をまとめて消します。
@@ -415,7 +413,7 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
         <div className="modal" role="dialog" aria-label="設定を変えてやり直す">
           <div className="modal-body">
             <h2>設定を変えて、文字起こしをやり直す</h2>
-            <OptionsForm value={redo} onChange={setRedo} diarizeAvailable={settings?.diarizeAvailable ?? true} />
+            <OptionsForm value={redo} onChange={setRedo} diarizeAvailable={settings?.diarizeAvailable ?? true} plan={plan} />
             <p className="msg err">これまでの修正(文・話者・結合・分割)は消えます。タイトル・日付・参加者・議題などは残ります。</p>
             <div className="row">
               <button className="btn danger" disabled={!optionsValid(redo)} onClick={async () => {
@@ -436,7 +434,8 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
       )}
       {m.status !== "confirmed" && done && !d.provisional && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
       {msg && <p className="msg">{msg}</p>}
-      {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>やり直す</button></p>}
+      {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>{/有料版/.test(m.error ?? "") ? "続きから文字起こし" : "やり直す"}</button></p>}
+      {plan?.tier === "free" && done && <p className="note">無料版は小さなモデルで文字起こししています。有料版では、より正確なモデルで文字起こしし直せます(「設定を変えてやり直す」)。</p>}
 
       {find.open && (
         <div className="findbar card" data-testid="findbar">
@@ -499,7 +498,7 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
             )
           ))}
           <span className="grow" />
-          {done && (settings?.diarizeAvailable ?? true) && (
+          {done && (settings?.diarizeAvailable ?? true) && (plan?.diarize ?? true) && (
             <label>判別し直す
               <select value="" aria-label="話者を判別し直す" onChange={(e) => {
                 if (!e.target.value) return;

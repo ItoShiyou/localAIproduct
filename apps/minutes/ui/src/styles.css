@@ -209,3 +209,8 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
 .banner { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef3fd; color: #1f4fa8; font-size: 13px; }
 .seg.provisional { cursor: default; opacity: .85; }
 .seg-text { margin: 4px 0 0; font-size: 15px; line-height: 1.6; color: var(--sub); }
+
+/* ---- 無料版・有料版 ---- */
+.pro { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 4px; background: #fdf2e3; color: #a85c00; border: 1px solid #f1cf9c; vertical-align: middle; }
+.locked { color: var(--sub); }
+.plan-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; background: #fffaf2; border-top: 1px solid #f1e3cc; border-bottom: 1px solid #f1e3cc; }

@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(audio::decode_to_pcm16k(Path::new(&wav), &pcm).unwrap() / 1000, 9);
         assert!(!d.join("work").join(format!("meeting-{id}.pcm")).exists());
         // 正確なモデルで処理すると、仮の文字が置き換わる
-        crate::pipeline::run_jobs(&st, &FakeAsr { text: "正確".into() }, &d.join("work"), &crate::pipeline::Options { keep_audio: true, embedder: None }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+        crate::pipeline::run_jobs(&st, &FakeAsr { text: "正確".into() }, &d.join("work"), &crate::pipeline::Options::basic(true), &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
         let segs = st.segments(id).unwrap();
         assert!(!segs.is_empty() && segs.iter().all(|s| s.text == "正確" && s.chunk_idx >= 0), "{segs:?}");
         assert_eq!(st.meeting(id).unwrap().unwrap().state, "done");

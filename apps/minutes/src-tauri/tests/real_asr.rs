@@ -46,7 +46,7 @@ fn 実モデルでテストセットを文字起こしする() {
             let mid = st.add_meeting(f, f, &copy.to_string_lossy(), denoise).unwrap();
             enqueue(&st, mid).unwrap();
             let t0 = std::time::Instant::now();
-            run_jobs(&st, &asr, &d, &Options { keep_audio: true, embedder: None }, &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
+            run_jobs(&st, &asr, &d, &Options::basic(true), &Arc::new(AtomicBool::new(false)), |_, _, _| {}).unwrap();
             let secs = t0.elapsed().as_secs_f64();
             let m = st.meeting(mid).unwrap().unwrap();
             assert_eq!(m.state, "done", "{:?}", m.error);

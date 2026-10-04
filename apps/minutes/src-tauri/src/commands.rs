@@ -8,6 +8,7 @@ use crate::asr::Asr;
 use crate::export::{render, Format};
 use crate::pipeline::{self, Options, JOB_KIND};
 use crate::diarize::Embedder;
+use crate::plan::{Entitlements, Ledger, Tier, Usage, PRO_ONLY};
 use crate::store::{GlossaryEntry, Meeting, MeetingFilter, ProcessOptions, SearchHit, Segment, Store, Todo};
 use factory_core::jobs::Jobs;
 use factory_core::model_manager::{ModelManager, ModelSpec, ModelStatus};
@@ -121,10 +122,34 @@ pub struct AppState {
     /// 録音中の仮の文字に使う、速い小さなモデル(初回に読み込む)と、その場所
     live_asr: Mutex<Option<Arc<dyn Asr>>>,
     live_models: Mutex<Vec<PathBuf>>,
+    /// 無料版/有料版(ライセンスで決まる。いまは開発用の判定)
+    tier: Mutex<Tier>,
+    /// 無料版の使った量の記録
+    ledger: Mutex<Ledger>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+/// ライセンスとつなぐまでの判定: 環境変数 MINUTES_TIER(pro / free)→ 開発用のビルドは有料版、配布用は無料版。
+fn default_tier() -> Tier {
+    match std::env::var("MINUTES_TIER").as_deref() {
+        Ok("pro") => Tier::Pro,
+        Ok("free") => Tier::Free,
+        _ if cfg!(debug_assertions) => Tier::Pro,
+        _ => Tier::Free,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDto {
+    #[serde(flatten)]
+    pub ent: Entitlements,
+    pub usage: Usage,
+    /// 無料版の残り(ミリ秒)。有料版は None
+    pub remaining_ms: Option<u64>,
 }
 
 fn flag(s: &Settings, key: &str, default: bool) -> bool {
@@ -134,6 +159,7 @@ fn flag(s: &Settings, key: &str, default: bool) -> bool {
 impl AppState {
     /// `asr` を渡すと、それを使う(テスト用)。None なら、モデルの場所から `loader` で読み込む。
     pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, fixed_models: Vec<(PathBuf, &'static str)>) -> Result<Self, String> {
+        let data_dir_for_ledger = data_dir.clone();
         let app = AppData::init(&data_dir).map_err(err)?;
         let models = ModelManager::new(data_dir.join("models"));
         let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
@@ -165,6 +191,8 @@ impl AppState {
             recorder: Mutex::new(None),
             live_asr: Mutex::new(None),
             live_models: Mutex::new(Vec::new()),
+            tier: Mutex::new(default_tier()),
+            ledger: Mutex::new(Ledger::new(vec![Box::new(crate::plan::FileSlot(data_dir_for_ledger.join("usage.dat")))])),
         })
     }
 
@@ -209,7 +237,20 @@ impl AppState {
     // ---------------- 取り込みと処理 ----------------
 
     /// 録音ファイルを取り込む(コピーし、処理の待ちに入れる)。議事録の id を返す。
+    /// 無料版で使えない設定を外す
+    fn allowed_options(&self, o: &ProcessOptions) -> ProcessOptions {
+        let e = self.ent();
+        let mut o = o.clone();
+        o.denoise &= e.denoise;
+        o.diarize &= e.diarize;
+        o
+    }
+
     pub fn import_audio(&self, path: &Path, opts: &ProcessOptions) -> Result<i64, String> {
+        let opts = &self.allowed_options(opts);
+        if self.plan().remaining_ms == Some(0) {
+            return Err(crate::pipeline::LIMIT_REACHED.into());
+        }
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
         if !AUDIO_EXTS.contains(&ext.as_str()) {
             return Err("対応している形式は m4a / mp3 / wav / mp4 などです".into());
@@ -255,9 +296,20 @@ impl AppState {
                 return Err(e);
             }
         };
-        let emb = self.embedder();
+        let ent = self.ent();
+        let emb = if ent.diarize { self.embedder() } else { None };
+        let remaining = || self.ledger.lock().unwrap_or_else(|p| p.into_inner()).remaining(&ent).unwrap_or(u64::MAX);
+        let on_used = |ms: u64, first: bool| self.ledger.lock().unwrap_or_else(|p| p.into_inner()).add(ms, first);
         let res = Store::open(&self.db_path()).map_err(err).and_then(|worker| {
-            let opts = Options { keep_audio, embedder: emb.as_deref() };
+            let free = ent.total_limit_ms.is_some();
+            let opts = Options {
+                keep_audio,
+                embedder: emb.as_deref(),
+                meeting_limit_ms: ent.meeting_limit_ms,
+                remaining_ms: if free { Some(&remaining) } else { None },
+                on_used: if free { Some(&on_used) } else { None },
+                use_glossary: ent.glossary,
+            };
             pipeline::run_jobs(&worker, asr.as_ref(), &self.app.root.join("work"), &opts, &self.cancel, |mid, d, t| {
                 *self.current.lock().unwrap_or_else(|p| p.into_inner()) = (Some(mid), d, t);
             })
@@ -303,8 +355,41 @@ impl AppState {
         self.model_source().map(|(p, _)| p)
     }
 
-    /// 文字起こしエンジン(初回に読み込む)。モデルが無ければ、その旨のエラー(待ちのジョブはそのまま残る)。
+    // ---------------- 無料版・有料版 ----------------
+
+    pub fn ent(&self) -> Entitlements {
+        Entitlements::of(*self.tier.lock().unwrap_or_else(|p| p.into_inner()))
+    }
+
+    pub fn set_tier(&self, t: Tier) {
+        *self.tier.lock().unwrap_or_else(|p| p.into_inner()) = t;
+    }
+
+    /// 使った量の記録の場所を設定する(起動時。データフォルダの外とキーチェーンにも置く)
+    pub fn set_ledger(&self, l: Ledger) {
+        *self.ledger.lock().unwrap_or_else(|p| p.into_inner()) = l;
+    }
+
+    pub fn plan(&self) -> PlanDto {
+        let ent = self.ent();
+        let l = self.ledger.lock().unwrap_or_else(|p| p.into_inner());
+        PlanDto { remaining_ms: l.remaining(&ent), usage: l.usage(), ent }
+    }
+
+    fn require(&self, ok: bool) -> Result<(), String> {
+        if ok { Ok(()) } else { Err(PRO_ONLY.into()) }
+    }
+
+    /// 文字起こしエンジン。有料版は正確なモデル、無料版は小さなモデル。
     fn engine(&self) -> Result<Arc<dyn Asr>, String> {
+        if !self.ent().accurate_model {
+            return self.live_engine();
+        }
+        self.accurate_engine()
+    }
+
+    /// 正確なモデル(初回に読み込む)。モデルが無ければ、その旨のエラー(待ちのジョブはそのまま残る)。
+    fn accurate_engine(&self) -> Result<Arc<dyn Asr>, String> {
         let mut g = self.asr.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(a) = g.as_ref() {
             return Ok(a.clone());
@@ -390,7 +475,7 @@ impl AppState {
         let path = self.live_models.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|p| p.exists()).cloned();
         let a: Arc<dyn Asr> = match path {
             Some(p) => Arc::from((self.loader)(&p)?),
-            None => self.engine()?,
+            None => self.accurate_engine()?,
         };
         *g = Some(a.clone());
         Ok(a)
@@ -398,6 +483,10 @@ impl AppState {
 
     /// マイクの録音を始める(議事録を作り、話しながら文字にしていく)。議事録の id を返す。
     pub fn record_start(&self, opts: &ProcessOptions) -> Result<i64, String> {
+        let opts = &self.allowed_options(opts);
+        if self.plan().remaining_ms == Some(0) {
+            return Err(crate::pipeline::LIMIT_REACHED.into());
+        }
         let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
         if rec.is_some() {
             return Err("すでに録音中です".into());
@@ -435,6 +524,11 @@ impl AppState {
         let x: Vec<f32> = bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
         let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
         let r = rec.as_mut().ok_or("録音していません")?;
+        if let Some(lim) = self.ent().meeting_limit_ms {
+            if r.status().elapsed_ms >= lim {
+                return Err("無料版で録音できるのは1件 15 分までです。「止めて保存」を押してください(有料版は制限なし)".into());
+            }
+        }
         r.push(&self.store(), &x)
     }
 
@@ -489,6 +583,7 @@ impl AppState {
     /// 話者を判別し直す(人数を指定できる)。利用者が付けた名前も上書きする(元に戻せる)。
     /// 声の特徴が求めてあればそれを使い、無ければ音声から求める(音声を残していない議事録はできない)。
     pub fn rediarize(&self, id: i64, num_speakers: Option<i64>) -> Result<DetailDto, String> {
+        self.require(self.ent().diarize)?;
         let store = self.store();
         let have = !store.windows(id).map_err(err)?.is_empty();
         if have {
@@ -612,6 +707,7 @@ impl AppState {
     }
 
     pub fn reapply_glossary(&self, id: i64) -> Result<(usize, DetailDto), String> {
+        self.require(self.ent().glossary)?;
         let n = self.store().reapply_glossary(id).map_err(err)?;
         Ok((n, self.detail(id)?))
     }
@@ -647,7 +743,12 @@ impl AppState {
         if m.status != "confirmed" {
             return Err("確定した議事録だけを書き出せます。確認画面で確定してください".into());
         }
-        let body = render(f, &m, &store.segments(id).map_err(err)?)?;
+        let ent = self.ent();
+        self.require(ent.can_export(format))?;
+        let mut body = render(f, &m, &store.segments(id).map_err(err)?)?;
+        if ent.tier == Tier::Free {
+            body.extend_from_slice(format!("\n{}\n", crate::plan::FREE_FOOTER).as_bytes());
+        }
         std::fs::write(dest, body).map_err(|_| "書き出し先に保存できません".to_string())
     }
 
@@ -660,6 +761,7 @@ impl AppState {
 
     /// ノイズ除去後の音声(16kHz WAV)を書き出す。音声を残していない議事録はできない。
     pub fn export_denoised(&self, id: i64, dest: &Path) -> Result<(), String> {
+        self.require(self.ent().can_export("wav"))?;
         let (audio, _) = self.store().paths(id).map_err(err)?;
         let audio = audio.ok_or("音声を残していないため書き出せません")?;
         let tmp = self.app.root.join("work").join(format!("export-{id}.pcm"));
@@ -695,6 +797,7 @@ impl AppState {
 
     /// CSV から用語辞書に取り込む。(取り込んだ数, 飛ばした行の理由, 取り込み後の一覧)
     pub fn import_glossary(&self, src: &Path) -> Result<(usize, Vec<String>, Vec<GlossaryEntry>), String> {
+        self.require(self.ent().glossary)?;
         let bytes = std::fs::read(src).map_err(|_| "ファイルを読めません".to_string())?;
         if bytes.len() > 10 * 1024 * 1024 {
             return Err("ファイルが大きすぎます(10MBまで)".into());
@@ -704,6 +807,7 @@ impl AppState {
     }
 
     pub fn add_glossary(&self, wrong: &str, right: &str) -> Result<Vec<GlossaryEntry>, String> {
+        self.require(self.ent().glossary)?;
         self.store().add_glossary(wrong, right).map_err(err)?;
         self.glossary()
     }
@@ -760,6 +864,8 @@ impl AppState {
         }
         let n = self.app.delete_all().map_err(err)?;
         *store = Store::open(&self.db_path()).map_err(err)?;
+        // 無料版の使った量は消さない(データフォルダの中の記録も書き戻す)
+        self.ledger.lock().unwrap_or_else(|p| p.into_inner()).add(0, false);
         Ok(n)
     }
 }
@@ -862,6 +968,32 @@ mod tests {
         let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
         s.run_jobs().unwrap();
         assert!(s.detail(id).unwrap().segments[0].text.contains("res"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 無料版は書き出しと有料機能が制限され_使った量は全削除でも戻らない() {
+        let d = tmp("free");
+        let s = state(&d, Some(Box::new(FakeAsr { text: "テスト".into() })));
+        s.set_tier(Tier::Free);
+        assert!(s.add_glossary("a", "b").unwrap_err().contains("有料版"));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, &ProcessOptions::default()).unwrap();
+        let m = s.detail(id).unwrap().meeting;
+        assert!(!m.denoise && !m.diarize, "無料版では外れる");
+        // 無料版は小さなモデルを使う(ここでは候補が無いので正確なモデルの読み込みに落ちる → テストでは渡した FakeAsr)
+        s.run_jobs().unwrap();
+        let used = s.plan().usage.used_ms;
+        assert!(used > 50_000 && s.plan().remaining_ms == Some(crate::plan::FREE_TOTAL_MS - used));
+        s.confirm(id).unwrap();
+        let out = d.join("a.txt");
+        s.export(id, "txt", &out).unwrap();
+        assert!(std::fs::read_to_string(&out).unwrap().contains("無料版で作成"));
+        assert!(s.export(id, "docx", &d.join("a.docx")).unwrap_err().contains("有料版"));
+        assert!(s.rediarize(id, Some(2)).unwrap_err().contains("有料版"));
+        std::fs::remove_file(&out).ok();
+        s.delete_all().unwrap();
+        assert_eq!(s.plan().usage.used_ms, used, "全削除でも戻らない");
         std::fs::remove_dir_all(&d).ok();
     }
 

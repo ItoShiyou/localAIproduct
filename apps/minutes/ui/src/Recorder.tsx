@@ -40,8 +40,8 @@ function resample(x: Float32Array, from: number, to: number): Float32Array {
 }
 
 /** 録音中の表示と、マイクからの取り込み。始まったら onStarted(議事録の id)、止めたら onStopped を呼ぶ */
-export function Recorder({ api, opts, onStarted, onStopped, onCancel }: {
-  api: Api; opts: ProcessOptions; onStarted: (id: number) => void; onStopped: (id: number) => void; onCancel: () => void;
+export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }: {
+  api: Api; opts: ProcessOptions; limitMs: number | null; onStarted: (id: number) => void; onStopped: (id: number) => void; onCancel: () => void;
 }) {
   const [st, setSt] = useState<RecordStatus | null>(null);
   const [phase, setPhase] = useState<"starting" | "recording" | "stopping">("starting");
@@ -113,6 +113,12 @@ export function Recorder({ api, opts, onStarted, onStopped, onCancel }: {
     onCancel();
   };
 
+  // 無料版は1件の上限で自動的に止める
+  useEffect(() => {
+    if (limitMs != null && phase === "recording" && (st?.elapsedMs ?? 0) >= limitMs - 600) stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st, limitMs, phase]);
+
   const lvl = Math.min(1, (st?.level ?? 0) * 8);
   return (
     <div className="recorder card" data-testid="recorder" role="region" aria-label="録音">
@@ -122,6 +128,7 @@ export function Recorder({ api, opts, onStarted, onStopped, onCancel }: {
         <span className="mono">{hms(st?.elapsedMs ?? 0)}</span>
         <span className="meter" aria-label="音の大きさ"><span style={{ width: `${lvl * 100}%` }} /></span>
       </div>
+      {limitMs != null && <p className="note">無料版は1件 {Math.floor(limitMs / 60000)} 分までで、自動的に止まります。</p>}
       <p className="note">文字は 10〜20 秒ほど遅れて、仮の文字(精度は低め)として出ます。止めると、正確なモデルで最初から文字起こしし直します。</p>
       {(st?.pendingChunks ?? 0) > 2 && <p className="note">文字起こしが追いついていません(待ち {st?.pendingChunks})。録音は続いています。</p>}
       {err && <p className="msg err">{err}</p>}

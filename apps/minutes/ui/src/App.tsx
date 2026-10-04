@@ -6,7 +6,7 @@ import { OptionsForm, defaultOptions, optionsValid } from "./OptionsForm";
 import { Recorder } from "./Recorder";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
-import type { ImportResult, Meeting, MeetingFilter, ProcessOptions, Progress, SettingsInfo } from "./types";
+import type { ImportResult, Meeting, MeetingFilter, Plan, ProcessOptions, Progress, SettingsInfo } from "./types";
 import { STATE_LABEL, hms } from "./types";
 
 type Tab = "meetings" | "search" | "glossary" | "settings";
@@ -23,6 +23,7 @@ export function App({ api }: { api: Api }) {
   const [filter, setFilter] = useState<MeetingFilter>({ tag: null, sort: "held_desc" });
   const [tags, setTags] = useState<[string, number][]>([]);
   const [recordOpts, setRecordOpts] = useState<ProcessOptions | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [askConsent, setAskConsent] = useState<null | (() => void)>(null);
   const [version, setVersion] = useState(0);
@@ -30,7 +31,8 @@ export function App({ api }: { api: Api }) {
   const running = useRef(false);
 
   const refresh = useCallback(async () => {
-    const [ms, p, tg] = await Promise.all([api.meetings(filter), api.progress(), api.allTags()]);
+    const [ms, p, tg, pl] = await Promise.all([api.meetings(filter), api.progress(), api.allTags(), api.plan()]);
+    setPlan(pl);
     setMeetings(ms);
     setProgress(p);
     setTags(tg);
@@ -136,12 +138,19 @@ export function App({ api }: { api: Api }) {
                 <button className="link" onClick={() => setShowOpts((v) => !v)} aria-expanded={showOpts}>取り込みの設定 {showOpts ? "▲" : "▼"}</button>
               </div>
               {showOpts
-                ? <div className="pad"><OptionsForm value={opts} onChange={setOpts} diarizeAvailable={settings?.diarizeAvailable ?? true} /></div>
-                : <p className="note pad">{[opts.denoise && "ノイズ除去", opts.diarize && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "人数は自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動判定"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定あり"].filter(Boolean).join("・") || "設定なし"}</p>}
+                ? <div className="pad"><OptionsForm value={opts} onChange={setOpts} diarizeAvailable={settings?.diarizeAvailable ?? true} plan={plan} /></div>
+                : <p className="note pad">{[opts.denoise && (plan?.denoise ?? true) && "ノイズ除去", opts.diarize && (plan?.diarize ?? true) && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "人数は自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動判定"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定あり"].filter(Boolean).join("・") || "設定なし"}</p>}
               <p className="note pad">m4a / mp3 / wav / mp4 など。ここにドラッグしても取り込めます。元のファイルは変更しません。</p>
+              {plan?.tier === "free" && (
+                <div className="pad plan-strip" data-testid="plan-strip">
+                  <span className="pro">無料版</span>
+                  <span>残り {Math.floor((plan.remainingMs ?? 0) / 60000)} 分(累計 {Math.floor((plan.totalLimitMs ?? 0) / 60000)} 分まで・1件 {Math.floor((plan.meetingLimitMs ?? 0) / 60000)} 分まで)</span>
+                  <button className="link" onClick={() => setTab("settings")}>有料版について</button>
+                </div>
+              )}
               {recordOpts && (
                 <div className="pad">
-                  <Recorder api={api} opts={recordOpts}
+                  <Recorder api={api} opts={recordOpts} limitMs={plan?.meetingLimitMs ?? null}
                     onStarted={(id) => { setCur(id); refresh(); }}
                     onStopped={(id) => { setRecordOpts(null); setCur(id); refresh().then(startJobs); }}
                     onCancel={() => { setRecordOpts(null); refresh(); }} />
@@ -196,14 +205,14 @@ export function App({ api }: { api: Api }) {
             </aside>
             <section className="content">
               {cur != null && meetings.some((m) => m.id === cur)
-                ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs)} />
+                ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} plan={plan} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs)} />
                 : <div className="empty">左の一覧から議事録を選ぶか、録音を取り込んでください。</div>}
             </section>
           </div>
         )}
         {tab === "search" && <SearchView api={api} onOpen={openAt} />}
-        {tab === "glossary" && <GlossaryView api={api} />}
-        {tab === "settings" && <SettingsView api={api} settings={settings} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}
+        {tab === "glossary" && <GlossaryView api={api} plan={plan} />}
+        {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}
       </main>
     </div>
   );

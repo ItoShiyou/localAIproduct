@@ -109,7 +109,10 @@ pub async fn reprocess(state: State<'_, AppState>, id: i64, opts: ProcessOptions
 
 /// 画面を印刷する(印刷用の表示に切り替えてから呼ぶ。OS の印刷ダイアログから PDF として保存できる)。
 #[tauri::command]
-pub fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
+pub fn print_page(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    if !state.ent().can_export("pdf") {
+        return Err(crate::plan::PRO_ONLY.into());
+    }
     window.print().map_err(|e| e.to_string())
 }
 
@@ -295,4 +298,9 @@ pub async fn record_stop(state: State<'_, AppState>) -> Result<DetailDto, String
 #[tauri::command]
 pub async fn record_discard(state: State<'_, AppState>) -> Result<(), String> {
     state.record_discard()
+}
+
+#[tauri::command]
+pub fn plan(state: State<'_, AppState>) -> PlanDto {
+    state.plan()
 }

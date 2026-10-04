@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { GlossaryEntry } from "./types";
+import type { GlossaryEntry, Plan } from "./types";
 
-export function GlossaryView({ api }: { api: Api }) {
+export function GlossaryView({ api, plan }: { api: Api; plan?: Plan | null }) {
+  const locked = !(plan?.glossary ?? true);
   const [items, setItems] = useState<GlossaryEntry[]>([]);
   const [wrong, setWrong] = useState("");
   const [right, setRight] = useState("");
@@ -18,18 +19,19 @@ export function GlossaryView({ api }: { api: Api }) {
   return (
     <div className="pane">
       <section className="card">
-        <h2>用語辞書</h2>
+        <h2>用語辞書{locked && <span className="pro">有料版</span>}</h2>
+        {locked && <p className="msg err">用語辞書は有料版の機能です。</p>}
         <p className="note">専門用語や固有名詞を、文字起こしの後に正しい表記へ置き換えます。文字起こしの結果そのものは残るので、確認画面で元に戻せます。正しい表記は、文字起こしのヒントにも使います。</p>
         <div className="row">
           <input placeholder="誤りやすい表記(例: やまだ商事)" value={wrong} onChange={(e) => setWrong(e.target.value)} />
           <span>→</span>
           <input placeholder="正しい表記(例: 山田商事)" value={right} onChange={(e) => setRight(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-          <button className="btn primary" onClick={add}>追加</button>
+          <button className="btn primary" disabled={locked} onClick={add}>追加</button>
         </div>
         {msg && <p className="msg err">{msg}</p>}
         <div className="row">
           <button className="btn small" onClick={async () => { try { const p = await api.exportGlossary(); if (p) setMsg(`書き出しました: ${p}`); } catch (e) { setMsg(String(e)); } }}>CSV に書き出す</button>
-          <button className="btn small" onClick={async () => {
+          <button className="btn small" disabled={locked} onClick={async () => {
             try {
               const r = await api.importGlossary();
               if (!r) return;

@@ -6,6 +6,7 @@ pub mod commands;
 pub mod diarize;
 pub mod export;
 pub mod pipeline;
+pub mod plan;
 pub mod recorder;
 pub mod store;
 #[cfg(feature = "tauri")]
@@ -84,6 +85,19 @@ pub fn run() {
                 live.push(r.join("models").join("ggml-small-q5_1.bin"));
             }
             state.set_live_models(live);
+            // 無料版の使った量の記録: データフォルダ・別の場所・OS の資格情報ストア(どれか消されても戻る)
+            let id = app.config().identifier.clone();
+            let mut slots: Vec<Box<dyn plan::Slot>> = vec![Box::new(plan::FileSlot(app.path().app_data_dir().unwrap_or_default().join("usage.dat")))];
+            if let Ok(home) = app.path().home_dir() {
+                let other = if cfg!(target_os = "macos") {
+                    home.join("Library").join("Preferences").join(format!("{id}.usage"))
+                } else {
+                    home.join("AppData").join("Local").join(format!("{id}-usage")).join("usage.dat")
+                };
+                slots.push(Box::new(plan::FileSlot(other)));
+            }
+            slots.push(Box::new(plan::KeychainSlot { service: id }));
+            state.set_ledger(plan::Ledger::new(slots));
             *state.notices_path.lock().unwrap() = res.map(|r| r.join("THIRD_PARTY_NOTICES.txt"));
             app.manage(state);
             Ok(())
@@ -139,6 +153,7 @@ pub fn run() {
             tauri_glue::record_status,
             tauri_glue::record_stop,
             tauri_glue::record_discard,
+            tauri_glue::plan,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");

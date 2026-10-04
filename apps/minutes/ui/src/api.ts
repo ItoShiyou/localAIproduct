@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, ProcessOptions, Progress, RecordStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -37,6 +37,8 @@ export interface Api {
   /** 止める(正確な文字起こしを待ちに入れる。そのあと runJobs を呼ぶ) */
   recordStop(): Promise<Detail>;
   recordDiscard(): Promise<void>;
+  /** 無料版/有料版と、無料版の使った量 */
+  plan(): Promise<Plan>;
   detail(id: number): Promise<Detail>;
   /** 再生用の URL(音声を残していなければ null) */
   audioUrl(id: number): Promise<string | null>;
@@ -111,6 +113,7 @@ export function makeTauriApi(t: TauriGlobal): Api {
     recordPush: (pcm) => invoke("record_push", { pcm }),
     recordStop: () => invoke("record_stop"),
     recordDiscard: () => invoke("record_discard"),
+    plan: () => invoke("plan"),
     detail: (id) => invoke("detail", { id }),
     async audioUrl(id) {
       const p = await invoke<string | null>("audio_path", { id });
@@ -158,6 +161,7 @@ export function makeMockApi(): Api {
   let glossary: GlossaryEntry[] = [];
   let nextId = 1, nextSeg = 1, pending: number[] = [], printed = 0;
   let recording: { id: number; pushes: number } | null = null;
+  let usedMs = 0;
   let settings: SettingsInfo = {
     updateCheck: true, keepAudio: true, denoiseDefault: true, consentShown: false, dataDir: "(モック)", model: "mock",
     diarizeAvailable: true, diarizeError: null,
@@ -208,6 +212,7 @@ export function makeMockApi(): Api {
           speaker: mm.diarize ? `話者${[1, 2, 1, 2, 3, 3][i]}` : "", text: gl(t), rawText: t, confidence: i === 2 || i === 4 ? 0.45 : 0.9, edited: false,
         })));
         meetings = meetings.map((x) => (x.id === id ? { ...x, state: "done", durationMs: 24_000, hasAudio: settings.keepAudio } : x));
+        usedMs += 24_000;
       }
       current = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
       return ids.length;
@@ -281,6 +286,13 @@ export function makeMockApi(): Api {
       meetings = meetings.map((x) => (x.id === id ? { ...x, state: "queued", recording: false, durationMs: 24_000 } : x));
       pending.push(id);
       return det(id);
+    },
+    async plan() {
+      const free = typeof location !== "undefined" && location.search.includes("free");
+      const used = free ? usedMs : 0;
+      return free
+        ? { tier: "free", accurateModel: false, diarize: false, denoise: false, glossary: false, summary: false, exports: ["txt"], totalLimitMs: 3_600_000, meetingLimitMs: 900_000, usage: { usedMs: used, count: 0, tampered: false }, remainingMs: Math.max(0, 3_600_000 - used) }
+        : { tier: "pro", accurateModel: true, diarize: true, denoise: true, glossary: true, summary: true, exports: ["docx", "pdf", "md", "txt", "srt", "wav"], totalLimitMs: null, meetingLimitMs: null, usage: { usedMs: 0, count: 0, tampered: false }, remainingMs: null };
     },
     async recordDiscard() { if (recording) { const id = recording.id; meetings = meetings.filter((x) => x.id !== id); segs.delete(id); recording = null; } },
     async importGlossary() { glossary = [...glossary, { id: nextId++, wrong: "くらうど", right: "クラウド" }]; return [1, [], glossary]; },

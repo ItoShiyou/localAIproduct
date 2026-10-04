@@ -30,7 +30,7 @@ fn 長い録音を中断して再開し_最後まで処理する() {
     let cancel = Arc::new(AtomicBool::new(false));
     let t0 = std::time::Instant::now();
     let c2 = cancel.clone();
-    run_jobs(&st, &asr, &d, &Options { keep_audio: true, embedder: None }, &cancel, |_, done, _| if done >= 10 { c2.store(true, Ordering::SeqCst) }).unwrap();
+    run_jobs(&st, &asr, &d, &Options::basic(true), &cancel, |_, done, _| if done >= 10 { c2.store(true, Ordering::SeqCst) }).unwrap();
     let t1 = t0.elapsed().as_secs_f64();
     let (done1, total) = st.chunk_progress(mid).unwrap();
     assert_eq!(st.meeting(mid).unwrap().unwrap().state, "queued");
@@ -40,7 +40,7 @@ fn 長い録音を中断して再開し_最後まで処理する() {
     // 2回目: 続きから
     cancel.store(false, Ordering::SeqCst);
     let t2 = std::time::Instant::now();
-    run_jobs(&st, &asr, &d, &Options { keep_audio: true, embedder: None }, &cancel, |_, _, _| {}).unwrap();
+    run_jobs(&st, &asr, &d, &Options::basic(true), &cancel, |_, _, _| {}).unwrap();
     let rest = t2.elapsed().as_secs_f64();
     let m = st.meeting(mid).unwrap().unwrap();
     assert_eq!(m.state, "done", "{:?}", m.error);

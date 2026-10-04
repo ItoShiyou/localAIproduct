@@ -91,3 +91,13 @@ export function speakerColor(name: string): string {
   for (const c of name) h = (h * 31 + c.codePointAt(0)!) >>> 0;
   return palette[h % palette.length];
 }
+
+export interface Plan {
+  tier: "free" | "pro";
+  accurateModel: boolean; diarize: boolean; denoise: boolean; glossary: boolean; summary: boolean;
+  exports: string[];
+  totalLimitMs: number | null; meetingLimitMs: number | null;
+  usage: { usedMs: number; count: number; tampered: boolean };
+  remainingMs: number | null;
+}
+export const PRO_LABEL = "有料版";
