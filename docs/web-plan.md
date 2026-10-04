@@ -51,6 +51,18 @@
 - アクセス解析は、入れるとしてもクッキーを使わない方式(プライバシーの方針と矛盾させない)。いまは入れない。
 - 公開先(独自ドメイン・ホスティング)は未定(利用者が決める。公開は止まる対象)。
 
+## 公開(GitHub Pages)
+
+準備だけ済んでいます。**利用者が有効化して実行するまで、何も公開されません。**
+
+- 仕組み: `.github/workflows/pages.yml` が `web/` を `_site/` に組み立てる。`core/brand/tokens.css` を `_site/tokens.css` に同梱し、`site.css` の import を `tokens.css` に書き換える(プロジェクトサイトの `https://<ユーザー>.github.io/<リポジトリ>/` でも CSS が届くように。ローカル確認用の元ファイルは変えない)。`.nojekyll`、`404.html`、`robots.txt`(巡回を許可)も含む。
+- いつ動くか: `web/**`・`core/brand/**`・ワークフロー自体の変更を `main` か `mac/verify` に push したとき、または手動実行(workflow_dispatch)。**公開(deploy)は `main` への push と手動実行のときだけ。** `mac/verify` への push は組み立ての確認のみ。
+- 利用者がすること:
+  1. リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
+  2. 公開してよいと判断したら、`main` に反映するか、Actions タブから pages を手動実行する。
+- 要確認: 非公開(private)リポジトリで GitHub Pages を使うには有料プランが必要で、無料プランではリポジトリを公開(public)にする必要がある。どちらにするか確認してから有効化すること。
+- 独自ドメインは後から設定できる(任意)。名前・ロゴ・アイコンは未確定のため入れていない。
+
 ## 次の作業
 
 1. 試作(`web/index.html`、`web/minutes/index.html`)— この文書と同時に作成。

@@ -1,0 +1,57 @@
+name: pages
+
+# web/ の静的サイトを GitHub Pages に公開するワークフロー。
+# 公開されるのは「main への push」または「手動実行(workflow_dispatch)」のときだけ。
+# mac/verify への push は、サイトの組み立て(build)の確認のみで、公開(deploy)はしない。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, mac/verify]
+    paths:
+      - "web/**"
+      - "core/brand/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        # Pages が未有効のリポジトリでも build だけは確認できるよう、失敗しても続行する
+        continue-on-error: true
+      - name: サイトを組み立てる(_site)
+        run: |
+          set -eu
+          mkdir _site
+          cp -R web/. _site/
+          # デザイントークンを同梱し、CSS の import を同じ階層に書き換える
+          # (プロジェクトサイトでは ../ がドメイン直下に出てしまうため)
+          cp core/brand/tokens.css _site/tokens.css
+          sed -i 's#@import "../core/brand/tokens.css";#@import "tokens.css";#' _site/site.css
+          grep -q '@import "tokens.css";' _site/site.css
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  # 公開は main への push か手動実行のときだけ(mac/verify では実行されない)
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
