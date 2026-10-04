@@ -16,5 +16,10 @@ export GGML_METAL=OFF
 cd "$APP/summarizer"
 cargo build --release --target "$TARGET"
 mkdir -p "$APP/src-tauri/binaries"
-cp "target/$TARGET/release/minutes-summarizer$EXT" "$APP/src-tauri/binaries/minutes-summarizer-$TARGET$EXT"
+# 置き先に空の仮ファイル(src-tauri/build.rs が debug のビルドで置く。実行権限が無い)が既にあると、cp は権限を引き継がず上書きするだけで、
+# できあがった .app の中のサイドカーが実行できなくなる(実際に起きた: Permission denied)。消してから、実行権限を付けて置く
+DEST="$APP/src-tauri/binaries/minutes-summarizer-$TARGET$EXT"
+rm -f "$DEST"
+install -m 755 "target/$TARGET/release/minutes-summarizer$EXT" "$DEST"
+[[ "$EXT" == ".exe" || -x "$DEST" ]] || { echo "サイドカーに実行権限がありません: $DEST" >&2; exit 1; }
 echo "サイドカーを置きました: src-tauri/binaries/minutes-summarizer-$TARGET$EXT ($(du -h "$APP/src-tauri/binaries/minutes-summarizer-$TARGET$EXT" | cut -f1))"
