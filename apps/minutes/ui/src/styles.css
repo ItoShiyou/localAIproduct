@@ -195,7 +195,6 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
   .pd-text { margin: 0; text-align: justify; }
   .pd-foot { margin-top: 16pt; padding-top: 6pt; border-top: .5pt solid #c8ccd2; font-size: 8pt; color: #6b7280; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
 }
-}
 
 /* ---- 録音 ---- */
 .btn.rec { color: #c0392b; border-color: #e6b0aa; }
