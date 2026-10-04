@@ -136,11 +136,16 @@ await page.getByText("確定しました").waitFor();
 await page.getByLabel("書き出し").selectOption("docx");
 await page.getByText("書き出しました").waitFor();
 await page.getByLabel("書き出し").selectOption("pdf");
+const pd = page.getByRole("dialog", { name: "PDF にする" });
+await pd.getByRole("button", { name: "印刷の画面を開く" }).click();
 await page.getByText("PDF として保存").waitFor();
+// 印刷の見た目(Chromium で PDF にして確かめる。アプリでは OS の印刷画面から保存する)
+await page.pdf({ path: path.join(shots, "print-sample.pdf"), format: "A4", preferCSSPageSize: true, printBackground: true });
 // 印刷用の表示に、議題・ToDo・話者が入っている
 const printed = await page.locator(".print-doc").evaluate((el) => el.textContent);
 assert.match(printed, /10月の定例会議/);
-assert.match(printed, /入稿\(担当: 鈴木\)\(期限: 2026-10-08\)/);
+assert.match(printed, /入稿鈴木2026-10-08/, "ToDo の表(内容・担当・期限)");
+assert.match(printed, /決定事項パンフレットは五百部/);
 assert.match(printed, /佐藤/);
 
 // 8) 設定を変えてやり直す(画面だけ確認して、やめる)

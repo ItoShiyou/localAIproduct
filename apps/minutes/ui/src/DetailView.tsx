@@ -100,8 +100,10 @@ function Notes({ d, onSave }: { d: Detail; onSave: (agenda: string, decisions: s
   );
 }
 
+export interface PrintOptions { notes: boolean; body: boolean; times: boolean; speakers: boolean }
+
 /** 印刷用(画面では隠し、印刷のときだけ出す。PDF はここから作る) */
-function PrintDoc({ d }: { d: Detail }) {
+function PrintDoc({ d, o }: { d: Detail; o: PrintOptions }) {
   const m = d.meeting;
   const paras: { t: number; sp: string; tx: string }[] = [];
   for (const s of d.segments) {
@@ -111,17 +113,81 @@ function PrintDoc({ d }: { d: Detail }) {
     else paras.push({ t: s.startMs, sp: s.speaker, tx: s.text.trim() });
   }
   const lines = (x: string) => x.split("\n").map((l) => l.trim()).filter(Boolean);
+  const speakers = [...new Set(d.segments.map((s) => s.speaker).filter(Boolean))];
+  const hasNotes = o.notes && (m.agenda.trim() || m.decisions.trim() || m.todos.length > 0);
   return (
-    <article className="print-doc" aria-hidden="true">
-      <h1>{m.title}</h1>
-      {m.heldOn && <p>日付: {m.heldOn}</p>}
-      {m.participantsText.trim() && <p>参加者: {m.participantsText}</p>}
-      {m.agenda.trim() && <><h2>議題</h2><ul>{lines(m.agenda).map((l, i) => <li key={i}>{l}</li>)}</ul></>}
-      {m.decisions.trim() && <><h2>決定事項</h2><ul>{lines(m.decisions).map((l, i) => <li key={i}>{l}</li>)}</ul></>}
-      {m.todos.length > 0 && <><h2>ToDo</h2><ul>{m.todos.map((t, i) => <li key={i}>{t.done ? "[済] " : ""}{t.text}{t.owner && `(担当: ${t.owner})`}{t.due && `(期限: ${t.due})`}</li>)}</ul></>}
-      <h2>内容</h2>
-      {paras.map((p, i) => <p key={i}>{p.sp && <b>{p.sp} </b>}<span className="ts">[{hms(p.t)}]</span> {p.tx}</p>)}
+    <article className="print-doc" aria-hidden="true" data-testid="print-doc">
+      <header className="pd-head">
+        <p className="pd-kind">議事録</p>
+        <h1>{m.title}</h1>
+        <table className="pd-meta"><tbody>
+          {m.heldOn && <tr><th>日付</th><td>{m.heldOn}</td></tr>}
+          {m.participantsText.trim() && <tr><th>参加者</th><td>{m.participantsText}</td></tr>}
+          {m.durationMs != null && <tr><th>録音の長さ</th><td>{hms(m.durationMs)}</td></tr>}
+          {o.speakers && speakers.length > 0 && (
+            <tr><th>話者</th><td>{speakers.map((sp) => <span key={sp} className="pd-spk"><i style={{ background: speakerColor(sp) }} />{sp}</span>)}</td></tr>
+          )}
+          {m.tags.length > 0 && <tr><th>タグ</th><td>{m.tags.join("、")}</td></tr>}
+        </tbody></table>
+      </header>
+      {hasNotes && (
+        <section className="pd-notes">
+          {m.agenda.trim() && <><h2>議題</h2><ol>{lines(m.agenda).map((l, i) => <li key={i}>{l}</li>)}</ol></>}
+          {m.decisions.trim() && <><h2>決定事項</h2><ul>{lines(m.decisions).map((l, i) => <li key={i}>{l}</li>)}</ul></>}
+          {m.todos.length > 0 && (
+            <>
+              <h2>ToDo</h2>
+              <table className="pd-todo">
+                <thead><tr><th className="c">状態</th><th>内容</th><th>担当</th><th>期限</th></tr></thead>
+                <tbody>{m.todos.map((t, i) => <tr key={i}><td className="c">{t.done ? "済" : "□"}</td><td>{t.text}</td><td>{t.owner}</td><td>{t.due}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+        </section>
+      )}
+      {o.body && (
+        <section className="pd-body">
+          <h2>発言の記録</h2>
+          {paras.map((p, i) => (
+            <div key={i} className="pd-row">
+              {(o.times || o.speakers) && (
+                <div className="pd-who">
+                  {o.times && <span className="pd-ts">{hms(p.t)}</span>}
+                  {o.speakers && p.sp && <span className="pd-name" style={{ color: speakerColor(p.sp) }}>{p.sp}</span>}
+                </div>
+              )}
+              <p className="pd-text">{p.tx}</p>
+            </div>
+          ))}
+        </section>
+      )}
+      <footer className="pd-foot">この記録は録音の文字起こしをもとに作成しています。文字起こしには誤りが含まれる場合があります。</footer>
     </article>
+  );
+}
+
+/** PDF にする前に、含める内容を選ぶ */
+function PrintDialog({ value, onChange, onPrint, onClose }: { value: PrintOptions; onChange: (o: PrintOptions) => void; onPrint: () => void; onClose: () => void }) {
+  const box = (k: keyof PrintOptions, label: string) => (
+    <label className="check"><input type="checkbox" checked={value[k]} onChange={(e) => onChange({ ...value, [k]: e.target.checked })} /> {label}</label>
+  );
+  return (
+    <div className="modal" role="dialog" aria-label="PDF にする">
+      <div className="modal-body">
+        <h2>PDF にする</h2>
+        <div className="col">
+          {box("notes", "議題・決定事項・ToDo")}
+          {box("body", "発言の記録")}
+          {box("times", "発言の時刻")}
+          {box("speakers", "話者の名前")}
+        </div>
+        <p className="note">次に開く印刷の画面で、左下の「PDF」→「PDF として保存」を選んでください(A4 で作ります)。</p>
+        <div className="row">
+          <button className="btn primary" disabled={!value.notes && !value.body} onClick={onPrint}>印刷の画面を開く</button>
+          <button className="btn" onClick={onClose}>やめる</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -143,6 +209,8 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
   const [find, setFind] = useState<{ open: boolean; q: string; r: string; hits: number[]; i: number }>({ open: false, q: "", r: "", hits: [], i: 0 });
   const [rename, setRename] = useState<{ from: string; to: string } | null>(null);
   const [redo, setRedo] = useState<ProcessOptions | null>(null);
+  const [printOpts, setPrintOpts] = useState<PrintOptions>({ notes: true, body: true, times: true, speakers: true });
+  const [printAsk, setPrintAsk] = useState(false);
   const player = useRef<HTMLAudioElement>(null);
   const pausedByTyping = useRef(false);
   const lastPlaying = useRef<number | undefined>(undefined);
@@ -279,7 +347,7 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
 
   const exp = async (f: ExportFormat | "wav" | "pdf") => {
     try {
-      if (f === "pdf") { await api.printPage(); setMsg("印刷の画面で「PDF として保存」を選ぶと、PDF にできます"); return; }
+      if (f === "pdf") { setPrintAsk(true); return; }
       const p = f === "wav" ? await api.exportDenoised(id) : await api.exportAs(id, f);
       if (p) setMsg(`書き出しました: ${p}`);
     } catch (e) { setMsg(String(e)); }
@@ -455,7 +523,11 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
         ))}
       </ol>
       {!segs.length && <p className="empty">{done ? "文字にできる音声がありませんでした。" : "文字起こしの結果はここに表示されます。"}</p>}
-      <PrintDoc d={d} />
+      {printAsk && (
+        <PrintDialog value={printOpts} onChange={setPrintOpts} onClose={() => setPrintAsk(false)}
+          onPrint={async () => { setPrintAsk(false); try { await api.printPage(); setMsg("印刷の画面で「PDF として保存」を選ぶと、PDF にできます"); } catch (e) { setMsg(String(e)); } }} />
+      )}
+      <PrintDoc d={d} o={printOpts} />
     </div>
   );
 }

@@ -165,14 +165,36 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
 .todo .grow { flex: 1; }
 .todo .owner { width: 100px; }
 .print-doc { display: none; }
+.modal-body .col { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+@page { size: A4; margin: 16mm 15mm 18mm; }
 @media print {
   .app > *:not(.main), .main .side, .detail > *:not(.print-doc), .modal { display: none !important; }
-  html, body, #root, .app, .main, .split, .content { height: auto !important; overflow: visible !important; display: block !important; background: #fff !important; }
-  .print-doc { display: block; font-size: 11pt; line-height: 1.7; color: #000; }
-  .print-doc h1 { font-size: 18pt; margin: 0 0 8pt; }
-  .print-doc h2 { font-size: 13pt; margin: 14pt 0 4pt; border-bottom: 1px solid #999; }
-  .print-doc .ts { color: #666; font-size: 9pt; }
-  .print-doc p { margin: 0 0 6pt; }
+  html, body, #root, .app, .main, .split, .content, .detail { height: auto !important; overflow: visible !important; display: block !important; background: #fff !important; padding: 0 !important; max-width: none !important; }
+  .print-doc { display: block; color: #1c1f24; font-size: 10.5pt; line-height: 1.75; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", serif; }
+  .pd-head { border-bottom: 1.5pt solid #1c1f24; padding-bottom: 8pt; margin-bottom: 12pt; }
+  .pd-kind { margin: 0; font-size: 9pt; letter-spacing: .3em; color: #6b7280; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+  .pd-head h1 { margin: 2pt 0 8pt; font-size: 20pt; line-height: 1.35; font-weight: 700; }
+  .pd-meta { border-collapse: collapse; font-size: 9.5pt; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+  .pd-meta th { text-align: left; font-weight: 600; color: #6b7280; padding: 1pt 12pt 1pt 0; white-space: nowrap; vertical-align: top; }
+  .pd-meta td { padding: 1pt 0; }
+  .pd-spk { display: inline-flex; align-items: center; gap: 3pt; margin-right: 10pt; }
+  .pd-spk i { width: 6pt; height: 6pt; border-radius: 50%; display: inline-block; }
+  .print-doc h2 { font-size: 12pt; margin: 14pt 0 6pt; padding-left: 6pt; border-left: 3pt solid #1c1f24; break-after: avoid; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+  .pd-notes ol, .pd-notes ul { margin: 0 0 4pt 16pt; padding: 0; }
+  .pd-todo { width: 100%; border-collapse: collapse; font-size: 9.5pt; break-inside: avoid; }
+  .pd-todo th, .pd-todo td { border: .5pt solid #c8ccd2; padding: 3pt 6pt; text-align: left; vertical-align: top; }
+  .pd-todo th { background: #f3f4f6; font-weight: 600; }
+  .pd-todo .c { width: 34pt; text-align: center; white-space: nowrap; }
+  .pd-todo th:nth-child(3), .pd-todo td:nth-child(3) { width: 22%; }
+  .pd-todo th:nth-child(4), .pd-todo td:nth-child(4) { width: 18%; white-space: nowrap; }
+  .pd-row { display: grid; grid-template-columns: 62pt 1fr; gap: 8pt; padding: 4pt 0; border-bottom: .5pt dotted #d1d5db; break-inside: avoid; }
+  .pd-who { display: flex; flex-direction: column; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+  .pd-ts { font-size: 8pt; color: #9ca3af; font-variant-numeric: tabular-nums; }
+  .pd-name { font-size: 9pt; font-weight: 700; }
+  .pd-text { margin: 0; text-align: justify; }
+  .pd-foot { margin-top: 16pt; padding-top: 6pt; border-top: .5pt solid #c8ccd2; font-size: 8pt; color: #6b7280; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+}
 }
 
 /* ---- 録音 ---- */
