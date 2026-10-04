@@ -135,3 +135,15 @@
 - 実際の速さで 0.5 秒ずつ渡す試験(`tests/real_live.rs`、架空の4人の会議 80.6 秒): small で待ちの区間は最大 1、止めてから仮の文字が出そろうまで 0.8 秒。large-v3-turbo でも待ちは最大 2 で追いついたが、CPU の負担が約4倍。
 - 区切り: 声の切れ目(0.6 秒以上の無音)、4 秒未満は切らない、25 秒で必ず切る。
 - 画面のマイク取り込み(getUserMedia → AudioWorklet → 16kHz → 0.5 秒ごとに送る)は、Chromium の疑似マイクで e2e を通した。**実機(Mac の WKWebView とマイク)での録音は未確認。**
+
+## 9. Windows(GitHub Actions でのビルド、2026-10-04)
+
+開発機は Mac のみのため、`windows-latest`(x64)の GitHub Actions で確認した。ワークフローは `.github/workflows/minutes-windows.yml`(`mac/verify` への push と手動実行)。
+
+- **通ったこと**: `cargo test --lib --no-default-features`(ロジックのみ)と `cargo test --lib`(既定の機能: tauri・whisper・diarize。whisper.cpp は cmake + LLVM で、ort は load-dynamic でビルドできた)。`tools/prepare_bundle.sh` が Git Bash 上で動く(`sha256sum` 対応、onnxruntime 1.30.0 win-x64 の `onnxruntime.dll` を取り出して同梱)。`tauri build` で NSIS と MSI の両方が作れた(MSI も 800MB 級の同梱で通った)。
+- **onnxruntime-win-x64-1.30.0.zip の SHA-256**: `c6ba983baf5681af108599675d2a89c2d145512d02de28aed0bff177cd0ba949`(公式 GitHub リリースから取得、`prepare_bundle.sh` で照合)。
+- **所要時間**: テスト 3〜8 分(キャッシュの有無で変わる)、同梱物の用意+インストーラ 2 種で 初回 約 23 分(モデル取得と whisper.cpp のビルドを含む。2 回目以降はモデルと cargo のキャッシュで短くなる)。
+- **成果物の大きさ**(アーティファクト、保持 7 日): NSIS 約 729MB、MSI 約 756MB(いずれも未署名、モデル同梱)。
+- **Windows 向けの変更**: `src-tauri/tauri.windows.conf.json`(targets を nsis・msi、日本語、`icons/icon.ico`。macOS の設定には影響しない)、`icons/icon.ico` を既存の PNG から生成、`tools/gen_notices.py`(npm は shell 経由)、`prepare_bundle.sh`(Python を UTF-8 に)。録音の文字起こしスレッドが DB を開く瞬間の競合で不定期に失敗したため、開き直しを追加(`recorder.rs`)。
+- **未確認(Windows 実機が要る)**: インストーラの実行とアンインストール、アプリの起動、WebView2(ブートストラッパー既定)での動作、**マイク録音(getUserMedia。Windows では未検証。macOS 用の Info.plist に相当する設定は不要の想定だが、WebView2 の許可ダイアログの挙動は未確認)**、i5-12500 クラスでの速さ(RTF・メモリ)、SmartScreen の警告。
+- **コード署名は未実施**(止まる対象。証明書の取得が要る)。署名なしだと SmartScreen に止められる。
