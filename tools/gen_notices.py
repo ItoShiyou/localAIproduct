@@ -69,7 +69,7 @@ def rust_packages(src_tauri, features):
 
 
 def npm_packages(ui):
-    out = subprocess.check_output(["npm", "ls", "--omit=dev", "--all", "--json"], cwd=ui)
+    out = subprocess.check_output(["npm", "ls", "--omit=dev", "--all", "--json"], cwd=ui, shell=(os.name == "nt"))
     tree = json.loads(out)
     found = {}
 
