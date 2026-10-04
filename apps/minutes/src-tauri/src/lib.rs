@@ -154,6 +154,7 @@ pub fn run() {
             tauri_glue::record_stop,
             tauri_glue::record_discard,
             tauri_glue::plan,
+            tauri_glue::waveform,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");

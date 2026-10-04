@@ -1,0 +1,44 @@
+/*
+ * シリーズ共通のデザイントークン(色・字・余白・角丸・影・動き)。全アプリと Web で同じものを使う。
+ * 思想: 「途中を照らす」— 紙のような生成りの地に、ロウソクの灯り(琥珀)をひとつ。急かさない、比べない、責めない。
+ * 他社の配色・ロゴはまねない(docs/brand-brief.md)。
+ * 使い方: アプリの CSS の先頭で @import する。色は必ず変数で参照する。
+ */
+:root {
+  /* 地と面 */
+  --paper: #fbf7f0;        /* 背景(生成り) */
+  --paper-2: #f5efe4;      /* 一段沈んだ面(サイドバー) */
+  --surface: #fffdf9;      /* カード */
+  --surface-hover: #fff8ee;
+  --line: #e8dfd0;         /* 罫線 */
+  --line-strong: #d8ccb8;
+  /* 文字 */
+  --ink: #2b2622;          /* 本文(墨) */
+  --ink-2: #5d544c;        /* 補足 */
+  --ink-3: #9a8f84;        /* 薄い補足 */
+  /* 灯り(アクセント) */
+  --flame: #d9822b;        /* 灯り(主) */
+  --flame-deep: #b8661a;
+  --flame-soft: #fbe9d3;
+  --glow: 0 0 0 4px rgba(217, 130, 43, .14);
+  /* 夜(副アクセント・落ち着いた藍) */
+  --night: #34506b;
+  --night-soft: #e6edf3;
+  /* 状態 */
+  --ok: #3f7d4e;   --ok-soft: #e4f0e6;
+  --warn: #a8701a; --warn-soft: #fbf0d9;
+  --danger: #b4432f; --danger-soft: #f8e4df;
+  /* 話者の色(落ち着いた色相。8色) */
+  --spk-1: #c0632b; --spk-2: #3d6f8f; --spk-3: #5c8a4e; --spk-4: #9a4f78;
+  --spk-5: #b8892a; --spk-6: #4f6fb0; --spk-7: #8a6248; --spk-8: #3f8a85;
+  /* 字 */
+  --font-ui: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif;
+  --font-serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* 余白・角丸・影 */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(60, 40, 20, .06), 0 1px 1px rgba(60, 40, 20, .04);
+  --shadow-2: 0 6px 20px rgba(60, 40, 20, .08), 0 2px 6px rgba(60, 40, 20, .05);
+  --shadow-3: 0 18px 50px rgba(60, 40, 20, .16);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}

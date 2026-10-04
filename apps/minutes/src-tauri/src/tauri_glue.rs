@@ -304,3 +304,8 @@ pub async fn record_discard(state: State<'_, AppState>) -> Result<(), String> {
 pub fn plan(state: State<'_, AppState>) -> PlanDto {
     state.plan()
 }
+
+#[tauri::command]
+pub async fn waveform(state: State<'_, AppState>, id: i64, buckets: usize) -> Result<Vec<f32>, String> {
+    state.waveform(id, buckets)
+}

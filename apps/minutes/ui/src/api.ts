@@ -39,6 +39,8 @@ export interface Api {
   recordDiscard(): Promise<void>;
   /** 無料版/有料版と、無料版の使った量 */
   plan(): Promise<Plan>;
+  /** 波形(0〜1 を buckets 個) */
+  waveform(id: number, buckets: number): Promise<number[]>;
   detail(id: number): Promise<Detail>;
   /** 再生用の URL(音声を残していなければ null) */
   audioUrl(id: number): Promise<string | null>;
@@ -114,6 +116,7 @@ export function makeTauriApi(t: TauriGlobal): Api {
     recordStop: () => invoke("record_stop"),
     recordDiscard: () => invoke("record_discard"),
     plan: () => invoke("plan"),
+    waveform: (id, buckets) => invoke("waveform", { id, buckets }),
     detail: (id) => invoke("detail", { id }),
     async audioUrl(id) {
       const p = await invoke<string | null>("audio_path", { id });
@@ -287,6 +290,7 @@ export function makeMockApi(): Api {
       pending.push(id);
       return det(id);
     },
+    async waveform(_id, n) { return Array.from({ length: n }, (_, i) => 0.25 + 0.6 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11))); },
     async plan() {
       const free = typeof location !== "undefined" && location.search.includes("free");
       const used = free ? usedMs : 0;
@@ -297,7 +301,18 @@ export function makeMockApi(): Api {
     async recordDiscard() { if (recording) { const id = recording.id; meetings = meetings.filter((x) => x.id !== id); segs.delete(id); recording = null; } },
     async importGlossary() { glossary = [...glossary, { id: nextId++, wrong: "くらうど", right: "クラウド" }]; return [1, [], glossary]; },
     detail: det,
-    async audioUrl() { return null; },
+    async audioUrl(id) {
+      // 画面確認用: 議事録の長さぶんの無音の WAV(8kHz・8bit)
+      const mm = meetings.find((x) => x.id === id);
+      if (!mm?.hasAudio || mm.recording) return null;
+      const sec = Math.max(1, Math.round((mm.durationMs ?? 24_000) / 1000)), n = sec * 8000;
+      const b = new ArrayBuffer(44 + n), v = new DataView(b);
+      const w = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+      w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
+      new Uint8Array(b, 44).fill(128);
+      return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+    },
     async updateMeta(id, title, heldOn, participants) {
       if (!title.trim()) throw new Error("タイトルを入力してください");
       meetings = meetings.map((x) => (x.id === id ? { ...x, title, heldOn, participantsText: participants, status: "draft" } : x));

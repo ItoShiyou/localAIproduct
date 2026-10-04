@@ -24,7 +24,7 @@ const segTexts = () => segs.locator("textarea").evaluateAll((els) => els.map((e)
 const speakersOf = () => segs.getByLabel("話者").evaluateAll((els) => els.map((e) => e.value));
 
 await page.goto(URL);
-await page.getByText("画面確認用のモック").waitFor();
+await page.getByTitle(/画面確認用のモック/).waitFor();
 
 // 0) 用語辞書(手入力と CSV)
 await page.getByRole("tab", { name: "用語辞書" }).click();
@@ -51,7 +51,7 @@ await page.getByText("文字起こし済み").first().waitFor({ timeout: 10000 }
 await segs.first().waitFor();
 assert.equal(await segs.count(), 6);
 assert.match((await segTexts())[2], /山田商事/, "用語辞書で置換される");
-assert.match(await page.locator(".toolbar").innerText(), /範囲 0:00:30〜最後|範囲 0:30〜最後/);
+assert.match(await page.locator(".meta-row").innerText(), /範囲 0:00:30〜最後|範囲 0:30〜最後/);
 
 // 2) 話者: 自動のラベル → 名前をまとめて変更 → 判別し直し
 assert.deepEqual(await speakersOf(), ["話者1", "話者2", "話者1", "話者2", "話者3", "話者3"]);
@@ -68,7 +68,7 @@ await page.getByRole("button", { name: "元に戻す" }).click();
 await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=segment] input[aria-label=話者]")].some((i) => i.value === "佐藤"));
 
 // 3) 文を押すと、その位置へ(再生中の印が移る)。要確認の巡回
-await segs.nth(3).locator(".seg-head").click({ position: { x: 400, y: 10 } });
+await segs.nth(3).evaluate((el) => el.click()); // カードの余白を押したのと同じ
 await page.waitForFunction(() => document.querySelectorAll("[data-testid=segment]")[3].classList.contains("playing"));
 await page.getByRole("button", { name: "次の要確認" }).click();
 await page.waitForFunction(() => document.querySelectorAll("[data-testid=segment]")[4].classList.contains("playing"));
@@ -109,7 +109,7 @@ assert.ok((await segTexts()).some((t) => t.includes("見本市")));
 await shot("3-review");
 
 // 6) 定型欄・タグ
-await page.getByRole("button", { name: /議題・決定事項・ToDo/ }).click();
+await page.getByRole("tab", { name: /議題・決定事項・ToDo/ }).click();
 const notes = page.getByTestId("notes");
 await notes.getByLabel("議題").fill("見積もり\n展示会の準備");
 await notes.getByLabel("決定事項").fill("パンフレットは五百部");
@@ -119,8 +119,9 @@ await notes.getByPlaceholder("担当").fill("鈴木");
 await notes.getByLabel("期限").fill("2026-10-08");
 await notes.getByLabel("期限").blur();
 await page.getByRole("textbox", { name: "タグ", exact: true }).fill("定例、案件A");
-await page.getByLabel("タイトル").fill("10月の定例会議");
-await page.getByLabel("タイトル").blur();
+await page.getByLabel("タイトル", { exact: true }).fill("10月の定例会議");
+await page.getByLabel("タイトル", { exact: true }).blur();
+await page.getByRole("tab", { name: "編集" }).click();
 await page.locator(".items .tag-chip", { hasText: "案件A" }).first().waitFor();
 await shot("4-notes");
 // タグで絞り込み
@@ -149,6 +150,7 @@ assert.match(printed, /決定事項パンフレットは五百部/);
 assert.match(printed, /佐藤/);
 
 // 8) 設定を変えてやり直す(画面だけ確認して、やめる)
+await page.locator("details.more > summary").click();
 await page.getByRole("button", { name: "設定を変えてやり直す" }).click();
 const redo = page.getByRole("dialog", { name: "設定を変えてやり直す" });
 await redo.getByText("これまでの修正").waitFor();
@@ -163,7 +165,7 @@ await page.locator(".hits button").first().waitFor().catch(() => undefined);
 await page.getByPlaceholder(/全文検索/).fill("見本市");
 await page.locator(".hits button").first().waitFor();
 await page.locator(".hits button").first().click();
-await page.getByLabel("タイトル").waitFor();
+await page.getByLabel("タイトル", { exact: true }).waitFor();
 await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=segment]")].some((s) => s.classList.contains("playing") && s.querySelector("textarea").value.includes("見本市")));
 
 // 10) マイクで録音(仮の文字 → 止めると正確な文字起こしで置き換わる)

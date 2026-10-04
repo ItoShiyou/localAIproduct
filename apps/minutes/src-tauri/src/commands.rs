@@ -730,7 +730,47 @@ impl AppState {
         for p in self.store().delete_meeting(id).map_err(err)? {
             let _ = std::fs::remove_file(p);
         }
+        if let Ok(rd) = std::fs::read_dir(self.app.root.join("waveforms")) {
+            for e in rd.flatten() {
+                if e.file_name().to_string_lossy().starts_with(&format!("{id}-")) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// 再生画面の波形(0〜1 の山の高さを `buckets` 個)。一度求めたらデータフォルダに残して使い回す。
+    pub fn waveform(&self, id: i64, buckets: usize) -> Result<Vec<f32>, String> {
+        let buckets = buckets.clamp(50, 2000);
+        let (audio, _) = self.store().paths(id).map_err(err)?;
+        let audio = audio.ok_or("音声を残していません")?;
+        let dir = self.app.root.join("waveforms");
+        let cache = dir.join(format!("{id}-{buckets}.json"));
+        if let Ok(t) = std::fs::read_to_string(&cache) {
+            if let Ok(v) = serde_json::from_str::<Vec<f32>>(&t) {
+                return Ok(v);
+            }
+        }
+        let tmp = self.app.root.join("work").join(format!("wave-{id}.pcm"));
+        std::fs::create_dir_all(tmp.parent().unwrap()).map_err(err)?;
+        let ms = crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp)?;
+        let rms = crate::audio::frame_rms_of(&tmp)?;
+        let _ = std::fs::remove_file(&tmp);
+        let _ = ms;
+        let n = rms.len().max(1);
+        let mut out = vec![0f32; buckets];
+        for (i, v) in out.iter_mut().enumerate() {
+            let (a, b) = (i * n / buckets, ((i + 1) * n / buckets).max(i * n / buckets + 1).min(n));
+            *v = rms[a.min(n - 1)..b].iter().cloned().fold(0.0, f32::max);
+        }
+        let peak = out.iter().cloned().fold(1e-6, f32::max);
+        for v in out.iter_mut() {
+            *v = (*v / peak).sqrt(); // 小さい声も見えるように
+        }
+        std::fs::create_dir_all(&dir).map_err(err)?;
+        let _ = std::fs::write(&cache, serde_json::to_string(&out).map_err(err)?);
+        Ok(out)
     }
 
     // ---------------- 書き出し ----------------
@@ -939,6 +979,10 @@ mod tests {
         let md = std::fs::read_to_string(&out).unwrap();
         assert!(md.starts_with("# 定例会議") && md.contains("**佐藤**"));
         assert_eq!(s.export_name(id, "srt").unwrap(), "定例会議.srt");
+        let wf = s.waveform(id, 100).unwrap();
+        assert_eq!(wf.len(), 100);
+        assert!(wf.iter().all(|v| (0.0..=1.0).contains(v)) && wf.iter().any(|v| *v > 0.9));
+        assert_eq!(s.waveform(id, 100).unwrap(), wf, "2回目は保存したものを使う");
         let wav = d.join("dn.wav");
         s.export_denoised(id, &wav).unwrap();
         assert!(std::fs::metadata(&wav).unwrap().len() > 1_000_000);

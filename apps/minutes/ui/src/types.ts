@@ -81,15 +81,25 @@ export function parseTime(s: string): number | null {
   return t.split(":").map(Number).reduce((a, v) => a * 60 + v, 0) * 1000;
 }
 
-/** 話者ごとの色(名前から決める) */
+/** 話者ごとの色(名前から決める。色はデザイントークンの --spk-1〜8) */
 export function speakerColor(name: string): string {
   if (!name) return "transparent";
-  const palette = ["#2563eb", "#d97706", "#059669", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#dc2626"];
   const m = /^話者(\d+)$/.exec(name);
-  if (m) return palette[(Number(m[1]) - 1) % palette.length];
+  if (m) return `var(--spk-${((Number(m[1]) - 1) % 8) + 1})`;
   let h = 0;
   for (const c of name) h = (h * 31 + c.codePointAt(0)!) >>> 0;
-  return palette[h % palette.length];
+  return `var(--spk-${(h % 8) + 1})`;
+}
+
+/** 「たった今」「3分前」「昨日」… */
+export function ago(sec: number): string {
+  const d = Date.now() / 1000 - sec;
+  if (d < 60) return "たった今";
+  if (d < 3600) return `${Math.floor(d / 60)}分前`;
+  if (d < 86400) return `${Math.floor(d / 3600)}時間前`;
+  if (d < 172800) return "昨日";
+  const t = new Date(sec * 1000);
+  return `${t.getMonth() + 1}/${t.getDate()}`;
 }
 
 export interface Plan {

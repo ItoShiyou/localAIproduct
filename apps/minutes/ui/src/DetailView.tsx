@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api";
 import { OptionsForm, optionsValid } from "./OptionsForm";
 import type { Detail, ExportFormat, Plan, ProcessOptions, Segment, SettingsInfo, Todo } from "./types";
 import { LANGUAGE_LABEL, STATE_LABEL, hms, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+type View = "read" | "edit" | "memo" | "summary";
 
 interface RowActions {
   seek(ms: number, play?: boolean): void;
@@ -18,51 +19,76 @@ interface RowActions {
 }
 
 /** 1つの文。再生位置が変わるたびに全部を描き直さないよう、memo にする */
-const Row = memo(function Row({ s, last, playing, hit, low, speakers, actions, readOnly }: {
-  s: Segment; last: boolean; playing: boolean; hit: boolean; low: boolean; speakers: string[]; actions: React.MutableRefObject<RowActions>; readOnly: boolean;
+const Row = memo(function Row({ s, last, playing, hit, low, actions, readOnly }: {
+  s: Segment; last: boolean; playing: boolean; hit: boolean; low: boolean; speakers?: string[]; actions: React.MutableRefObject<RowActions>; readOnly: boolean;
 }) {
+  const ta = useRef<HTMLTextAreaElement>(null);
+  // 文の長さに合わせて高さを変える(余白を作らない)
+  const fit = () => { const t = ta.current; if (t) { t.style.height = "auto"; t.style.height = `${t.scrollHeight + 2}px`; } };
+  useLayoutEffect(fit, [s.text]);
   if (readOnly) {
     return (
       <li id={`seg-${s.id}`} className={"seg provisional" + (playing ? " playing" : "")} data-testid="segment" onClick={() => actions.current.seek(s.startMs, false)}>
-        <div className="seg-head"><span className="time">{hms(s.startMs)}</span>{s.chunkIdx < 0 && <span className="badge muted">仮</span>}</div>
+        <div className="seg-left"><span className="time">{hms(s.startMs)}</span>{s.chunkIdx < 0 && <span className="badge muted">仮</span>}</div>
         <p className="seg-text">{s.text}</p>
       </li>
     );
   }
-  const ta = useRef<HTMLTextAreaElement>(null);
+  const color = speakerColor(s.speaker);
   return (
     <li id={`seg-${s.id}`} className={"seg" + (playing ? " playing" : "") + (low ? " low" : "") + (hit ? " hit" : "")} data-testid="segment"
-      style={{ borderLeftColor: speakerColor(s.speaker) }}
       onClick={(e) => {
         // 文のどこを押しても、その位置へ再生位置を移す(入力欄・ボタンを押したときは除く)
         const t = e.target as HTMLElement;
         if (!t.closest("button, input, select")) actions.current.seek(s.startMs, false);
       }}>
-      <div className="seg-head">
-        <button className="time" onClick={() => actions.current.seek(s.startMs, true)} title="ここから再生">▶ {hms(s.startMs)}</button>
-        <input className="speaker" list="speakers" defaultValue={s.speaker} placeholder="話者" aria-label="話者" style={{ color: speakerColor(s.speaker) }}
-          onBlur={(e) => { if (e.target.value !== s.speaker) actions.current.setSpeaker(s.id, e.target.value); }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-        {speakers.filter((x) => x !== s.speaker).slice(0, 5).map((x) => (
-          <button key={x} className="chip" style={{ borderColor: speakerColor(x), color: speakerColor(x) }} onClick={() => actions.current.setSpeaker(s.id, x)}>{x}</button>
-        ))}
-        {low && <span className="badge">要確認</span>}
-        {s.edited && <span className="badge muted">修正済み</span>}
-        <span className="grow" />
-        <button className="link" title="カーソルの位置で2つに分けます" onClick={() => {
-          const at = ta.current ? [...ta.current.value.slice(0, ta.current.selectionStart)].length : 0;
-          actions.current.split(s.id, at);
-        }}>ここで分割</button>
-        {!last && <button className="link" onClick={() => actions.current.mergeNext(s.id)}>次と結合</button>}
-        {s.edited && s.rawText && <button className="link" onClick={() => actions.current.revert(s.id)}>文字起こしの結果に戻す</button>}
+      <div className="seg-left">
+        <button className="time" onClick={() => actions.current.seek(s.startMs, true)} title="ここから再生">{hms(s.startMs)}</button>
+        <label className="spk-pick" style={{ color }}>
+          <i style={{ background: s.speaker ? color : "var(--line-strong)" }} />
+          <input list="speakers" defaultValue={s.speaker} placeholder="話者" aria-label="話者"
+            onBlur={(e) => { if (e.target.value !== s.speaker) actions.current.setSpeaker(s.id, e.target.value); }}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+        </label>
       </div>
-      <textarea ref={ta} defaultValue={s.text} rows={Math.max(1, Math.ceil(s.text.length / 60))} aria-label={`${hms(s.startMs)} の文`}
-        onInput={() => actions.current.typing()}
+      <textarea ref={ta} defaultValue={s.text} rows={1} aria-label={`${hms(s.startMs)} の文`}
+        onInput={() => { fit(); actions.current.typing(); }}
         onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur(); }}
         onBlur={(e) => { actions.current.doneTyping(); if (e.target.value !== s.text) actions.current.editText(s.id, e.target.value); }} />
+      <div className="seg-right">
+        <div className="seg-actions">
+          <span className="seg-tools">
+            <button className="link" title="カーソルの位置で2つに分けます" onClick={() => {
+              const at = ta.current ? [...ta.current.value.slice(0, ta.current.selectionStart)].length : 0;
+              actions.current.split(s.id, at);
+            }}>ここで分割</button>
+            {!last && <button className="link" onClick={() => actions.current.mergeNext(s.id)}>次と結合</button>}
+            {s.edited && s.rawText && <button className="link" onClick={() => actions.current.revert(s.id)}>元の結果に戻す</button>}
+          </span>
+          <button className="listen" onClick={() => actions.current.seek(s.startMs, true)} title="この文から再生">▶ 試聴</button>
+        </div>
+        {(low || s.edited) && <div className="seg-badges">{low && <span className="badge">要確認</span>}{s.edited && <span className="badge muted">修正済み</span>}</div>}
+      </div>
     </li>
   );
 });
+
+/** 下部のプレーヤーの波形(山の高さ)と、話者の色の帯。押すとその位置へ */
+function Wave({ peaks, durationMs, nowMs, segs, onSeek }: { peaks: number[]; durationMs: number; nowMs: number; segs: Segment[]; onSeek: (ms: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const pos = durationMs > 0 ? Math.min(1, nowMs / durationMs) : 0;
+  const bars = peaks.length ? peaks : Array.from({ length: 160 }, () => 0.08);
+  return (
+    <div className="wave" ref={ref} role="slider" aria-label="再生位置" aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={nowMs}
+      onClick={(e) => { const r = ref.current!.getBoundingClientRect(); onSeek(((e.clientX - r.left) / r.width) * durationMs); }}>
+      <div className="bars">{bars.map((v, i) => <i key={i} className={i / bars.length < pos ? "on" : ""} style={{ height: `${Math.max(6, v * 100)}%` }} />)}</div>
+      <div className="band">{durationMs > 0 && segs.filter((s) => s.speaker).map((s) => (
+        <span key={s.id} style={{ left: `${(s.startMs / durationMs) * 100}%`, width: `${Math.max(0.2, ((s.endMs - s.startMs) / durationMs) * 100)}%`, background: speakerColor(s.speaker) }} />
+      ))}</div>
+      <div className="head" style={{ left: `${pos * 100}%` }} />
+    </div>
+  );
+}
 
 /** 議題・決定事項・ToDo(手で書く定型欄) */
 function Notes({ d, onSave }: { d: Detail; onSave: (agenda: string, decisions: string, todos: Todo[]) => void }) {
@@ -205,12 +231,14 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
   const [follow, setFollow] = useState(true);
   const [autoPause, setAutoPause] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [showNotes, setShowNotes] = useState(false);
   const [find, setFind] = useState<{ open: boolean; q: string; r: string; hits: number[]; i: number }>({ open: false, q: "", r: "", hits: [], i: 0 });
   const [rename, setRename] = useState<{ from: string; to: string } | null>(null);
   const [redo, setRedo] = useState<ProcessOptions | null>(null);
   const [printOpts, setPrintOpts] = useState<PrintOptions>({ notes: true, body: true, times: true, speakers: true });
   const [printAsk, setPrintAsk] = useState(false);
+  const [view, setView] = useState<View>("edit");
+  const [peaks, setPeaks] = useState<number[]>([]);
+  const [paused, setPaused] = useState(true);
   const player = useRef<HTMLAudioElement>(null);
   const pausedByTyping = useRef(false);
   const lastPlaying = useRef<number | undefined>(undefined);
@@ -246,6 +274,13 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
   }, []);
   useEffect(() => { if (seekTo && d) { seek(seekTo.ms, false); document.getElementById(`seg-${d.segments.find((s) => s.endMs > seekTo.ms)?.id}`)?.scrollIntoView({ block: "center" }); } }, [seekTo, d, seek]);
   useEffect(() => { if (player.current) player.current.playbackRate = speed; }, [speed, audio]);
+  // 波形(音声があって、処理が終わっているとき)
+  useEffect(() => {
+    if (!audio || !d || d.meeting.recording) return;
+    let alive = true;
+    api.waveform(id, 120).then((v) => alive && setPeaks(v)).catch(() => undefined);
+    return () => { alive = false; };
+  }, [api, id, audio, d?.meeting.recording, d?.meeting.state]);
 
   const run = useCallback(async (f: () => Promise<Detail>, after?: string) => {
     try { apply(await f()); setMsg(after ?? null); onChanged(); }
@@ -367,47 +402,112 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
 
   const lowPos = playing !== undefined ? lowIds.indexOf(playing) : -1;
 
+  const ic = {
+    clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
+    globe: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>,
+    file: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14H6z" /></svg>,
+  };
+  const views: [View, string, string?][] = [["read", "記録"], ["edit", "編集"], ["memo", "メモ", "議題・決定事項・ToDo"], ["summary", "要約"]];
+  const durMs = m.durationMs ?? (segs.length ? segs[segs.length - 1].endMs : 0);
+  const readOnly = d.provisional || m.recording;
+  const paras: { id: number; t: number; sp: string; tx: string; end: number }[] = [];
+  for (const s of segs) {
+    if (!s.text.trim()) continue;
+    const last = paras[paras.length - 1];
+    if (last && last.sp === s.speaker) { last.tx += s.text.trim(); last.end = s.endMs; } else paras.push({ id: s.id, t: s.startMs, sp: s.speaker, tx: s.text.trim(), end: s.endMs });
+  }
+
   return (
     <div className="detail">
-      <div className="meta card">
-        <label>タイトル<input value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} onBlur={saveMeta} /></label>
-        <label>日付<input type="date" value={meta.heldOn} onChange={(e) => setMeta({ ...meta, heldOn: e.target.value })} onBlur={saveMeta} /></label>
-        <label className="grow">参加者<input value={meta.participants} placeholder="例: 佐藤、鈴木" onChange={(e) => setMeta({ ...meta, participants: e.target.value })} onBlur={saveMeta} /></label>
-        <label className="grow">タグ<input value={meta.tags} placeholder="例: 定例、案件A(読点で区切る)" onChange={(e) => setMeta({ ...meta, tags: e.target.value })} onBlur={saveMeta} /></label>
-      </div>
-
-      <div className="card">
-        <button className="link" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}>議題・決定事項・ToDo {showNotes ? "▲" : "▼"}{!showNotes && (m.agenda || m.decisions || m.todos.length) ? "(記入あり)" : ""}</button>
-        {showNotes && <Notes d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} />}
-      </div>
-
-      <div className="toolbar card">
-        <span className={`badge s-${m.state}`}>{STATE_LABEL[m.state]}</span>
-        <span className={"badge " + (m.status === "confirmed" ? "ok" : "muted")}>{m.status === "confirmed" ? "確定" : "下書き"}</span>
-        <span className="note">{m.sourceName}・{LANGUAGE_LABEL[m.language]}{m.denoise ? "・ノイズ除去" : ""}{m.rangeStartMs != null || m.rangeEndMs != null ? `・範囲 ${m.rangeStartMs != null ? hms(m.rangeStartMs) : "最初"}〜${m.rangeEndMs != null ? hms(m.rangeEndMs) : "最後"}` : ""}</span>
-        <span className="grow" />
-        <button className="btn small" disabled={!d.canUndo} onClick={() => run(() => api.undo(id))}>元に戻す</button>
-        <button className="btn small" onClick={() => setFind((f) => ({ ...f, open: !f.open }))}>検索・置換</button>
-        <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); setMsg(`用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); } catch (e) { setMsg(String(e)); } }}>用語辞書を適用</button>
-        <button className="btn small" disabled={!m.hasAudio || m.state === "processing"} title={m.hasAudio ? "" : "音声を残していないため、やり直せません"}
-          onClick={() => setRedo({ denoise: m.denoise, diarize: m.diarize, numSpeakers: m.numSpeakers, language: m.language, rangeStartMs: m.rangeStartMs, rangeEndMs: m.rangeEndMs })}>設定を変えてやり直す</button>
-        {m.status === "draft"
-          ? <button className="btn small primary" disabled={!done} onClick={() => run(() => api.confirm(id), "確定しました。書き出せます")}>確定</button>
-          : <button className="btn small" onClick={() => run(() => api.unconfirm(id))}>下書きに戻す</button>}
-        <select aria-label="書き出し" value="" disabled={m.status !== "confirmed"} onChange={(e) => { if (e.target.value) exp(e.target.value as ExportFormat | "wav" | "pdf"); }}>
-          <option value="">書き出し…</option>
-          {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
-            const ok = plan?.exports.includes(v) ?? true;
-            return <option key={v} value={v} disabled={!ok}>{label}{ok ? "" : "(有料版)"}</option>;
-          })}
-        </select>
-        {!delAsk ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>削除</button> : (
-          <span className="ask">音声と文字をまとめて消します。
-            <button className="btn small danger" onClick={async () => { try { await api.deleteMeeting(id); onDeleted(); } catch (e) { setMsg(String(e)); setDelAsk(false); } }}>消す</button>
-            <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
-          </span>
+      <header className="d-head">
+        <div className="d-top">
+          <input className="d-title" aria-label="タイトル" value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} onBlur={saveMeta}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+          <div className="d-actions">
+            <span className={`badge s-${m.state}`}>{m.recording ? "録音中" : STATE_LABEL[m.state]}</span>
+            <span className={"badge " + (m.status === "confirmed" ? "ok" : "muted")}>{m.status === "confirmed" ? "確定" : "下書き"}</span>
+            {m.status === "draft"
+              ? <button className="btn primary" disabled={!done || readOnly} onClick={() => run(() => api.confirm(id), "確定しました。書き出せます")}>確定</button>
+              : <button className="btn" onClick={() => run(() => api.unconfirm(id))}>下書きに戻す</button>}
+            <select aria-label="書き出し" value="" disabled={m.status !== "confirmed"} onChange={(e) => { if (e.target.value) exp(e.target.value as ExportFormat | "wav" | "pdf"); }}>
+              <option value="">⤓ 書き出し…</option>
+              {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
+                const ok = plan?.exports.includes(v) ?? true;
+                return <option key={v} value={v} disabled={!ok}>{label}{ok ? "" : "(有料版)"}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+        <div className="meta-row">
+          <span className="mi">{ic.clock}{durMs ? hms(durMs) : "--:--"}</span>
+          <span className="mi">{ic.globe}{LANGUAGE_LABEL[m.language]}</span>
+          <span className="mi">{ic.file}{m.sourceName}{m.denoise ? "・ノイズ除去" : ""}{m.rangeStartMs != null || m.rangeEndMs != null ? `・範囲 ${m.rangeStartMs != null ? hms(m.rangeStartMs) : "最初"}〜${m.rangeEndMs != null ? hms(m.rangeEndMs) : "最後"}` : ""}</span>
+          <label>日付<input type="date" aria-label="日付" value={meta.heldOn} onChange={(e) => setMeta({ ...meta, heldOn: e.target.value })} onBlur={saveMeta} /></label>
+          <label>参加者<input aria-label="参加者" value={meta.participants} placeholder="例: 佐藤、鈴木" onChange={(e) => setMeta({ ...meta, participants: e.target.value })} onBlur={saveMeta} /></label>
+          <label>タグ<input aria-label="タグ" value={meta.tags} placeholder="例: 定例、案件A" onChange={(e) => setMeta({ ...meta, tags: e.target.value })} onBlur={saveMeta} /></label>
+        </div>
+        <div className="views" role="tablist" aria-label="表示">
+          {views.map(([v, label, full]) => (
+            <button key={v} role="tab" aria-selected={view === v} aria-label={full ? `${label}(${full})` : label} onClick={() => setView(v)}>
+              {label}{v === "summary" && <span className="pro">{plan?.summary ? "準備中" : "有料版"}</span>}{v === "memo" && (m.agenda || m.decisions || m.todos.length) ? " ●" : ""}
+            </button>
+          ))}
+        </div>
+        {(view === "edit" || view === "read") && (
+          <div className="toolbar">
+            {(counts.size > 0 || (done && m.diarize)) && (
+              <div className="speakers" data-testid="speakers">
+                <span className="lbl">話者</span>
+                {[...counts.entries()].map(([name, n]) => (
+                  rename?.from === name ? (
+                    <span key={name} className="rename">
+                      <input autoFocus value={rename.to} aria-label={`${name} の新しい名前`} onChange={(e) => setRename({ ...rename, to: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { run(() => api.renameSpeaker(id, name, rename.to)); setRename(null); }
+                          if (e.key === "Escape") setRename(null);
+                        }} />
+                      <button className="btn small" onClick={() => { run(() => api.renameSpeaker(id, name, rename.to)); setRename(null); }}>変更</button>
+                    </span>
+                  ) : (
+                    <button key={name} className="spk" style={{ color: speakerColor(name) }} title="押すと名前を変えられます(この議事録の中をまとめて)"
+                      onClick={() => setRename({ from: name, to: name.startsWith("話者") ? "" : name })}>
+                      <i style={{ background: speakerColor(name) }} /><span style={{ color: "var(--ink)" }}>{name}</span><small>{n}</small>
+                    </button>
+                  )
+                ))}
+                {done && (settings?.diarizeAvailable ?? true) && (plan?.diarize ?? true) && (
+                  <select value="" aria-label="話者を判別し直す" onChange={(e) => {
+                    if (!e.target.value) return;
+                    const n = e.target.value === "auto" ? null : Number(e.target.value);
+                    run(() => api.rediarize(id, n), "話者を判別し直しました(「元に戻す」で戻せます)");
+                  }}>
+                    <option value="">判別し直す…</option>
+                    <option value="auto">人数は自動</option>
+                    {[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}人</option>)}
+                  </select>
+                )}
+              </div>
+            )}
+            <span className="grow" />
+            <button className="btn small" disabled={!d.canUndo} onClick={() => run(() => api.undo(id))} title="元に戻す">↶ 元に戻す</button>
+            <button className="btn small" onClick={() => setFind((f) => ({ ...f, open: !f.open }))}>検索・置換</button>
+            <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); setMsg(`用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); } catch (e) { setMsg(String(e)); } }}>用語辞書を適用</button>
+            <details className="more">
+              <summary className="btn small icon" aria-label="その他">⋯</summary>
+              <div className="menu">
+                <button className="btn small" disabled={!m.hasAudio || m.state === "processing"} title={m.hasAudio ? "" : "音声を残していないため、やり直せません"}
+                  onClick={() => setRedo({ denoise: m.denoise, diarize: m.diarize, numSpeakers: m.numSpeakers, language: m.language, rangeStartMs: m.rangeStartMs, rangeEndMs: m.rangeEndMs })}>設定を変えてやり直す</button>
+                {!delAsk ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>削除</button> : (
+                  <span className="ask">音声と文字をまとめて消します。
+                    <button className="btn small danger" onClick={async () => { try { await api.deleteMeeting(id); onDeleted(); } catch (e) { setMsg(String(e)); setDelAsk(false); } }}>消す</button>
+                    <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
+                  </span>
+                )}
+              </div>
+            </details>
+          </div>
         )}
-      </div>
+      </header>
 
       {redo && (
         <div className="modal" role="dialog" aria-label="設定を変えてやり直す">
@@ -426,102 +526,94 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
         </div>
       )}
 
-      {(d.provisional || m.recording) && (
-        <p className="banner" data-testid="provisional">
-          {m.recording ? "録音中です。" : "正確なモデルで文字起こししています。"}
-          いま表示しているのは録音中の仮の文字(精度は低め)で、正確な文字起こしができた所から順に置き換わります。置き換わるまで編集できません。
-        </p>
-      )}
-      {m.status !== "confirmed" && done && !d.provisional && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
-      {msg && <p className="msg">{msg}</p>}
-      {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>{/有料版/.test(m.error ?? "") ? "続きから文字起こし" : "やり直す"}</button></p>}
-      {plan?.tier === "free" && done && <p className="note">無料版は小さなモデルで文字起こししています。有料版では、より正確なモデルで文字起こしし直せます(「設定を変えてやり直す」)。</p>}
+      <div className="d-body">
+        <div className="d-inner">
+          {readOnly && (
+            <p className="banner" data-testid="provisional">
+              {m.recording ? "録音中です。" : "正確なモデルで文字起こししています。"}
+              いま表示しているのは録音中の仮の文字(精度は低め)で、正確な文字起こしができた所から順に置き換わります。置き換わるまで編集できません。
+            </p>
+          )}
+          {m.status !== "confirmed" && done && !d.provisional && view === "edit" && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
+          {msg && <p className="msg">{msg}</p>}
+          {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>{/有料版/.test(m.error ?? "") ? "続きから文字起こし" : "やり直す"}</button></p>}
+          {plan?.tier === "free" && done && <p className="note">無料版は小さなモデルで文字起こししています。有料版では、より正確なモデルで文字起こしし直せます。</p>}
 
-      {find.open && (
-        <div className="findbar card" data-testid="findbar">
-          <input id="find-q" placeholder="この議事録の中を検索" value={find.q} onChange={(e) => doFind(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") stepFind(e.shiftKey ? -1 : 1); if (e.key === "Escape") setFind({ ...find, open: false }); }} />
-          <span className="note">{find.q.trim() ? (find.hits.length ? `${find.i + 1} / ${find.hits.length} 件` : "見つかりません") : ""}</span>
-          <button className="btn small" disabled={!find.hits.length} onClick={() => stepFind(-1)}>前へ</button>
-          <button className="btn small" disabled={!find.hits.length} onClick={() => stepFind(1)}>次へ</button>
-          <input placeholder="置き換える語" value={find.r} onChange={(e) => setFind({ ...find, r: e.target.value })} />
-          <button className="btn small" disabled={!find.q} onClick={async () => {
-            try { const [n, x] = await api.replaceIn(id, find.q, find.r); apply(x); setMsg(`${n} 件の文で置き換えました(「元に戻す」で戻せます)`); setFind({ ...find, hits: [], i: 0 }); onChanged(); }
-            catch (e) { setMsg(String(e)); }
-          }}>すべて置換</button>
-          <button className="link" onClick={() => setFind({ ...find, open: false, hits: [] })}>閉じる</button>
-        </div>
-      )}
+          {find.open && (
+            <div className="findbar card" data-testid="findbar">
+              <input id="find-q" placeholder="この議事録の中を検索" value={find.q} onChange={(e) => doFind(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") stepFind(e.shiftKey ? -1 : 1); if (e.key === "Escape") setFind({ ...find, open: false }); }} />
+              <span className="note">{find.q.trim() ? (find.hits.length ? `${find.i + 1} / ${find.hits.length} 件` : "見つかりません") : ""}</span>
+              <button className="btn small" disabled={!find.hits.length} onClick={() => stepFind(-1)}>前へ</button>
+              <button className="btn small" disabled={!find.hits.length} onClick={() => stepFind(1)}>次へ</button>
+              <input placeholder="置き換える語" value={find.r} onChange={(e) => setFind({ ...find, r: e.target.value })} />
+              <button className="btn small" disabled={!find.q} onClick={async () => {
+                try { const [n, x] = await api.replaceIn(id, find.q, find.r); apply(x); setMsg(`${n} 件の文で置き換えました(「元に戻す」で戻せます)`); setFind({ ...find, hits: [], i: 0 }); onChanged(); }
+                catch (e) { setMsg(String(e)); }
+              }}>すべて置換</button>
+              <button className="link" onClick={() => setFind({ ...find, open: false, hits: [] })}>閉じる</button>
+            </div>
+          )}
 
-      <div className="playerbar card">
-        {audio ? (
-          <audio ref={player} controls src={audio} className="player" onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} />
-        ) : (
-          <p className="note">{m.hasAudio ? "" : "音声を残さない設定のため、再生できません。"}</p>
-        )}
-        <div className="row">
-          <button className="btn small" disabled={!audio} onClick={() => { const a = player.current; if (a) a.currentTime = Math.max(0, a.currentTime - 5); }}>−5秒</button>
-          <button className="btn small" disabled={!audio} onClick={() => { const a = player.current; if (a) a.currentTime += 5; }}>＋5秒</button>
-          <label>速度
-            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="再生速度">
-              {SPEEDS.map((v) => <option key={v} value={v}>{v}倍</option>)}
-            </select>
-          </label>
-          <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> 再生に合わせて表示を追う</label>
-          <label className="check"><input type="checkbox" checked={autoPause} onChange={(e) => setAutoPause(e.target.checked)} /> 入力中は一時停止</label>
-          <span className="grow" />
-          <span className="note" data-testid="low-nav">要確認 {lowIds.length} 件{lowPos >= 0 ? `(${lowPos + 1} 件目)` : ""}</span>
-          <button className="btn small" disabled={!lowIds.length} onClick={() => nextLow(-1)}>前の要確認</button>
-          <button className="btn small" disabled={!lowIds.length} onClick={() => nextLow(1)}>次の要確認</button>
-        </div>
-        <p className="note keys">キー: Space 再生/停止・←→ 5秒・↑↓ 前後の文・n / p 次/前の要確認・⌘(Ctrl)+Enter 入力中でも再生/停止・⌘(Ctrl)+F 検索。文を押すとその位置へ移ります。</p>
-      </div>
-
-      {(counts.size > 0 || (done && m.diarize)) && (
-        <div className="speakers card" data-testid="speakers">
-          <span className="lbl">話者</span>
-          {[...counts.entries()].map(([name, n]) => (
-            rename?.from === name ? (
-              <span key={name} className="rename">
-                <input autoFocus value={rename.to} aria-label={`${name} の新しい名前`} onChange={(e) => setRename({ ...rename, to: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { run(() => api.renameSpeaker(id, name, rename.to)); setRename(null); }
-                    if (e.key === "Escape") setRename(null);
-                  }} />
-                <button className="btn small" onClick={() => { run(() => api.renameSpeaker(id, name, rename.to)); setRename(null); }}>変更</button>
-              </span>
-            ) : (
-              <button key={name} className="spk" style={{ borderColor: speakerColor(name) }} title="押すと名前を変えられます(この議事録の中をまとめて)"
-                onClick={() => setRename({ from: name, to: name.startsWith("話者") ? "" : name })}>
-                <i style={{ background: speakerColor(name) }} />{name}<small>{n}</small>
-              </button>
-            )
-          ))}
-          <span className="grow" />
-          {done && (settings?.diarizeAvailable ?? true) && (plan?.diarize ?? true) && (
-            <label>判別し直す
-              <select value="" aria-label="話者を判別し直す" onChange={(e) => {
-                if (!e.target.value) return;
-                const n = e.target.value === "auto" ? null : Number(e.target.value);
-                run(() => api.rediarize(id, n), "話者を判別し直しました(「元に戻す」で戻せます)");
-              }}>
-                <option value="">人数を選ぶ…</option>
-                <option value="auto">自動</option>
-                {[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}人</option>)}
-              </select>
-            </label>
+          {view === "edit" && (
+            <>
+              <ol className="segs">
+                {segs.map((s, i) => (
+                  <Row key={`${s.id}-${s.text}-${s.speaker}`} s={s} last={i + 1 >= segs.length} playing={s.id === playing} hit={hitSet.has(s.id) && find.hits[find.i] === s.id}
+                    low={s.confidence < d.lowConfidence} speakers={d.speakers} actions={actions} readOnly={readOnly} />
+                ))}
+              </ol>
+              {!segs.length && <p className="empty">{done ? "文字にできる音声がありませんでした。" : "文字起こしの結果はここに表示されます。"}</p>}
+              <p className="note keys">Space 再生/停止 ・ ←→ 5秒 ・ ↑↓ 前後の文 ・ n / p 次/前の要確認 ・ ⌘(Ctrl)+Enter 入力中でも再生/停止 ・ ⌘(Ctrl)+F 検索</p>
+            </>
+          )}
+          {view === "read" && (
+            <article className="reading" data-testid="reading">
+              {paras.map((p) => (
+                <div key={p.id} className={"p" + (now >= p.t && now < p.end ? " playing" : "")} onClick={() => seek(p.t, false)}>
+                  <div className="who" style={{ color: speakerColor(p.sp) }}>{p.sp || "—"}<small>{hms(p.t)}</small></div>
+                  <div>{p.tx}</div>
+                </div>
+              ))}
+              {!paras.length && <p className="empty">まだ文字がありません。</p>}
+            </article>
+          )}
+          {view === "memo" && <div className="card"><Notes d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} /></div>}
+          {view === "summary" && (
+            <div className="card soon" data-testid="summary">
+              <div className="big">要約は、後から追加できる機能です</div>
+              <p>議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作ります(準備中)。{plan?.summary ? "" : "有料版の機能です。"}</p>
+            </div>
           )}
         </div>
-      )}
-      <datalist id="speakers">{d.speakers.map((s) => <option key={s} value={s} />)}</datalist>
+      </div>
 
-      <ol className="segs">
-        {segs.map((s, i) => (
-          <Row key={`${s.id}-${s.text}-${s.speaker}`} s={s} last={i + 1 >= segs.length} playing={s.id === playing} hit={hitSet.has(s.id) && find.hits[find.i] === s.id}
-            low={s.confidence < d.lowConfidence} speakers={d.speakers} actions={actions} readOnly={d.provisional || m.recording} />
-        ))}
-      </ol>
-      {!segs.length && <p className="empty">{done ? "文字にできる音声がありませんでした。" : "文字起こしの結果はここに表示されます。"}</p>}
+      <div className="player-bar" data-testid="player">
+        {audio && <audio ref={player} src={audio} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} onPlay={() => setPaused(false)} onPause={() => setPaused(true)} />}
+        <div className="transport">
+          <button disabled={!audio} aria-label="前の文" onClick={() => { const i = Math.max(0, (playingIdx >= 0 ? playingIdx : 0) - 1); if (segs[i]) goTo(segs[i].id); }}>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z" /></svg></button>
+          <button className="play" disabled={!audio} aria-label={paused ? "再生" : "一時停止"} onClick={() => { const a = player.current; if (a) (a.paused ? a.play().catch(() => undefined) : a.pause()); }}>
+            {paused ? <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg> : <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>}</button>
+          <button disabled={!audio} aria-label="次の文" onClick={() => { const i = Math.min(segs.length - 1, (playingIdx >= 0 ? playingIdx : -1) + 1); if (segs[i]) goTo(segs[i].id); }}>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z" /></svg></button>
+        </div>
+        <span className="clock">{hms(now)}</span>
+        {audio ? <Wave peaks={peaks} durationMs={durMs} nowMs={now} segs={segs} onSeek={(ms) => seek(ms, false)} /> : <span className="note">{m.hasAudio ? "音声を読み込んでいます…" : "音声を残さない設定のため、再生できません。"}</span>}
+        <span className="clock end">{hms(durMs)}</span>
+        <div className="player-opts">
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="再生速度">
+            {SPEEDS.map((v) => <option key={v} value={v}>{v}x</option>)}
+          </select>
+          <button className="toggle" aria-pressed={follow} onClick={() => setFollow(!follow)} title="再生に合わせて表示を追う">追従</button>
+          <button className="toggle" aria-pressed={autoPause} onClick={() => setAutoPause(!autoPause)} title="文の入力中は一時停止し、終えると少し前から再開">入力で停止</button>
+          <span className="lownav note" data-testid="low-nav" title="自信の低い文(要確認)を順に">要確認 {lowIds.length}{lowPos >= 0 ? `(${lowPos + 1})` : ""}
+            <button disabled={!lowIds.length} aria-label="前の要確認" onClick={() => nextLow(-1)}>‹</button>
+            <button disabled={!lowIds.length} aria-label="次の要確認" onClick={() => nextLow(1)}>›</button>
+          </span>
+        </div>
+      </div>
+      <datalist id="speakers">{d.speakers.map((s) => <option key={s} value={s} />)}</datalist>
       {printAsk && (
         <PrintDialog value={printOpts} onChange={setPrintOpts} onClose={() => setPrintAsk(false)}
           onPrint={async () => { setPrintAsk(false); try { await api.printPage(); setMsg("印刷の画面で「PDF として保存」を選ぶと、PDF にできます"); } catch (e) { setMsg(String(e)); } }} />
