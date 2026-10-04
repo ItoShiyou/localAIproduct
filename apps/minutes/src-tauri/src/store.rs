@@ -704,14 +704,20 @@ impl Store {
 
     /// 自動判別の結果を付ける。`overwrite` が false なら、利用者が名前を付けた文は変えない。元に戻せる。
     pub fn apply_speakers(&self, mid: i64, labels: &[(i64, String)], overwrite: bool) -> Result<usize, CoreError> {
+        // 別の接続(話者の判別し直しの作業用)からも呼ばれる。履歴の保存とラベルの更新を1つの書き込みにまとめ(途中で止まって半端に残らない)、
+        // 先に書き込みの権利を取って、他の操作と読み書きが交差しないようにする
+        let tx = rusqlite::Transaction::new_unchecked(&self.db.conn, rusqlite::TransactionBehavior::Immediate).map_err(e)?;
         self.checkpoint(mid, "話者の判別")?;
         let mut n = 0;
         for (sid, name) in labels {
-            let cur: String = self.db.conn.query_row("SELECT speaker FROM segments WHERE id=?1", [sid], |r| r.get(0)).map_err(e)?;
+            // 判別している間に結合などで無くなった文は飛ばす
+            let cur: Option<String> = self.db.conn.query_row("SELECT speaker FROM segments WHERE id=?1 AND meeting_id=?2", (sid, mid), |r| r.get(0)).optional().map_err(e)?;
+            let Some(cur) = cur else { continue };
             if overwrite || crate::diarize::is_auto_label(&cur) {
                 n += self.db.conn.execute("UPDATE segments SET speaker=?2 WHERE id=?1", (sid, name)).map_err(e)?;
             }
         }
+        tx.commit().map_err(e)?;
         Ok(n)
     }
 
@@ -986,6 +992,24 @@ mod tests {
         let w = crate::diarize::Window { start_ms: 0, end_ms: 1000 };
         st.set_windows(id, &[(w, vec![0.5, -1.0])]).unwrap();
         assert_eq!(st.windows(id).unwrap(), vec![(w, vec![0.5f32, -1.0])]);
+    }
+
+    #[test]
+    fn 判別している間に文が無くなっても_ラベルの更新は止まらず_ほかの議事録の文は変えない() {
+        let (st, id) = setup();
+        st.save_chunk(id, 0, 0, 30_000, &[seg(0, 2_000, "a"), seg(2_000, 4_000, "b")]).unwrap();
+        let ids: Vec<i64> = st.segments(id).unwrap().iter().map(|s| s.id).collect();
+        // 結合で無くなった文(id=9999)や、別の議事録の文が混じっていても、残りは更新される
+        let other = st.add_meeting("別", "b.wav", "", false).unwrap();
+        st.save_chunk(other, 0, 0, 30_000, &[seg(0, 2_000, "z")]).unwrap();
+        let other_sid = st.segments(other).unwrap()[0].id;
+        let n = st.apply_speakers(id, &[(9999, "話者9".into()), (ids[0], "話者1".into()), (other_sid, "話者2".into()), (ids[1], "話者2".into())], true).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(st.segments(id).unwrap().iter().map(|s| s.speaker.clone()).collect::<Vec<_>>(), ["話者1", "話者2"]);
+        assert_eq!(st.segments(other).unwrap()[0].speaker, "");
+        // 1回の操作として元に戻せる
+        assert!(st.undo(id).unwrap());
+        assert!(st.segments(id).unwrap().iter().all(|s| s.speaker.is_empty()));
     }
 
     #[test]

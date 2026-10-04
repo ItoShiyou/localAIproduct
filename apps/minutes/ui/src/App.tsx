@@ -152,7 +152,7 @@ export function App({ api }: { api: Api }) {
           </div>
         )}
         {recordOpts && (
-          <Recorder api={api} opts={recordOpts} limitMs={plan?.meetingLimitMs ?? null}
+          <Recorder api={api} opts={recordOpts} limitMs={plan?.meetingLimitMs != null ? Math.min(plan.meetingLimitMs, plan.remainingMs ?? plan.meetingLimitMs) : null}
             onStarted={(id) => { setTab("meetings"); setCur(id); refresh(); }}
             onStopped={(id) => { setRecordOpts(null); setCur(id); refresh().then(startJobs); }}
             onCancel={() => { setRecordOpts(null); refresh(); }} />

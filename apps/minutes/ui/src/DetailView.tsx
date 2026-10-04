@@ -521,6 +521,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
     : m.state === "failed" ? `処理できませんでした: ${m.error ?? "理由は不明です"}。「やり直す」を押してください`
     : m.state === "processing" ? `文字起こし中のため、終わるまで確定できません${busyHere && progress!.totalChunks ? `(${progress!.doneChunks}/${progress!.totalChunks} 区間)` : ""}`
     : m.state === "queued" ? (progress?.busy ? "ほかの議事録を文字起こし中です。順番が来ると始まります。終わるまで確定できません" : "待ちの状態です。左の「再開」で文字起こしを始めてください")
+    : diar ? "話者を判別している間は確定できません。終わるまでお待ちください(中断もできます)"
     : d.provisional ? "正確なモデルで文字起こし中です(仮の文字が残っています)。置き換わるまで確定できません"
     : null;
   // 処理が止まっているとき: 理由と次にすることを、スクロールしても見える所(ヘッダー)に出す

@@ -584,9 +584,15 @@ impl AppState {
         let x: Vec<f32> = bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
         let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
         let r = rec.as_mut().ok_or("録音していません")?;
+        // 無料版: 1件の上限と、累計の残りのうち短いほうまで(残りを超えて録音しても、その先は文字にならないため)
+        let remaining = self.plan().remaining_ms;
         if let Some(lim) = self.ent().meeting_limit_ms {
-            if r.status().elapsed_ms >= lim {
+            let elapsed = r.status().elapsed_ms;
+            if elapsed >= lim {
                 return Err("無料版で録音できるのは1件 15 分までです。「止めて保存」を押してください(有料版は制限なし)".into());
+            }
+            if remaining.is_some_and(|rem| elapsed >= rem) {
+                return Err("無料版の文字起こしの残り時間まで録音しました。「止めて保存」を押してください(有料版は制限なし)".into());
             }
         }
         r.push(&self.store(), &x)
@@ -813,6 +819,10 @@ impl AppState {
 
     /// 確定する(利用者が確認画面で押したときだけ呼ぶ)。
     pub fn confirm(&self, id: i64) -> Result<DetailDto, String> {
+        // 話者を判別し直している間に確定すると、終わったときのラベルの更新で下書きに戻ってしまう。終わってから確定してもらう
+        if self.diar.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|d| d.meeting_id) == Some(id) {
+            return Err("話者を判別している途中です。終わってから確定してください".into());
+        }
         self.store().confirm(id).map_err(err)?;
         self.detail(id)
     }
@@ -1312,6 +1322,194 @@ mod tests {
         assert!(s.store().windows(id).unwrap().is_empty());
         let after = s.detail(id).unwrap().segments.iter().map(|x| x.speaker.clone()).collect::<Vec<_>>();
         assert_eq!(before, after);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// 時間内に終わらなければ(デッドロックの疑い)テストを失敗させる
+    fn within<T: Send>(secs: u64, what: &str, f: impl FnOnce() -> T + Send) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::scope(|sc| {
+            sc.spawn(move || {
+                let _ = tx.send(f());
+            });
+            rx.recv_timeout(std::time::Duration::from_secs(secs)).unwrap_or_else(|_| panic!("{what}: {secs}秒で終わらない(デッドロックの疑い)"))
+        })
+    }
+
+    #[test]
+    fn 判別し直しの最中に文の編集_分割_結合_元に戻すを重ねても止まらず_結果が壊れない() {
+        let (d, s, id) = processed_without_windows("rediar-edit", 25);
+        let n0 = s.detail(id).unwrap().segments.len();
+        assert!(n0 >= 2, "文が少なすぎる: {n0}");
+        let r = within(120, "判別し直しと編集", || {
+            std::thread::scope(|sc| {
+                let h = sc.spawn(|| s.rediarize(id, Some(2)));
+                let t0 = std::time::Instant::now();
+                while s.rediarize_status().map(|p| p.total).unwrap_or(0) == 0 {
+                    assert!(t0.elapsed().as_secs() < 20 && !h.is_finished(), "始まらない");
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                // 判別している間、画面からの操作を次々に送る(共有の接続は握られていない)
+                let mut ops = 0;
+                while !h.is_finished() {
+                    let segs = s.detail(id).unwrap().segments;
+                    let first = segs[0].id;
+                    s.edit_text(first, &format!("編集{ops}")).unwrap();
+                    s.set_speaker(first, "手で付けた名前", false).unwrap();
+                    if segs.len() >= 2 {
+                        s.split(segs[1].id, 1).ok();
+                        let segs = s.detail(id).unwrap().segments;
+                        s.merge_next(segs[1].id).ok();
+                    }
+                    s.undo(id).unwrap();
+                    // 確定は、判別が終わるまで断られる
+                    assert!(s.confirm(id).unwrap_err().contains("途中"));
+                    ops += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                assert!(ops >= 2, "重ねた操作が少ない: {ops}");
+                h.join().unwrap()
+            })
+        });
+        assert!(r.is_ok(), "{r:?}");
+        let det = s.detail(id).unwrap();
+        // 文の id が重ならず、時刻が前後せず、文字が残っている
+        let mut ids: Vec<i64> = det.segments.iter().map(|x| x.id).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), det.segments.len());
+        assert!(det.segments.windows(2).all(|w| w[0].start_ms <= w[1].start_ms));
+        assert!(det.segments.iter().all(|x| !x.text.is_empty()));
+        assert!(s.rediarize_status().is_none());
+        // 終われば確定でき、確定のあとは書き出せる
+        let c = s.confirm(id).unwrap();
+        assert_eq!(c.meeting.status, "confirmed");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 判別し直しを中断したあとは_すぐやり直せて_確定もできる() {
+        let (d, s, id) = processed_without_windows("rediar-cancel2", 25);
+        // 何も動いていないときの中断は、次の判別を止めない
+        s.cancel_rediarize();
+        std::thread::scope(|sc| {
+            let h = sc.spawn(|| s.rediarize(id, Some(2)));
+            let t0 = std::time::Instant::now();
+            while s.rediarize_status().map(|p| p.done).unwrap_or(0) < 2 {
+                assert!(t0.elapsed().as_secs() < 20 && !h.is_finished(), "進まない");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            s.cancel_rediarize();
+            s.cancel_rediarize(); // 続けて押しても同じ
+            assert!(h.join().unwrap().unwrap_err().contains("中断"));
+        });
+        assert!(s.rediarize_status().is_none());
+        assert_eq!(s.confirm(id).unwrap().meeting.status, "confirmed");
+        // 中断のあとにやり直すと最後まで終わる
+        let r = within(60, "中断後のやり直し", || s.rediarize(id, Some(2)));
+        assert!(r.is_ok(), "{r:?}");
+        assert!(!s.store().windows(id).unwrap().is_empty());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 保存と確定が同時に来ても止まらず_最後は確定できる() {
+        let d = tmp("save-confirm");
+        let s = state(&d, Some(Box::new(FakeAsr { text: "テスト".into() })));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
+        s.run_jobs().unwrap();
+        let first = s.detail(id).unwrap().segments[0].id;
+        within(60, "保存と確定", || {
+            std::thread::scope(|sc| {
+                let a = sc.spawn(|| (0..60).for_each(|i| { s.edit_text(first, &format!("直し{i}")).unwrap(); }));
+                let b = sc.spawn(|| (0..60).for_each(|_| { s.confirm(id).unwrap(); s.unconfirm(id).unwrap(); }));
+                a.join().unwrap();
+                b.join().unwrap();
+            })
+        });
+        let det = s.detail(id).unwrap();
+        assert_eq!(det.segments[0].text, "直し59");
+        // 直したあとに確定すれば、確定のまま残る(編集のたびに下書きに戻るのは、確定したあとに直したときだけ)
+        assert_eq!(s.confirm(id).unwrap().meeting.status, "confirmed");
+        assert_eq!(s.detail(id).unwrap().meeting.status, "confirmed");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// 無料版の状態で、小さなモデル(仮の loader)を設定した state
+    fn free_state(name: &str) -> (PathBuf, AppState) {
+        let d = tmp(name);
+        let s = state(&d, Some(Box::new(FakeAsr { text: "テスト".into() })));
+        s.set_tier(Tier::Free);
+        std::fs::create_dir_all(&d).unwrap();
+        let small = d.join("small.bin");
+        std::fs::write(&small, b"x").unwrap();
+        s.set_live_models(vec![small]);
+        (d, s)
+    }
+
+    fn silence_b64(ms: usize) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(vec![0u8; ms * 16 * 2])
+    }
+
+    #[test]
+    fn 無料版の録音は_1件の上限と累計の残りのうち短いほうで止まる() {
+        // 累計の残りが 20 秒しかないとき
+        let (d, s) = free_state("free-rec-rem");
+        s.ledger.lock().unwrap().add(crate::plan::FREE_TOTAL_MS - 20_000, true);
+        assert_eq!(s.plan().remaining_ms, Some(20_000));
+        s.record_start(&ProcessOptions::default()).unwrap();
+        let mut stopped_at = 0;
+        for i in 1..=40 {
+            match s.record_push(&silence_b64(1_000)) {
+                Ok(_) => {}
+                Err(e) => {
+                    assert!(e.contains("残り時間"), "{e}");
+                    stopped_at = i;
+                    break;
+                }
+            }
+        }
+        assert!((20..=22).contains(&stopped_at), "残りの 20 秒で止まるはず: {stopped_at}");
+        s.record_discard().unwrap();
+        std::fs::remove_dir_all(&d).ok();
+
+        // 残りが十分あれば、1件 15 分で止まる
+        let (d, s) = free_state("free-rec-15");
+        s.record_start(&ProcessOptions::default()).unwrap();
+        let mut n = 0;
+        let chunk = silence_b64(10_000);
+        let e = loop {
+            match s.record_push(&chunk) {
+                Ok(_) => n += 1,
+                Err(e) => break e,
+            }
+            assert!(n <= 100, "止まらない");
+        };
+        assert!(e.contains("15 分"), "{e}");
+        assert!((90..=91).contains(&n), "15 分(10 秒 x 90)で止まるはず: {n}");
+        s.record_discard().unwrap();
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 無料版の記録が書き換えられていたら_使い切った扱いで取り込みも録音も断る() {
+        let (d, s) = free_state("free-tamper");
+        s.ledger.lock().unwrap().add(5 * 60_000, true);
+        // 記録の数値だけ書き換える(署名が合わなくなる)
+        let f = d.join("usage.dat");
+        let v = std::fs::read_to_string(&f).unwrap();
+        std::fs::write(&f, v.replace("300000", "0")).unwrap();
+        s.set_ledger(crate::plan::Ledger::new(vec![Box::new(crate::plan::FileSlot(f.clone()))]));
+        assert!(s.plan().usage.tampered);
+        assert_eq!(s.plan().remaining_ms, Some(0));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        assert_eq!(s.import_audio(&src, &ProcessOptions::default()).unwrap_err(), crate::pipeline::LIMIT_REACHED);
+        assert_eq!(s.record_start(&ProcessOptions::default()).unwrap_err(), crate::pipeline::LIMIT_REACHED);
+        // 全削除をしても、書き換えた記録は直らない
+        s.delete_all().unwrap();
+        assert_eq!(s.plan().remaining_ms, Some(0));
         std::fs::remove_dir_all(&d).ok();
     }
 }

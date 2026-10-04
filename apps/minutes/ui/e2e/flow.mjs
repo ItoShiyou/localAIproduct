@@ -75,11 +75,24 @@ await page.getByLabel("参加者").fill("佐藤、鈴木");
 await page.getByLabel("参加者").blur();
 await page.getByTestId("save-ind").getByText(/保存済み/).waitFor();
 assert.equal(await page.getByTestId("diar-run").count(), 1, "他の操作の間も判別は続いている");
+// 判別している間は確定できない(終わったときのラベルの更新で下書きに戻ってしまうため)
+assert.equal(await page.getByRole("button", { name: "確定", exact: true }).isDisabled(), true, "判別中は確定を押せない");
+await page.getByTestId("confirm-why").getByText(/話者を判別している間は確定できません/).waitFor();
 await page.getByText("話者を判別し直しました").waitFor({ timeout: 10000 });
 assert.equal(await page.getByTestId("diar-run").count(), 0);
 assert.deepEqual([...new Set(await speakersOf())].sort(), ["話者1", "話者2"]);
 await page.getByRole("button", { name: "元に戻す" }).click();
 await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=segment] input[aria-label=話者]")].some((i) => i.value === "佐藤"));
+// 判別の中断: 途中で止めると、話者の表示はそのまま・確定を押せる状態に戻る
+const before = await speakersOf();
+await spk.getByRole("button", { name: "話者を判別し直す…" }).click();
+await page.getByRole("dialog", { name: "話者を判別し直す" }).getByRole("button", { name: "実行" }).click();
+await spk.getByTestId("diar-run").getByText(/話者を判別しています/).waitFor();
+await spk.getByTestId("diar-run").getByRole("button", { name: "中断" }).click();
+await page.getByText("話者の判別を中断しました").waitFor({ timeout: 10000 });
+assert.equal(await page.getByTestId("diar-run").count(), 0);
+assert.deepEqual(await speakersOf(), before, "中断したら話者の表示はそのまま");
+assert.equal(await page.getByRole("button", { name: "確定", exact: true }).isDisabled(), false, "中断のあとは確定できる");
 
 // 3) 文を押すと、その位置へ(再生中の印が移る)。要確認の巡回
 await segs.nth(3).evaluate((el) => el.click()); // カードの余白を押したのと同じ
