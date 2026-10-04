@@ -59,7 +59,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/minutes/src-tauri
+          workspaces: |
+            apps/minutes/src-tauri
+            apps/minutes/summarizer
           key: bundle
       - name: モデルと onnxruntime のキャッシュ(ハッシュは prepare_bundle.sh に固定)
         uses: actions/cache@v4
@@ -72,6 +74,10 @@ jobs:
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
         run: ../tools/prepare_bundle.sh
+      - name: 要約のサイドカーをビルド(llama.cpp、CPU のみ。bundle.externalBin が参照する)
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../tools/build_summarizer.sh
       - name: インストーラ(NSIS)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
