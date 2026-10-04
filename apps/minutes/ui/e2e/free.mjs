@@ -29,6 +29,7 @@ await page.getByRole("tab", { name: "用語辞書" }).click();
 assert.equal(await page.getByRole("button", { name: "追加" }).isDisabled(), true);
 await page.getByRole("tab", { name: "設定" }).click();
 await page.getByTestId("plan-card").getByText("ご利用のプラン: 無料版").waitFor();
+await page.getByTestId("model-tier").getByText("標準モデル(Whisper small)").waitFor();
 await page.screenshot({ path: path.join(shots, "mock-free-2.png") });
 assert.deepEqual(errors, []);
 console.log("ok: 無料版の制限");

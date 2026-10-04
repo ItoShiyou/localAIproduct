@@ -5,7 +5,7 @@ import type { Flag, ModelInfo, Plan, SettingsInfo } from "./types";
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 
 /** 文字起こしのモデルの取得・削除(取得は利用者が押したときだけ通信する) */
-function ModelSection({ api, onChanged }: { api: Api; onChanged: () => void }) {
+function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => void; plan?: Plan | null }) {
   const [m, setM] = useState<ModelInfo | null>(null);
   const [delAsk, setDelAsk] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -25,7 +25,12 @@ function ModelSection({ api, onChanged }: { api: Api; onChanged: () => void }) {
   return (
     <section className="card" data-testid="model">
       <h2>文字起こしのモデル</h2>
-      <p className="note">{m.name}・{mb(m.size)}。文字起こしはこのモデルを使って、このパソコンの中で行います。</p>
+      {plan?.tier === "free" && (
+        <p className="note" data-testid="model-tier">
+          いまは<b>標準モデル(Whisper small)</b>で文字起こししています。下の高精度モデルは有料版で使えます。
+        </p>
+      )}
+      <p className="note">高精度モデル: {m.name}・{mb(m.size)}。文字起こしはこのパソコンの中で行います。</p>
       {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
       {m.source === "bundled" && <p className="msg">アプリに同梱済み(追加の取得は不要です)</p>}
       {m.source === "managed" && <p className="msg">取得済み</p>}
@@ -106,7 +111,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </div>
       )}
       {plan && <PlanCard plan={plan} />}
-      <ModelSection api={api} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
+      <ModelSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       <section className="card">
         <h2>処理の設定</h2>
         <label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>

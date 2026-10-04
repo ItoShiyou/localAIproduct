@@ -475,7 +475,9 @@ impl AppState {
         let path = self.live_models.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|p| p.exists()).cloned();
         let a: Arc<dyn Asr> = match path {
             Some(p) => Arc::from((self.loader)(&p)?),
-            None => self.accurate_engine()?,
+            // 小さなモデルが無いとき: 有料版は正確なモデルで代わりに動かす。無料版は代わりにしない(正確なモデルは有料版の機能)
+            None if self.ent().accurate_model => self.accurate_engine()?,
+            None => return Err("文字起こしのモデル(標準)が見つかりません。アプリを入れ直してください".into()),
         };
         *g = Some(a.clone());
         Ok(a)
@@ -868,7 +870,12 @@ impl AppState {
             consent_shown: flag(&s, "consent_shown", false),
             network: self.app.network_list(&network_entries(), UPDATE_PURPOSE),
             data_dir: self.app.root.to_string_lossy().into(),
-            model: self.model_path().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into()),
+            model: if self.ent().accurate_model {
+                self.model_path().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into())
+            } else {
+                self.live_models.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|p| p.exists())
+                    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into())
+            },
             diarize_available: self.embedder().is_some(),
             diarize_error: self.embedder_error(),
         }
@@ -1020,6 +1027,12 @@ mod tests {
         let d = tmp("free");
         let s = state(&d, Some(Box::new(FakeAsr { text: "テスト".into() })));
         s.set_tier(Tier::Free);
+        // 無料版は小さなモデル(標準)を使う。ここでは仮のファイルを置き、読み込みはテスト用の loader が行う
+        std::fs::create_dir_all(&d).unwrap();
+        let small = d.join("small.bin");
+        std::fs::write(&small, b"x").unwrap();
+        s.set_live_models(vec![small.clone()]);
+        assert_eq!(s.settings().model, "small.bin", "無料版の表示は小さなモデル");
         assert!(s.add_glossary("a", "b").unwrap_err().contains("有料版"));
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
         let id = s.import_audio(&src, &ProcessOptions::default()).unwrap();
@@ -1038,6 +1051,25 @@ mod tests {
         std::fs::remove_file(&out).ok();
         s.delete_all().unwrap();
         assert_eq!(s.plan().usage.used_ms, used, "全削除でも戻らない");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 無料版は小さなモデルが無くても正確なモデルに代えない() {
+        let d = tmp("nofallback");
+        let s = state(&d, None); // 文字起こしのエンジンは、モデルの場所から読み込む
+        // 正確なモデルは「ある」状態にする
+        let dir = d.join("models");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::File::create(dir.join(WHISPER_MODEL.file_name)).unwrap().set_len(WHISPER_MODEL.size).unwrap();
+        std::fs::write(dir.join(format!("{}.sha256", WHISPER_MODEL.file_name)), WHISPER_MODEL.sha256).unwrap();
+        s.set_tier(Tier::Free);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        s.import_audio(&src, &ProcessOptions::default()).unwrap();
+        assert!(s.run_jobs().unwrap_err().contains("標準"));
+        // 有料版なら正確なモデルで動く
+        s.set_tier(Tier::Pro);
+        assert_eq!(s.run_jobs().unwrap(), 1);
         std::fs::remove_dir_all(&d).ok();
     }
 
