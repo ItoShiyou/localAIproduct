@@ -141,6 +141,8 @@ pub fn run() {
             tauri_glue::set_tags,
             tauri_glue::update_notes,
             tauri_glue::rediarize,
+            tauri_glue::rediarize_status,
+            tauri_glue::cancel_rediarize,
             tauri_glue::rename_speaker,
             tauri_glue::find_in,
             tauri_glue::replace_in,

@@ -88,6 +88,17 @@ pub async fn rediarize(state: State<'_, AppState>, id: i64, num_speakers: Option
 }
 
 #[tauri::command]
+pub async fn rediarize_status(state: State<'_, AppState>) -> Result<Option<crate::commands::RediarizeDto>, String> {
+    Ok(state.rediarize_status())
+}
+
+#[tauri::command]
+pub async fn cancel_rediarize(state: State<'_, AppState>) -> Result<(), String> {
+    state.cancel_rediarize();
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn rename_speaker(state: State<'_, AppState>, id: i64, old: String, new: String) -> Result<DetailDto, String> {
     state.rename_speaker(id, &old, &new)
 }

@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -21,6 +21,10 @@ export interface Api {
   updateNotes(id: number, agenda: string, decisions: string, todos: Todo[]): Promise<Detail>;
   /** 話者を判別し直す(人数 null は自動)。名前を付けた話者も上書きする(元に戻せる) */
   rediarize(id: number, numSpeakers: number | null): Promise<Detail>;
+  /** 判別し直している間の進み具合(していなければ null) */
+  rediarizeStatus(): Promise<RediarizeStatus | null>;
+  /** 判別し直しを中断する(いまの話者はそのまま) */
+  cancelRediarize(): Promise<void>;
   renameSpeaker(id: number, oldName: string, newName: string): Promise<Detail>;
   findIn(id: number, query: string): Promise<number[]>;
   replaceIn(id: number, find: string, replace: string): Promise<[number, Detail]>;
@@ -104,6 +108,8 @@ export function makeTauriApi(t: TauriGlobal): Api {
     setTags: (id, tags) => invoke("set_tags", { id, tags }),
     updateNotes: (id, agenda, decisions, todos) => invoke("update_notes", { id, agenda, decisions, todos }),
     rediarize: (id, numSpeakers) => invoke("rediarize", { id, numSpeakers }),
+    rediarizeStatus: () => invoke("rediarize_status"),
+    cancelRediarize: () => invoke("cancel_rediarize"),
     renameSpeaker: (id, oldName, newName) => invoke("rename_speaker", { id, old: oldName, new: newName }),
     findIn: (id, query) => invoke("find_in", { id, query }),
     replaceIn: (id, find, replace) => invoke("replace_in", { id, find, replace }),
@@ -158,6 +164,7 @@ const SCRIPT = [
 ];
 
 export function makeMockApi(): Api {
+  let diar: { meetingId: number; done: number; total: number; phase: string; cancel: boolean } | null = null;
   let meetings: Meeting[] = [];
   const segs = new Map<number, Segment[]>();
   const hist = new Map<number, Segment[][]>();
@@ -241,11 +248,23 @@ export function makeMockApi(): Api {
       return det(id);
     },
     async rediarize(id, n) {
+      if (diar) throw new Error("別の議事録の話者を判別している途中です。終わるまでお待ちください");
+      const total = 20;
+      diar = { meetingId: id, done: 0, total, phase: "embed", cancel: false };
+      try {
+        for (let i = 1; i <= total; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          if (diar.cancel) throw new Error("中断しました");
+          diar = { ...diar, done: i };
+        }
+      } finally { diar = null; }
       cp(id);
       const k = n ?? 3;
       segs.set(id, (segs.get(id) ?? []).map((s, i) => ({ ...s, speaker: `話者${(i % k) + 1}` })));
       return det(id);
     },
+    async rediarizeStatus() { return diar ? { meetingId: diar.meetingId, done: diar.done, total: diar.total, phase: diar.phase } : null; },
+    async cancelRediarize() { if (diar) diar.cancel = true; },
     async renameSpeaker(id, oldName, newName) {
       if (!newName.trim()) throw new Error("名前を入力してください");
       cp(id); segs.set(id, (segs.get(id) ?? []).map((s) => (s.speaker === oldName ? { ...s, speaker: newName.trim() } : s))); return det(id);

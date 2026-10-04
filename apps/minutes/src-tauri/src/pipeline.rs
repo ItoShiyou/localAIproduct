@@ -57,17 +57,37 @@ pub fn clip_chunks(chunks: Vec<audio::Chunk>, start: Option<i64>, end: Option<i6
 }
 
 /// 話者の判別: 文字起こしした範囲の声のある所を窓に分け、窓ごとに声の特徴を求めて保存し、文にラベルを付ける。
-pub fn diarize_meeting(store: &Store, emb: &dyn Embedder, pcm: &Path, meeting_id: i64, num_speakers: Option<i64>, overwrite: bool) -> Result<usize, String> {
+pub fn diarize_meeting(
+    store: &Store,
+    emb: &dyn Embedder,
+    pcm: &Path,
+    meeting_id: i64,
+    num_speakers: Option<i64>,
+    overwrite: bool,
+    cancel: Option<&AtomicBool>,
+    on_progress: &dyn Fn(usize, usize),
+) -> Result<usize, String> {
+    let cancelled = || cancel.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false);
     let m = store.meeting(meeting_id).map_err(|e| e.to_string())?.ok_or("議事録が見つかりません")?;
     let rms = audio::frame_rms_of(pcm)?;
     let (s, e) = (m.range_start_ms.unwrap_or(0), m.range_end_ms.unwrap_or(i64::MAX));
     let wins: Vec<diarize::Window> = diarize::windows_from_rms(&rms, 0).into_iter().filter(|w| w.end_ms > s && w.start_ms < e && w.end_ms - w.start_ms >= diarize::WIN_MIN_MS).collect();
-    let mut out = Vec::with_capacity(wins.len());
-    for w in wins {
+    let total = wins.len();
+    on_progress(0, total);
+    let mut out = Vec::with_capacity(total);
+    for (i, w) in wins.into_iter().enumerate() {
+        // 中断したときは何も保存しない(いまのラベルと窓はそのまま)
+        if cancelled() {
+            return Err(CANCELLED.into());
+        }
         let x = audio::read_pcm16k(pcm, w.start_ms as u64, w.end_ms as u64)?;
         if let Ok(v) = emb.embed(&x) {
             out.push((w, v));
         }
+        on_progress(i + 1, total);
+    }
+    if cancelled() {
+        return Err(CANCELLED.into());
     }
     store.set_windows(meeting_id, &out).map_err(|e| e.to_string())?;
     relabel(store, meeting_id, num_speakers, overwrite)
@@ -168,7 +188,7 @@ pub fn process_meeting(
                 if cancel.load(Ordering::SeqCst) {
                     return Err(CANCELLED.into());
                 }
-                diarize_meeting(store, emb, &pcm, meeting_id, m.num_speakers, false)?;
+                diarize_meeting(store, emb, &pcm, meeting_id, m.num_speakers, false, Some(cancel.as_ref()), &|_, _| {})?;
             }
         }
         // 4) 後片付け

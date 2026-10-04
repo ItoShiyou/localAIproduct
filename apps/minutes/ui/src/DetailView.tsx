@@ -236,6 +236,12 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   const [find, setFind] = useState<{ open: boolean; q: string; r: string; hits: number[]; i: number }>({ open: false, q: "", r: "", hits: [], i: 0 });
   const [rename, setRename] = useState<{ from: string; to: string } | null>(null);
   const [redo, setRedo] = useState<ProcessOptions | null>(null);
+  // 話者の判別し直し: 設定のダイアログ(人数)と、実行中の進み具合
+  const [diarDlg, setDiarDlg] = useState<{ n: number | null } | null>(null);
+  const [diar, setDiar] = useState<{ done: number; total: number; phase: string; cancelling: boolean } | null>(null);
+  const diarHere = useRef(false); // この画面で始めたか(別の画面から戻ったときは、終わりを検知して読み直す)
+  const [expOpen, setExpOpen] = useState(false);
+  const expRef = useRef<HTMLDivElement>(null);
   const [printOpts, setPrintOpts] = useState<PrintOptions>({ notes: true, body: true, times: true, speakers: true });
   const [printAsk, setPrintAsk] = useState(false);
   const [view, setView] = useState<View>("edit");
@@ -279,6 +285,52 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
     const t = setInterval(() => api.detail(id).then(apply).catch(() => undefined), 1500);
     return () => clearInterval(t);
   }, [api, id, d, apply]);
+
+  // 話者の判別し直しの進み具合(別の議事録を開いて戻ったときも、続いていれば表示する)
+  useEffect(() => {
+    let alive = true;
+    api.rediarizeStatus().then((s) => { if (alive && s && s.meetingId === id) { diarHere.current = false; setDiar({ done: s.done, total: s.total, phase: s.phase, cancelling: false }); } }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [api, id]);
+  const diarOn = diar !== null;
+  useEffect(() => {
+    if (!diarOn) return;
+    let alive = true;
+    const t = setInterval(async () => {
+      try {
+        const s = await api.rediarizeStatus();
+        if (!alive) return;
+        if (s && s.meetingId === id) setDiar((x) => x && { ...x, done: s.done, total: s.total, phase: s.phase });
+        else if (!diarHere.current) { setDiar(null); api.detail(id).then(apply).catch(() => undefined); notify("ok", "話者を判別し直しました(「元に戻す」で戻せます)"); }
+      } catch { /* 次の周期で再確認 */ }
+    }, 500);
+    return () => { alive = false; clearInterval(t); };
+  }, [api, id, diarOn, apply]);
+  // 書き出しメニューは、外を押す・Esc で閉じる
+  useEffect(() => {
+    if (!expOpen) return;
+    const down = (e: MouseEvent) => { if (!expRef.current?.contains(e.target as Node)) setExpOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setExpOpen(false); };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
+  }, [expOpen]);
+
+  const startRediarize = async (n: number | null) => {
+    setDiarDlg(null);
+    diarHere.current = true;
+    setDiar({ done: 0, total: 0, phase: "prepare", cancelling: false });
+    try {
+      await flush(); // 入力途中の内容は先に保存する(長い処理は順番待ちの列に入れない)
+      const x = await api.rediarize(id, n);
+      apply(x);
+      onChanged();
+      notify("ok", "話者を判別し直しました(「元に戻す」で戻せます)");
+    } catch (e) {
+      const why = String(e).replace(/^Error:\s*/, "");
+      notify(/中断/.test(why) ? "info" : "err", /中断/.test(why) ? "話者の判別を中断しました。話者の表示はそのままです" : `話者を判別し直せませんでした: ${why}`);
+    } finally { diarHere.current = false; setDiar(null); }
+  };
 
   const seek = useCallback((ms: number, play = true) => {
     setNow(ms);
@@ -509,13 +561,18 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             {m.status === "draft"
               ? <button className="btn primary" disabled={!!confirmWhy} title={confirmWhy ?? "内容を確認できたら押してください"} aria-describedby={confirmWhy ? "confirm-why" : undefined} onClick={confirm}>確定</button>
               : <button className="btn" onClick={() => run(() => api.unconfirm(id), undefined, { toDraft: true })}>下書きに戻す</button>}
-            <select aria-label="書き出し" value="" disabled={m.status !== "confirmed"} onChange={(e) => { if (e.target.value) exp(e.target.value as ExportFormat | "wav" | "pdf"); }}>
-              <option value="">⤓ 書き出し…</option>
-              {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
-                const ok = plan?.exports.includes(v) ?? true;
-                return <option key={v} value={v} disabled={!ok}>{label}{ok ? "" : "(有料版)"}</option>;
-              })}
-            </select>
+            <div className="exp" ref={expRef}>
+              <button className="btn" aria-label="書き出し" aria-haspopup="menu" aria-expanded={expOpen} disabled={m.status !== "confirmed"}
+                title={m.status !== "confirmed" ? "確定すると書き出せます" : ""} onClick={() => setExpOpen((o) => !o)}>⤓ 書き出し ▾</button>
+              {expOpen && (
+                <div className="menu exp-menu" role="menu" aria-label="書き出す形式">
+                  {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
+                    const ok = plan?.exports.includes(v) ?? true;
+                    return <button key={v} role="menuitem" className="btn small" disabled={!ok} onClick={() => { setExpOpen(false); exp(v as ExportFormat | "wav" | "pdf"); }}>{label}{ok ? "" : "(有料版)"}</button>;
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {m.status === "draft" && confirmWhy && <p className="d-why" id="confirm-why" data-testid="confirm-why">{confirmWhy}</p>}
@@ -563,16 +620,14 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
                     </button>
                   )
                 ))}
-                {done && (settings?.diarizeAvailable ?? true) && (plan?.diarize ?? true) && (
-                  <select value="" aria-label="話者を判別し直す" onChange={(e) => {
-                    if (!e.target.value) return;
-                    const n = e.target.value === "auto" ? null : Number(e.target.value);
-                    run(() => api.rediarize(id, n), "話者を判別し直しました(「元に戻す」で戻せます)");
-                  }}>
-                    <option value="">判別し直す…</option>
-                    <option value="auto">人数は自動</option>
-                    {[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}人</option>)}
-                  </select>
+                {diar ? (
+                  <span className="diar-run" role="status" data-testid="diar-run">
+                    <span>話者を判別しています…{diar.total > 0 ? ` ${diar.done}/${diar.total}` : "(音声を読み込み中)"}</span>
+                    <progress max={diar.total || 1} value={diar.total ? diar.done : undefined} aria-label="話者を判別している進み具合" />
+                    <button className="btn small" disabled={diar.cancelling} onClick={() => { setDiar({ ...diar, cancelling: true }); api.cancelRediarize().catch(() => undefined); }}>{diar.cancelling ? "中断しています…" : "中断"}</button>
+                  </span>
+                ) : done && (settings?.diarizeAvailable ?? true) && (plan?.diarize ?? true) && (
+                  <button className="btn small" onClick={() => setDiarDlg({ n: m.numSpeakers })}>話者を判別し直す…</button>
                 )}
               </div>
             )}
@@ -597,6 +652,24 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
         )}
       </header>
 
+      {diarDlg && (
+        <div className="modal" role="dialog" aria-label="話者を判別し直す" onKeyDown={(e) => { if (e.key === "Escape") setDiarDlg(null); }}>
+          <div className="modal-body">
+            <h2>話者を判別し直す</h2>
+            <label className="field">話者の人数
+              <select aria-label="話者の人数" value={diarDlg.n ?? ""} onChange={(e) => setDiarDlg({ n: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">自動</option>
+                {[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}人</option>)}
+              </select>
+            </label>
+            <p className="note">声の特徴から話者を分け直します。録音の長さによって数十秒〜数分かかります。名前を付けた話者も付け直します(「元に戻す」で戻せます)。処理中も他の操作はできます。</p>
+            <div className="row">
+              <button className="btn primary" autoFocus onClick={() => startRediarize(diarDlg.n)}>実行</button>
+              <button className="btn" onClick={() => setDiarDlg(null)}>やめる</button>
+            </div>
+          </div>
+        </div>
+      )}
       {redo && (
         <div className="modal" role="dialog" aria-label="設定を変えてやり直す">
           <div className="modal-body">

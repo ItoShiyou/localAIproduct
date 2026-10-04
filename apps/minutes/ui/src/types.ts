@@ -48,6 +48,8 @@ export interface Segment {
 export interface Detail { meeting: Meeting; segments: Segment[]; canUndo: boolean; speakers: string[]; lowConfidence: number; provisional: boolean }
 export interface RecordStatus { meetingId: number; elapsedMs: number; pendingChunks: number; level: number }
 export interface Progress { busy: boolean; pending: number; meetingId: number | null; doneChunks: number; totalChunks: number }
+/** 話者の判別し直しの進み具合。phase は prepare(音声の読み込み)| embed(声の特徴を求める) */
+export interface RediarizeStatus { meetingId: number; done: number; total: number; phase: string }
 export interface ImportResult { name: string; id: number | null; error: string | null }
 export interface SearchHit { meetingId: number; title: string; heldOn: string | null; segmentId: number; startMs: number; text: string }
 export interface GlossaryEntry { id: number; wrong: string; right: string }

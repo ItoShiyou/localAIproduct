@@ -62,6 +62,16 @@ pub struct ProgressDto {
     pub total_chunks: i64,
 }
 
+/// 話者の判別し直しの進み具合。`phase` は "prepare"(音声の読み込み)| "embed"(声の特徴を求める)
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RediarizeDto {
+    pub meeting_id: i64,
+    pub done: i64,
+    pub total: i64,
+    pub phase: String,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DetailDto {
@@ -118,6 +128,9 @@ pub struct AppState {
     emb: Mutex<Option<Arc<dyn Embedder>>>,
     emb_loader: Mutex<Option<EmbedderLoader>>,
     emb_error: Mutex<Option<String>>,
+    /// 話者の判別し直しの進み具合(していなければ None)と、中断の合図
+    diar: Mutex<Option<RediarizeDto>>,
+    diar_cancel: AtomicBool,
     recorder: Mutex<Option<crate::recorder::LiveRecorder>>,
     /// 録音中の仮の文字に使う、速い小さなモデル(初回に読み込む)と、その場所
     live_asr: Mutex<Option<Arc<dyn Asr>>>,
@@ -188,6 +201,8 @@ impl AppState {
             emb: Mutex::new(None),
             emb_loader: Mutex::new(None),
             emb_error: Mutex::new(None),
+            diar: Mutex::new(None),
+            diar_cancel: AtomicBool::new(false),
             recorder: Mutex::new(None),
             live_asr: Mutex::new(None),
             live_models: Mutex::new(Vec::new()),
@@ -583,27 +598,66 @@ impl AppState {
     }
 
     /// 話者を判別し直す(人数を指定できる)。利用者が付けた名前も上書きする(元に戻せる)。
-    /// 声の特徴が求めてあればそれを使い、無ければ音声から求める(音声を残していない議事録はできない)。
+    /// 声の特徴が求めてあればそれを使い(すぐ終わる)、無ければ音声から求める(数十秒〜数分)。
+    /// 時間のかかる処理は別の接続で行い、共有の `store` は握らない(他の操作を止めない)。
     pub fn rediarize(&self, id: i64, num_speakers: Option<i64>) -> Result<DetailDto, String> {
         self.require(self.ent().diarize)?;
-        let store = self.store();
-        let have = !store.windows(id).map_err(err)?.is_empty();
+        // 同時に1件だけ。文字起こし中の議事録は対象にしない
+        {
+            let mut g = self.diar.lock().unwrap_or_else(|p| p.into_inner());
+            if g.is_some() {
+                return Err("別の議事録の話者を判別している途中です。終わるまでお待ちください".into());
+            }
+            let busy_here = self.current.lock().unwrap_or_else(|p| p.into_inner()).0 == Some(id);
+            let state = self.store().meeting(id).map_err(err)?.ok_or("見つかりません")?.state;
+            if busy_here || state == "processing" || state == "queued" {
+                return Err("文字起こし中のため、話者を判別し直せません。終わってからやり直してください".into());
+            }
+            self.diar_cancel.store(false, Ordering::SeqCst);
+            *g = Some(RediarizeDto { meeting_id: id, done: 0, total: 0, phase: "prepare".into() });
+        }
+        let res = self.rediarize_inner(id, num_speakers);
+        *self.diar.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        res?;
+        self.detail(id)
+    }
+
+    fn rediarize_inner(&self, id: i64, num_speakers: Option<i64>) -> Result<(), String> {
+        let have = !self.store().windows(id).map_err(err)?.is_empty();
         if have {
-            pipeline::relabel(&store, id, num_speakers, true)?;
+            pipeline::relabel(&self.store(), id, num_speakers, true)?;
         } else {
-            drop(store);
             let emb = self.embedder().ok_or_else(|| self.embedder_error().unwrap_or_else(|| "話者の判別のモデルがありません".into()))?;
             let (audio, _) = self.store().paths(id).map_err(err)?;
             let audio = audio.ok_or("音声を残していないため、話者を判別できません")?;
             let tmp = self.app.root.join("work").join(format!("diarize-{id}.pcm"));
             std::fs::create_dir_all(tmp.parent().unwrap()).map_err(err)?;
-            crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp)?;
-            let r = pipeline::diarize_meeting(&self.store(), emb.as_ref(), &tmp, id, num_speakers, true);
+            let worker = Store::open(&self.db_path()).map_err(err)?;
+            let r = crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp).and_then(|_| {
+                if self.diar_cancel.load(Ordering::SeqCst) {
+                    return Err(pipeline::CANCELLED.to_string());
+                }
+                let on_progress = |done: usize, total: usize| {
+                    *self.diar.lock().unwrap_or_else(|p| p.into_inner()) =
+                        Some(RediarizeDto { meeting_id: id, done: done as i64, total: total as i64, phase: "embed".into() });
+                };
+                pipeline::diarize_meeting(&worker, emb.as_ref(), &tmp, id, num_speakers, true, Some(&self.diar_cancel), &on_progress)
+            });
             let _ = std::fs::remove_file(&tmp);
             r?;
         }
         self.store().db.conn.execute("UPDATE meetings SET num_speakers=?2 WHERE id=?1", (id, num_speakers)).map_err(err)?;
-        self.detail(id)
+        Ok(())
+    }
+
+    /// 話者の判別し直しの進み具合(していなければ None)。
+    pub fn rediarize_status(&self) -> Option<RediarizeDto> {
+        self.diar.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    /// 話者の判別し直しを中断する(いまのラベルはそのまま)。
+    pub fn cancel_rediarize(&self) {
+        self.diar_cancel.store(true, Ordering::SeqCst);
     }
 
     pub fn rename_speaker(&self, id: i64, old: &str, new: &str) -> Result<DetailDto, String> {
@@ -1083,6 +1137,75 @@ mod tests {
         let st = s.set_flag("update_check", false).unwrap();
         assert!(st.network.iter().any(|e| e.stoppable && !e.enabled));
         assert!(s.set_flag("x", true).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// 音声から特徴を求める間は遅い(テスト用)
+    struct SlowEmb(u64);
+    impl Embedder for SlowEmb {
+        fn embed(&self, pcm: &[f32]) -> Result<Vec<f32>, String> {
+            std::thread::sleep(std::time::Duration::from_millis(self.0));
+            let r = (pcm.iter().map(|x| x * x).sum::<f32>() / pcm.len().max(1) as f32).sqrt();
+            Ok(crate::diarize::normalize(vec![r, 0.05]))
+        }
+    }
+
+    fn processed_without_windows(name: &str, ms: u64) -> (PathBuf, AppState, i64) {
+        let d = tmp(name);
+        let s = state(&d, Some(Box::new(FakeAsr { text: "テスト".into() })));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
+        s.run_jobs().unwrap(); // 特徴のモデルを設定していないので、窓は無い
+        assert!(s.store().windows(id).unwrap().is_empty());
+        s.set_embedder_loader(Box::new(move || Ok(Box::new(SlowEmb(ms)) as Box<dyn Embedder>)));
+        (d, s, id)
+    }
+
+    #[test]
+    fn 話者の判別し直しは他の操作を止めず_進み具合が見え_二重に始められない() {
+        let (d, s, id) = processed_without_windows("rediar-nb", 40);
+        std::thread::scope(|sc| {
+            let h = sc.spawn(|| s.rediarize(id, Some(2)));
+            // 始まるまで待つ
+            let t0 = std::time::Instant::now();
+            while s.rediarize_status().map(|p| p.total).unwrap_or(0) == 0 {
+                assert!(t0.elapsed().as_secs() < 20 && !h.is_finished(), "始まらない");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let t = std::time::Instant::now();
+            s.detail(id).unwrap();
+            s.progress().unwrap();
+            s.meetings().unwrap();
+            assert!(t.elapsed().as_millis() < 300, "他の操作が待たされた: {:?}", t.elapsed());
+            assert!(s.rediarize(id, None).unwrap_err().contains("途中"));
+            assert!(!h.is_finished(), "テストが速すぎる");
+            let r = h.join().unwrap();
+            assert!(r.is_ok(), "{r:?}");
+        });
+        assert!(s.rediarize_status().is_none());
+        assert!(!s.store().windows(id).unwrap().is_empty());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 話者の判別し直しを中断すると_ラベルも窓もそのまま() {
+        let (d, s, id) = processed_without_windows("rediar-cancel", 40);
+        let before = s.detail(id).unwrap().segments.iter().map(|x| x.speaker.clone()).collect::<Vec<_>>();
+        std::thread::scope(|sc| {
+            let h = sc.spawn(|| s.rediarize(id, Some(2)));
+            let t0 = std::time::Instant::now();
+            while s.rediarize_status().map(|p| p.done).unwrap_or(0) < 2 {
+                assert!(t0.elapsed().as_secs() < 20 && !h.is_finished(), "進まない");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            s.cancel_rediarize();
+            let e = h.join().unwrap().unwrap_err();
+            assert!(e.contains("中断"), "{e}");
+        });
+        assert!(s.rediarize_status().is_none());
+        assert!(s.store().windows(id).unwrap().is_empty());
+        let after = s.detail(id).unwrap().segments.iter().map(|x| x.speaker.clone()).collect::<Vec<_>>();
+        assert_eq!(before, after);
         std::fs::remove_dir_all(&d).ok();
     }
 }
