@@ -10,6 +10,7 @@ cd "$APP/src-tauri"
 # macOS は shasum、Windows(Git Bash)は sha256sum を使う
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 PY="$(command -v python3 || command -v python)"
+export PYTHONUTF8=1  # Windows の既定(cp1252)だと日本語の出力で落ちる
 cargo run -q --release --no-default-features --example fetch_model -- "$APP/src-tauri/resources/models"
 rm -f resources/models/*.part
 
