@@ -38,6 +38,9 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": [
+      "binaries/minutes-summarizer"
+    ],
     "targets": [
       "app",
       "dmg"

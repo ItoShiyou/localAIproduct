@@ -2,7 +2,7 @@
 """配布物に同梱する第三者ライセンス表記(THIRD_PARTY_NOTICES.txt)を作る。
 
 使い方:
-  python3 tools/gen_notices.py <アプリの src-tauri> <アプリの ui> <出力ファイル> [--features a,b] [--extra 追加の表記ファイル.json]
+  python3 tools/gen_notices.py <アプリの src-tauri> <アプリの ui> <出力ファイル> [--features a,b] [--extra 追加の表記ファイル.json] [--also-cargo 別の実行ファイルのフォルダ]
 
 - Rust: `cargo metadata` の依存グラフから、通常の依存(build / dev 依存を除く。配布物に入るもの)を、
   macOS(aarch64)と Windows(x86_64)の両方の対象でたどり、各クレートの LICENSE / COPYING / NOTICE などの全文を入れる。
@@ -96,7 +96,14 @@ def main():
         i = args.index("--features"); features = args[i + 1]; del args[i:i + 2]
     if "--extra" in args:
         i = args.index("--extra"); extra = args[i + 1]; del args[i:i + 2]
+    also = []  # 本体とは別の実行ファイル(要約のサイドカーなど)の Cargo.toml のあるフォルダ。依存を表記に加える
+    while "--also-cargo" in args:
+        i = args.index("--also-cargo"); also.append(args[i + 1]); del args[i:i + 2]
     src_tauri, ui, out_path = args
+    # 要約のサイドカー(別の実行ファイル)がアプリの隣にあれば、その依存(llama.cpp など)も表記に入れる
+    side = os.path.join(os.path.dirname(os.path.abspath(src_tauri)), "summarizer")
+    if os.path.exists(os.path.join(side, "Cargo.toml")) and side not in also:
+        also.append(side)
     sections, summary, mpl = [], [], []
     missing = []
 
@@ -111,15 +118,19 @@ def main():
             base = os.path.dirname(os.path.abspath(extra))
             add(e["name"], e.get("version", ""), e["license"], e.get("url", ""), [open(os.path.join(base, e["text_file"]), encoding="utf-8").read()], e.get("note", ""))
 
-    for p in rust_packages(src_tauri, features):
+    all_pkgs = {(p["name"], p["version"]): p for p in rust_packages(src_tauri, features)}
+    for d in also:
+        for p in rust_packages(d, None):
+            all_pkgs.setdefault((p["name"], p["version"]), p)
+    for p in [all_pkgs[k] for k in sorted(all_pkgs)]:
         d = os.path.dirname(p["manifest_path"])
         files = license_files(d)
         url = p.get("repository") or f"https://crates.io/crates/{p['name']}/{p['version']}"
         texts = [open(f, encoding="utf-8", errors="replace").read() for f in files]
         note = ""
-        # 同梱しているネイティブのソース(whisper.cpp / SQLite)の表記
+        # 同梱しているネイティブのソース(whisper.cpp / SQLite / llama.cpp)の表記
         bundled = []
-        for sub in ("whisper.cpp", "sqlite3"):
+        for sub in ("whisper.cpp", "sqlite3", "llama.cpp"):
             sub_files = license_files(os.path.join(d, sub))
             if sub_files:
                 bundled.append(sub)

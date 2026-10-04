@@ -1,0 +1,22 @@
+[package]
+name = "minutes-summarizer"
+version = "0.1.0"
+edition = "2021"
+description = "要約用の推論サイドカー(llama.cpp)。本体とは別の実行ファイル。標準入出力の JSON 行だけでやり取りし、通信しない"
+publish = false
+
+[[bin]]
+name = "minutes-summarizer"
+path = "src/main.rs"
+
+[dependencies]
+llama-cpp-2 = { version = "0.1.158", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+[workspace]

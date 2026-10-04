@@ -176,9 +176,23 @@ input:not([type=checkbox]):not([type=range]):focus, select:focus, textarea:focus
 .reading .who { font-family: var(--font-ui); font-size: 12px; font-weight: 700; padding-top: 6px; }
 .reading .who small { display: block; font-weight: 500; color: var(--ink-3); font-family: var(--font-mono); }
 
-/* 要約(準備中) */
-.soon { text-align: center; padding: 48px 24px; color: var(--ink-2); }
-.soon .big { font-family: var(--font-serif); font-size: 20px; color: var(--ink); margin-bottom: 8px; }
+/* 要約 */
+[hidden] { display: none !important; }
+.sum-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sum-head h2 { margin: 0; }
+.sum-note { font-weight: 600; color: var(--ink-2); }
+.sum-group { margin: 16px 0; }
+.sum-group h3 { font-size: 13px; margin: 0 0 6px; }
+.sum-group h3 small { margin-left: 8px; font-weight: 500; color: var(--ink-3); }
+.sum-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.sum-row textarea { flex: 1; resize: vertical; font-size: 14px; line-height: 1.7; }
+.sum-row.todo { align-items: center; }
+.sum-row .grow { flex: 1; }
+.sum-row .owner { width: 110px; }
+.sum-row .due { width: 150px; }
+.sum-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.bar.indeterminate span { width: 35%; animation: sum-slide 1.4s ease-in-out infinite; }
+@keyframes sum-slide { 0% { margin-left: 0; } 50% { margin-left: 65%; } 100% { margin-left: 0; } }
 
 /* メモ(議題・決定事項・ToDo) */
 .notes { display: flex; flex-direction: column; gap: 14px; }

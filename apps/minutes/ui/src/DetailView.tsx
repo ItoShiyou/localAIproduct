@@ -6,6 +6,8 @@ import type { Detail, ExportFormat, Plan, ProcessOptions, Progress, Segment, Set
 import { LANGUAGE_LABEL, STATE_LABEL, hms, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+import { SummaryPanel } from "./SummaryPanel";
+
 type View = "read" | "edit" | "memo" | "summary";
 
 interface RowActions {
@@ -594,7 +596,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
         <div className="views" role="tablist" aria-label="表示">
           {views.map(([v, label, full]) => (
             <button key={v} role="tab" aria-selected={view === v} aria-label={full ? `${label}(${full})` : label} onClick={() => setView(v)}>
-              {label}{v === "summary" && <span className="pro">{plan?.summary ? "準備中" : "有料版"}</span>}{v === "memo" && (m.agenda || m.decisions || m.todos.length) ? " ●" : ""}
+              {label}{v === "summary" && !plan?.summary && <span className="pro">有料版</span>}{v === "memo" && (m.agenda || m.decisions || m.todos.length) ? " ●" : ""}
             </button>
           ))}
         </div>
@@ -738,12 +740,11 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             </article>
           )}
           {view === "memo" && <div className="card"><Notes d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} /></div>}
-          {view === "summary" && (
-            <div className="card soon" data-testid="summary">
-              <div className="big">要約は、後から追加できる機能です</div>
-              <p>議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作ります(準備中)。{plan?.summary ? "" : "有料版の機能です。"}</p>
-            </div>
-          )}
+          {/* 要約は、タブを切り替えても下書き(確認前)が消えないよう、表示を隠すだけにする */}
+          <div hidden={view !== "summary"}>
+            <SummaryPanel api={api} d={d} plan={plan} onOpenSettings={() => onOpenSettings?.()}
+              onImport={async (n, count) => { await flush(); const x = await run(() => api.updateNotes(id, n.agenda, n.decisions, n.todos), `${count} 件をメモに追加しました(「メモ」で確認・修正できます)`); if (!x) throw new Error("メモに追加できませんでした"); }} />
+          </div>
         </div>
       </div>
 

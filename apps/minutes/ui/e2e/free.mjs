@@ -28,11 +28,24 @@ assert.deepEqual(items.filter(([, d]) => !d).map(([t]) => t), ["テキスト"], 
 assert.ok(items.filter(([, d]) => d).every(([t]) => /有料版/.test(t)), "使えない形式は(有料版)と出る");
 await page.keyboard.press("Escape");
 await page.screenshot({ path: path.join(shots, "mock-free-1.png") });
+// 要約は有料版: タブに有料版の印。押すと鍵の表示だけで、始めるボタンは無い
+const sumTab = page.getByRole("tab", { name: /要約/ });
+await sumTab.getByText("有料版").waitFor();
+await sumTab.click();
+const sum = page.getByTestId("summary");
+await sum.getByTestId("summary-locked").getByText("要約は有料版の機能です").waitFor();
+await sum.getByTestId("summary-note").getByText("要約は自動で作った下書きです").waitFor();
+assert.equal(await sum.getByTestId("summary-run").count(), 0, "無料版では要約を始められない");
 await page.getByRole("tab", { name: "用語辞書" }).click();
 assert.equal(await page.getByRole("button", { name: "追加" }).isDisabled(), true);
 await page.getByRole("tab", { name: "設定" }).click();
 await page.getByTestId("plan-card").getByText("ご利用のプラン: 無料版").waitFor();
 await page.getByTestId("model-tier").getByText("標準モデル(Whisper small)").waitFor();
+// 要約(追加機能)のモデルの取得も、無料版では押せない
+const sm = page.getByTestId("summary-model");
+await sm.getByText("有料版").first().waitFor();
+await sm.getByTestId("summary-model-locked").waitFor();
+assert.equal(await sm.getByRole("button", { name: "取得する" }).isDisabled(), true, "無料版では要約のモデルを取得できない");
 await page.screenshot({ path: path.join(shots, "mock-free-2.png") });
 assert.deepEqual(errors, []);
 console.log("ok: 無料版の制限");

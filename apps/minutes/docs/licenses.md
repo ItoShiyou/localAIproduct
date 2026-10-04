@@ -82,3 +82,21 @@
 | 名前 | 状態 |
 |---|---|
 | ffmpeg | このスパイク環境の ffmpeg 6.1.1 は `--enable-gpl` でビルドされている(GPL)。**製品に同梱する場合は LGPL 構成でのビルドか、Rust のデコーダ(symphonia など。ライセンス未確認)に替えるかを決める必要がある → 要確認**。実行時に別プロセスで呼ぶだけでも GPL の配布条件が問題になりうる。 |
+
+## 2026-10-04 追記(要約の追加機能)
+
+要約は有料版の追加機能。モデルはアプリに同梱せず、利用者が押したときだけ取得する。推論は llama.cpp を**別の実行ファイル**(サイドカー)にして本体から子プロセスで動かす(whisper.cpp の ggml と記号が衝突するため)。
+
+| 名前 | 版 | ライセンス | 確認元 | 配布時に必要なこと |
+|---|---|---|---|---|
+| **Qwen3-4B-Instruct-2507**(Alibaba Cloud / Qwen)GGUF Q4_K_M(量子化は Unsloth) | `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`、2,497,281,120 バイト、SHA-256 `3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597`(取得して照合済み) | **Apache-2.0** | `Qwen/Qwen3-4B-Instruct-2507` のモデルカード原文 `license: apache-2.0`(`license_link` は同リポジトリの LICENSE)。GGUF 配布 `unsloth/Qwen3-4B-Instruct-2507-GGUF` の `license: apache-2.0`、`base_model: Qwen/Qwen3-4B-Instruct-2507`。取得元 URL: `https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf` | Apache-2.0 の写し(`legal/qwen3-model-LICENSE.txt`、`legal/extra.json` 経由で THIRD_PARTY_NOTICES に入る)。改変(再学習)なし、量子化のみ |
+| llama.cpp(ggml authors。llama-cpp-sys-2 が同梱) | 同梱版(llama-cpp-sys-2 0.1.158) | MIT | クレート内 `llama.cpp/LICENSE` | `tools/gen_notices.py` が自動で全文を入れる(サイドカーの依存も対象にした) |
+| llama-cpp-2 / llama-cpp-sys-2(utilityai の Rust 束ね) | 0.1.158 | MIT OR Apache-2.0 | crates.io のメタデータと LICENSE | 同上 |
+| サイドカーの他の依存(serde、serde_json、tracing、enumflags2、thiserror など) | — | MIT / Apache-2.0 系(`cargo metadata` で確認) | 同上 | 同上 |
+
+比べた他の候補(2026-10-04、モデルカード原文の `license:` を確認):
+- `sbintuitions/sarashina2.2-3b-instruct-v0.1`: MIT(GGUF は mmnga 配布 Q4_K_M、2,066,390,112 バイト、SHA-256 `d96f4d98…`)。ライセンスは問題ないが、要約の忠実さで劣ったため不採用(`docs/spike-results.md`)。
+- `Qwen/Qwen2.5-1.5B-Instruct-GGUF` / `Qwen2.5-7B-Instruct-GGUF`: Apache-2.0(Qwen2.5-3B は Apache でないため対象外)。日本語の質と大きさの釣り合いで 4B を優先し、試していない。
+- `llm-jp/llm-jp-3-3.7b-instruct`: Apache-2.0。未試験。
+- Phi-4-mini-instruct(MIT)は日本語が弱いとされるため試していない。
+- 注意: 利用者の出力(要約)は自動の下書きで、画面で確認してから使う設計。Qwen3 の学習データ由来の追加条件はモデルカードに記載なし。

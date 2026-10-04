@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { Flag, ModelInfo, Plan, SettingsInfo } from "./types";
+import type { Flag, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
+import { PRO_LABEL } from "./types";
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
+const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
 
 /** 文字起こしのモデルの取得・削除(取得は利用者が押したときだけ通信する) */
 function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => void; plan?: Plan | null }) {
@@ -60,6 +62,59 @@ function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => voi
   );
 }
 
+/** 要約(追加機能)のモデルの取得・削除。有料版のみ。取得は利用者が押したときだけ通信する */
+function SummarySection({ api, plan }: { api: Api; plan?: Plan | null }) {
+  const [m, setM] = useState<SummaryStatus | null>(null);
+  const [delAsk, setDelAsk] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { api.summaryStatus().then(setM).catch((e) => setMsg(String(e))); }, [api]);
+  useEffect(() => {
+    if (!m?.downloading) return;
+    const t = setInterval(() => api.summaryStatus().then(setM).catch(() => undefined), 500);
+    return () => clearInterval(t);
+  }, [api, m?.downloading]);
+  if (!m) return null;
+  const pro = plan?.summary ?? false;
+  const start = async () => {
+    setMsg(null);
+    setM({ ...m, downloading: true, error: null });
+    try { const r = await api.downloadSummaryModel(); setM(r); if (r.installed) setMsg("取得しました。議事録の「要約」タブから使えます"); }
+    catch (e) { setMsg(String(e).replace(/^Error: /, "")); setM(await api.summaryStatus()); }
+  };
+  return (
+    <section className="card" data-testid="summary-model">
+      <h2>要約(追加機能){!pro && <span className="pro">{PRO_LABEL}</span>}</h2>
+      <p className="note">議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作る機能です。必要なモデルは、アプリとは別に、あとから取得します。</p>
+      <p className="note">モデル: {m.name}・{gb(m.size)}・ライセンス {m.license}(全文は下の「ライセンスの全文を表示」で読めます)。16GB のメモリのパソコンで動きます。長い会議では数分かかります。</p>
+      {!pro && <p className="note" data-testid="summary-model-locked">有料版の機能です。無料版では取得できません。</p>}
+      {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
+      {m.installed && m.source === "managed" && <p className="msg">取得済み</p>}
+      {!m.engine && <p className="note">このアプリには要約のエンジンが入っていません。</p>}
+      {!m.installed && !m.downloading && (
+        <>
+          <p className="note">まだ取得していません。取得には約 {gb(m.size)} の通信と空き容量が要ります。押したときだけ通信し、送るのはモデルの名前(取得先のアドレス)だけです。録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
+          <button className="btn primary" disabled={!pro} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
+        </>
+      )}
+      {m.downloading && (
+        <div className="progress" data-testid="summary-model-progress">
+          <div className="bar"><span style={{ width: `${(m.downloaded / m.size) * 100}%` }} /></div>
+          <p className="note">取得中 {mb(m.downloaded)} / {mb(m.size)}</p>
+          <button className="btn small" onClick={() => api.cancelSummaryDownload()}>中断</button>
+        </div>
+      )}
+      {m.error && <p className="msg err">{m.error}</p>}
+      {msg && <p className="msg">{msg}</p>}
+      {m.installed && m.source === "managed" && (!delAsk
+        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>モデルを削除…</button>
+        : <span className="ask">削除すると、要約には再取得が必要です。
+            <button className="btn small danger" onClick={async () => { try { setM(await api.deleteSummaryModel()); } catch (e) { setMsg(String(e)); } setDelAsk(false); }}>削除する</button>
+            <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
+          </span>)}
+    </section>
+  );
+}
+
 /** 無料版と有料版の比較(有料版の購入・ライセンスの有効化は準備中) */
 function PlanCard({ plan }: { plan: Plan }) {
   const min = (ms: number | null) => (ms == null ? "" : `${Math.floor(ms / 60000)} 分`);
@@ -69,7 +124,7 @@ function PlanCard({ plan }: { plan: Plan }) {
     ["マイク録音・取り込み・確認と修正・検索", "○", "○"],
     ["書き出し", "テキストのみ(末尾に無料版の表示)", "Word・PDF・Markdown・テキスト・字幕・音声"],
     ["話者の判別・ノイズ除去・用語辞書", "—", "○"],
-    ["要約(後から追加ダウンロード)", "—", "○(準備中)"],
+    ["要約(後から追加ダウンロード。下書きを確認して使う)", "—", "○"],
   ];
   return (
     <section className="card" data-testid="plan-card">
@@ -112,6 +167,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
       )}
       {plan && <PlanCard plan={plan} />}
       <ModelSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
+      <SummarySection api={api} plan={plan} />
       <section className="card">
         <h2>処理の設定</h2>
         <label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>
@@ -154,6 +210,8 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
             {[
               ["Whisper large-v3-turbo(OpenAI)/ whisper.cpp 形式", "文字起こしのモデル", "MIT"],
               ["whisper.cpp", "文字起こしの実行", "MIT"],
+              ["Qwen3-4B-Instruct-2507(Alibaba Cloud)/ GGUF 量子化は Unsloth", "要約のモデル(追加機能・取得したときのみ)", "Apache-2.0"],
+              ["llama.cpp / llama-cpp-2", "要約の実行(別の実行ファイル)", "MIT / MIT または Apache-2.0"],
               ["whisper-rs", "whisper.cpp の Rust 束ね", "Unlicense"],
               ["nnnoiseless(RNNoise の移植)", "ノイズ除去", "BSD-3-Clause"],
               ["Symphonia", "音声ファイルの読み込み", "MPL-2.0"],

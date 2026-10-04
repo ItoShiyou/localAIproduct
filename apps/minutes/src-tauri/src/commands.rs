@@ -105,7 +105,7 @@ pub fn network_entries() -> Vec<NetworkEntry> {
     vec![
         e("ライセンス認証・検証", "販売プラットフォームのAPI", "ライセンスキー、端末の識別名", false),
         e(UPDATE_PURPOSE, "配布元", "アプリのバージョン", true),
-        e("モデルの取得(操作したときのみ)", "モデルの配布元", "モデル名", false),
+        e("モデルの取得(操作したときのみ)", "モデルの配布元(文字起こし・要約のモデル)", "モデル名", false),
     ]
 }
 
@@ -139,6 +139,8 @@ pub struct AppState {
     tier: Mutex<Tier>,
     /// 無料版の使った量の記録
     ledger: Mutex<Ledger>,
+    /// 要約(有料版の追加機能。モデルは後から取得、推論は別プロセス)
+    pub summary: crate::summary::SummaryRuntime,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -208,6 +210,7 @@ impl AppState {
             live_models: Mutex::new(Vec::new()),
             tier: Mutex::new(default_tier()),
             ledger: Mutex::new(Ledger::new(vec![Box::new(crate::plan::FileSlot(data_dir_for_ledger.join("usage.dat")))])),
+            summary: crate::summary::SummaryRuntime::new(data_dir_for_ledger.join("models")),
         })
     }
 
@@ -466,6 +469,46 @@ impl AppState {
         *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.models.delete(&WHISPER_MODEL).map_err(err)?;
         Ok(self.model_status())
+    }
+
+    // ---------------- 要約(有料版の追加機能) ----------------
+
+    pub fn summary_status(&self) -> crate::summary::SummaryStatusDto {
+        self.summary.status()
+    }
+
+    /// 要約のモデルを取得する(利用者が設定画面で押したときだけ。通信一覧の「モデルの取得」)。終わるまで返らない。
+    pub fn download_summary_model(&self) -> Result<crate::summary::SummaryStatusDto, String> {
+        self.require(self.ent().summary)?;
+        self.summary.download()
+    }
+
+    pub fn cancel_summary_download(&self) {
+        self.summary.cancel_download()
+    }
+
+    pub fn delete_summary_model(&self) -> Result<crate::summary::SummaryStatusDto, String> {
+        self.summary.delete()
+    }
+
+    /// 議事録の文字起こしから、要約の下書きを作る。**保存はしない**(取り込みは画面で確認したあとに `update_notes`)。
+    pub fn summarize(&self, id: i64) -> Result<crate::summary::SummaryResult, String> {
+        self.require(self.ent().summary)?;
+        let (title, segs) = {
+            let store = self.store();
+            let m = store.meeting(id).map_err(err)?.ok_or("見つかりません")?;
+            if m.state != "done" {
+                return Err("文字起こしが終わってから要約できます".into());
+            }
+            let segs: Vec<(String, String)> = store.segments(id).map_err(err)?.into_iter().filter(|s| s.chunk_idx >= 0).map(|s| (s.speaker, s.text)).collect();
+            (m.title, segs)
+        };
+        let paras = crate::summary::paragraphs(&segs);
+        self.summary.run(id, &title, &paras)
+    }
+
+    pub fn cancel_summarize(&self) {
+        self.summary.cancel()
     }
 
     /// 第三者のソフトウェア・モデルのライセンス表記(全文)。
@@ -985,6 +1028,69 @@ mod tests {
     fn state(d: &Path, asr: Option<Box<dyn Asr>>) -> AppState {
         let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
         AppState::new(d.to_path_buf(), asr, loader, vec![]).unwrap()
+    }
+
+    /// 決まった要約を返す偽のエンジン
+    struct FakeSummarizer;
+    impl crate::summary::Summarizer for FakeSummarizer {
+        fn count_tokens(&self, text: &str) -> Result<usize, crate::summary::SummaryError> {
+            Ok(text.chars().count())
+        }
+        fn complete(&self, _s: &str, user: &str, _m: u32, _g: Option<&str>, _t: &mut dyn FnMut(u32)) -> Result<crate::summary::Completion, crate::summary::SummaryError> {
+            assert!(user.contains("山田商事の件です"), "文字起こしが渡る");
+            Ok(crate::summary::Completion {
+                text: r#"{"summary":["山田商事の件"],"decisions":[],"todos":[{"text":"連絡する","owner":"","due":"明日"}]}"#.into(),
+                ..Default::default()
+            })
+        }
+    }
+
+    #[test]
+    fn 要約は有料版だけ_モデルを取得してから使え_議事録は自動では変わらない() {
+        let d = tmp("summary");
+        let s = state(&d, Some(Box::new(FakeAsr { text: "山田商事の件です".into() })));
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
+        s.run_jobs().unwrap();
+
+        // 無料版: 取得も要約もできない(状態は見られる)
+        s.set_tier(Tier::Free);
+        assert_eq!(s.download_summary_model().unwrap_err(), PRO_ONLY);
+        assert_eq!(s.summarize(id).unwrap_err(), PRO_ONLY);
+        assert!(!s.summary_status().status.installed);
+
+        // 有料版: モデルが無ければ案内。エンジンが無いビルドでもその旨
+        s.set_tier(Tier::Pro);
+        assert!(s.summarize(id).unwrap_err().contains("要約のモデルがありません"));
+        let dir = d.join("models");
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = std::fs::File::create(dir.join(crate::summary::SUMMARY_MODEL.file_name)).unwrap();
+        f.set_len(crate::summary::SUMMARY_MODEL.size).unwrap();
+        std::fs::write(dir.join(format!("{}.sha256", crate::summary::SUMMARY_MODEL.file_name)), crate::summary::SUMMARY_MODEL.sha256).unwrap();
+        let st = s.summary_status();
+        assert_eq!((st.source, st.status.installed, st.license), ("managed", true, "Apache-2.0"));
+        assert!(s.summarize(id).unwrap_err().contains("エンジンが含まれていません"));
+
+        // 偽のエンジンで要約: 下書きを返すだけで、議事録(議題・決定事項・ToDo)は変えない
+        s.summary.set_factory(Box::new(|_| Ok(std::sync::Arc::new(FakeSummarizer))));
+        let r = s.summarize(id).unwrap();
+        assert_eq!(r.draft.summary, vec!["山田商事の件"]);
+        assert_eq!(r.draft.todos[0].due, "明日");
+        let m = s.detail(id).unwrap().meeting;
+        assert_eq!((m.agenda.as_str(), m.decisions.as_str(), m.todos.len()), ("", "", 0));
+        assert!(!s.summary_status().running);
+
+        // 文字起こしが終わっていなければ要約しない
+        let id2 = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
+        assert!(s.summarize(id2).unwrap_err().contains("文字起こしが終わってから"));
+
+        // 取り込みは、利用者が確認したあとの update_notes(従来の経路)だけ
+        let det = s.update_notes(id, "山田商事の件", "", &[Todo { text: "連絡する(期限: 明日)".into(), ..Default::default() }]).unwrap();
+        assert_eq!(det.meeting.todos.len(), 1);
+        // 取得済みのモデルの削除(無料版でもできる)
+        s.set_tier(Tier::Free);
+        assert!(!s.delete_summary_model().unwrap().status.installed);
+        std::fs::remove_dir_all(&d).ok();
     }
 
     #[test]

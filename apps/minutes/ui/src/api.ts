@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, SummaryResult, SummaryStatus, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -75,6 +75,15 @@ export interface Api {
   deleteModel(): Promise<ModelInfo>;
   /** 第三者のソフトウェア・モデルのライセンス表記(全文) */
   thirdPartyNotices(): Promise<string>;
+  /** 要約(有料版の追加機能)。モデルの取得状況と、要約中の進み具合 */
+  summaryStatus(): Promise<SummaryStatus>;
+  /** 要約のモデルを取得する(利用者が押したときだけ。有料版のみ)。終わるまで返らない */
+  downloadSummaryModel(): Promise<SummaryStatus>;
+  cancelSummaryDownload(): Promise<void>;
+  deleteSummaryModel(): Promise<SummaryStatus>;
+  /** 要約の下書きを作る(保存しない。終わるまで返らない。進み具合は summaryStatus)。議事録に入れるのは、画面で確認したあと updateNotes で */
+  summarize(id: number): Promise<SummaryResult>;
+  cancelSummarize(): Promise<void>;
 }
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -153,6 +162,12 @@ export function makeTauriApi(t: TauriGlobal): Api {
     cancelModelDownload: () => invoke("cancel_model_download"),
     deleteModel: () => invoke("delete_model"),
     thirdPartyNotices: () => invoke("third_party_notices"),
+    summaryStatus: () => invoke("summary_status"),
+    downloadSummaryModel: () => invoke("download_summary_model"),
+    cancelSummaryDownload: () => invoke("cancel_summary_download"),
+    deleteSummaryModel: () => invoke("delete_summary_model"),
+    summarize: (id) => invoke("summarize", { id }),
+    cancelSummarize: () => invoke("cancel_summarize"),
   };
 }
 
@@ -178,10 +193,18 @@ export function makeMockApi(): Api {
     network: [
       { purpose: "ライセンス認証・検証", destination: "販売プラットフォームのAPI", content: "ライセンスキー、端末の識別名", stoppable: false, enabled: true },
       { purpose: "更新の確認", destination: "配布元", content: "アプリのバージョン", stoppable: true, enabled: true },
-      { purpose: "モデルの取得(操作したときのみ)", destination: "モデルの配布元", content: "モデル名", stoppable: false, enabled: true },
+      { purpose: "モデルの取得(操作したときのみ)", destination: "モデルの配布元(文字起こし・要約のモデル)", content: "モデル名", stoppable: false, enabled: true },
     ],
   };
   let model: ModelInfo = { name: "Whisper large-v3-turbo(q5_0)", installed: true, downloaded: 574041195, size: 574041195, downloading: false, source: "managed", error: null };
+  const SUMMARY_SIZE = 2_497_281_120;
+  let sumModel: SummaryStatus = {
+    name: "Qwen3-4B-Instruct-2507(Q4_K_M)", installed: false, downloaded: 0, size: SUMMARY_SIZE, downloading: false, source: "none", error: null, engine: true,
+    license: "Apache-2.0", licenseUrl: "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/main/LICENSE",
+    running: false, meetingId: null, step: 0, total: 0, phase: "", generated: 0,
+  };
+  let sumCancel = false;
+  const isFree = () => typeof location !== "undefined" && location.search.includes("free");
   let current: Progress = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
   const wait = (ms = 200) => new Promise<void>((r) => setTimeout(r, ms));
   const gl = (t: string) => glossary.reduce((s, g) => s.split(g.wrong).join(g.right), t);
@@ -404,6 +427,44 @@ export function makeMockApi(): Api {
     async cancelModelDownload() {},
     async deleteModel() { model = { ...model, installed: false, downloaded: 0, source: "none" }; return model; },
     async thirdPartyNotices() { return "THIRD-PARTY SOFTWARE NOTICES(モック)\n\nWhisper large-v3-turbo — MIT\n..."; },
+    async summaryStatus() { return sumModel; },
+    async downloadSummaryModel() {
+      if (isFree()) throw new Error("有料版の機能です。有料版にすると使えます");
+      sumModel = { ...sumModel, downloading: true, downloaded: 0, installed: false, error: null };
+      for (let i = 1; i <= 5; i++) { await wait(150); sumModel = { ...sumModel, downloaded: (sumModel.size * i) / 5 }; }
+      sumModel = { ...sumModel, downloading: false, installed: true, source: "managed" };
+      return sumModel;
+    },
+    async cancelSummaryDownload() {},
+    async deleteSummaryModel() { sumModel = { ...sumModel, installed: false, downloaded: 0, source: "none" }; return sumModel; },
+    async summarize(id) {
+      if (isFree()) throw new Error("有料版の機能です。有料版にすると使えます");
+      if (!sumModel.installed) throw new Error("要約のモデルがありません。設定の「要約(追加機能)」から取得してください");
+      if (!(segs.get(id) ?? []).length) throw new Error("文字起こしがありません");
+      sumCancel = false;
+      sumModel = { ...sumModel, running: true, meetingId: id, step: 0, total: 1, phase: "モデルを読み込んでいます", generated: 0 };
+      try {
+        await wait(250);
+        for (let g = 1; g <= 4; g++) {
+          if (sumCancel) throw new Error("要約を中断しました");
+          sumModel = { ...sumModel, step: 1, total: 1, phase: "要点を整理しています", generated: g * 16 };
+          await wait(250);
+        }
+        if (sumCancel) throw new Error("要約を中断しました");
+        // 画面確認用の固定の下書き(実際の要約ではない)
+        return {
+          draft: {
+            summary: ["新しい見積もりについて、やまだ商事から回答があった。金額は前回より一割ほど下がっている。", "来月の展示会の準備として、ブースの設営は外部に依頼済み。"],
+            decisions: ["ブースの設営は外部に依頼する"],
+            todos: [{ text: "見積もりの回答内容を共有する", owner: "話者1", due: "来週の月曜日まで" }, { text: "展示会の準備状況を確認する", owner: "", due: "2026-11-01" }],
+          },
+          stats: { chunks: 1, promptTokens: 600, genTokens: 64, prefillSeconds: 1, genSeconds: 1, seconds: 2 },
+        };
+      } finally {
+        sumModel = { ...sumModel, running: false, meetingId: null, step: 0, total: 0, phase: "", generated: 0 };
+      }
+    },
+    async cancelSummarize() { sumCancel = true; },
   };
 }
 

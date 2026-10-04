@@ -9,6 +9,7 @@ pub mod pipeline;
 pub mod plan;
 pub mod recorder;
 pub mod store;
+pub mod summary;
 #[cfg(feature = "tauri")]
 pub mod tauri_glue;
 
@@ -85,6 +86,10 @@ pub fn run() {
                 live.push(r.join("models").join("ggml-small-q5_1.bin"));
             }
             state.set_live_models(live);
+            // 要約のエンジン(サイドカー。アプリの実行ファイルと同じフォルダに同梱)
+            let sidecar_dirs: Vec<std::path::PathBuf> = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())).into_iter().collect();
+            state.summary.set_sidecar_dirs(sidecar_dirs.clone());
+            state.summary.set_factory(summary::sidecar_factory(sidecar_dirs));
             // 無料版の使った量の記録: データフォルダ・別の場所・OS の資格情報ストア(どれか消されても戻る)
             let id = app.config().identifier.clone();
             let mut slots: Vec<Box<dyn plan::Slot>> = vec![Box::new(plan::FileSlot(app.path().app_data_dir().unwrap_or_default().join("usage.dat")))];
@@ -136,6 +141,12 @@ pub fn run() {
             tauri_glue::download_model,
             tauri_glue::cancel_model_download,
             tauri_glue::delete_model,
+            tauri_glue::summary_status,
+            tauri_glue::download_summary_model,
+            tauri_glue::cancel_summary_download,
+            tauri_glue::delete_summary_model,
+            tauri_glue::summarize,
+            tauri_glue::cancel_summarize,
             tauri_glue::third_party_notices,
             tauri_glue::all_tags,
             tauri_glue::set_tags,
