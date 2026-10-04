@@ -100,3 +100,12 @@
 - `llm-jp/llm-jp-3-3.7b-instruct`: Apache-2.0。未試験。
 - Phi-4-mini-instruct(MIT)は日本語が弱いとされるため試していない。
 - 注意: 利用者の出力(要約)は自動の下書きで、画面で確認してから使う設計。Qwen3 の学習データ由来の追加条件はモデルカードに記載なし。
+
+## ライセンスの署名の検証(2026-10-05)
+
+| 名前 | 版 | ライセンス | 配布時に必要なこと |
+|---|---|---|---|
+| ed25519-dalek | 2.2.0 | BSD-3-Clause | `tools/gen_notices.py` が全文を THIRD_PARTY_NOTICES に入れる(2026-10-05 に生成して確認) |
+| curve25519-dalek / curve25519-dalek-derive | 4.1.3 / 0.1.1 | BSD-3-Clause / MIT OR Apache-2.0 | 同上 |
+| ed25519、signature、pkcs8、spki、der、zeroize、subtle(推移的な依存) | 2.2.3、2.2.0、0.10.2、0.7.3、0.7.10、1.9.0、2.6.1 | Apache-2.0 OR MIT(subtle は BSD-3-Clause) | 同上 |
+| getrandom(発行コマンドの乱数) | 0.3.4 | MIT OR Apache-2.0 | 同上 |
