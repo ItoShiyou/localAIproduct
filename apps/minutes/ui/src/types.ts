@@ -12,7 +12,25 @@ export interface Meeting {
   error: string | null;
   status: "draft" | "confirmed";
   createdAt: number;
+  diarize: boolean;
+  numSpeakers: number | null;
+  language: Language;
+  rangeStartMs: number | null;
+  rangeEndMs: number | null;
+  agenda: string;
+  decisions: string;
+  todos: Todo[];
+  tags: string[];
 }
+
+export type Language = "ja" | "en" | "auto";
+export interface Todo { text: string; owner: string; due: string; done: boolean }
+export interface ProcessOptions {
+  denoise: boolean; diarize: boolean; numSpeakers: number | null; language: Language;
+  rangeStartMs: number | null; rangeEndMs: number | null;
+}
+export interface MeetingFilter { tag?: string | null; sort?: "held_desc" | "held_asc" | "created_desc" | "title" }
+export const LANGUAGE_LABEL: Record<Language, string> = { ja: "日本語", en: "英語", auto: "自動判定" };
 
 export interface Segment {
   id: number;
@@ -35,9 +53,10 @@ export interface NetworkEntry { purpose: string; destination: string; content: s
 export interface SettingsInfo {
   updateCheck: boolean; keepAudio: boolean; denoiseDefault: boolean; consentShown: boolean;
   network: NetworkEntry[]; dataDir: string; model: string;
+  diarizeAvailable: boolean; diarizeError: string | null;
 }
 export type Flag = "update_check" | "keep_audio" | "denoise_default" | "consent_shown";
-export type ExportFormat = "md" | "txt" | "srt";
+export type ExportFormat = "md" | "txt" | "srt" | "docx";
 
 export const hms = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -50,4 +69,23 @@ export const STATE_LABEL: Record<Meeting["state"], string> = { queued: "待ち",
 export interface ModelInfo {
   name: string; installed: boolean; downloaded: number; size: number;
   downloading: boolean; source: "bundled" | "managed" | "env" | "none"; error: string | null;
+}
+
+/** "1:02:03" / "62:03" / "45" をミリ秒に。空なら null、読めなければ -1 */
+export function parseTime(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) return -1;
+  return t.split(":").map(Number).reduce((a, v) => a * 60 + v, 0) * 1000;
+}
+
+/** 話者ごとの色(名前から決める) */
+export function speakerColor(name: string): string {
+  if (!name) return "transparent";
+  const palette = ["#2563eb", "#d97706", "#059669", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#dc2626"];
+  const m = /^話者(\d+)$/.exec(name);
+  if (m) return palette[(Number(m[1]) - 1) % palette.length];
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.codePointAt(0)!) >>> 0;
+  return palette[h % palette.length];
 }

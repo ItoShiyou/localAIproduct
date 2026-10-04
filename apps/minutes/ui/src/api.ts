@@ -2,20 +2,34 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, ModelInfo, Progress, SearchHit, Segment, SettingsInfo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, ProcessOptions, Progress, SearchHit, Segment, SettingsInfo, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
   /** OS のダイアログで選んで取り込む */
-  pickAndImport(denoise: boolean): Promise<ImportResult[]>;
-  importPaths(paths: string[], denoise: boolean): Promise<ImportResult[]>;
+  pickAndImport(opts: ProcessOptions): Promise<ImportResult[]>;
+  importPaths(paths: string[], opts: ProcessOptions): Promise<ImportResult[]>;
   /** ドラッグ&ドロップされたファイルの場所を受け取る(Tauri のときだけ)。戻り値は解除の関数 */
   onDrop(cb: (paths: string[]) => void): Promise<() => void>;
   runJobs(): Promise<number>;
   cancelJobs(): Promise<void>;
   retry(id: number): Promise<void>;
   progress(): Promise<Progress>;
-  meetings(): Promise<Meeting[]>;
+  meetings(filter?: MeetingFilter): Promise<Meeting[]>;
+  allTags(): Promise<[string, number][]>;
+  setTags(id: number, tags: string[]): Promise<Detail>;
+  updateNotes(id: number, agenda: string, decisions: string, todos: Todo[]): Promise<Detail>;
+  /** 話者を判別し直す(人数 null は自動)。名前を付けた話者も上書きする(元に戻せる) */
+  rediarize(id: number, numSpeakers: number | null): Promise<Detail>;
+  renameSpeaker(id: number, oldName: string, newName: string): Promise<Detail>;
+  findIn(id: number, query: string): Promise<number[]>;
+  replaceIn(id: number, find: string, replace: string): Promise<[number, Detail]>;
+  /** 設定を変えて最初から文字起こしし直す(それまでの修正は消える) */
+  reprocess(id: number, opts: ProcessOptions): Promise<void>;
+  /** 画面を印刷する(印刷用の表示にしてから呼ぶ) */
+  printPage(): Promise<void>;
+  exportGlossary(): Promise<string | null>;
+  importGlossary(): Promise<[number, string[], GlossaryEntry[]] | null>;
   detail(id: number): Promise<Detail>;
   /** 再生用の URL(音声を残していなければ null) */
   audioUrl(id: number): Promise<string | null>;
@@ -63,8 +77,8 @@ export function makeTauriApi(t: TauriGlobal): Api {
   const invoke = t.core!.invoke!;
   return {
     kind: "tauri",
-    pickAndImport: (denoise) => invoke("pick_and_import", { denoise }),
-    importPaths: (paths, denoise) => invoke("import_paths", { paths, denoise }),
+    pickAndImport: (opts) => invoke("pick_and_import", { opts }),
+    importPaths: (paths, opts) => invoke("import_paths", { paths, opts }),
     async onDrop(cb) {
       const listen = t.event?.listen;
       if (!listen) return () => undefined;
@@ -74,7 +88,18 @@ export function makeTauriApi(t: TauriGlobal): Api {
     cancelJobs: () => invoke("cancel_jobs"),
     retry: (id) => invoke("retry", { id }),
     progress: () => invoke("progress"),
-    meetings: () => invoke("meetings"),
+    meetings: (filter) => invoke("meetings", { filter: filter ?? null }),
+    allTags: () => invoke("all_tags"),
+    setTags: (id, tags) => invoke("set_tags", { id, tags }),
+    updateNotes: (id, agenda, decisions, todos) => invoke("update_notes", { id, agenda, decisions, todos }),
+    rediarize: (id, numSpeakers) => invoke("rediarize", { id, numSpeakers }),
+    renameSpeaker: (id, oldName, newName) => invoke("rename_speaker", { id, old: oldName, new: newName }),
+    findIn: (id, query) => invoke("find_in", { id, query }),
+    replaceIn: (id, find, replace) => invoke("replace_in", { id, find, replace }),
+    reprocess: (id, opts) => invoke("reprocess", { id, opts }),
+    printPage: () => invoke("print_page"),
+    exportGlossary: () => invoke("export_glossary"),
+    importGlossary: () => invoke("import_glossary"),
     detail: (id) => invoke("detail", { id }),
     async audioUrl(id) {
       const p = await invoke<string | null>("audio_path", { id });
@@ -120,9 +145,10 @@ export function makeMockApi(): Api {
   const segs = new Map<number, Segment[]>();
   const hist = new Map<number, Segment[][]>();
   let glossary: GlossaryEntry[] = [];
-  let nextId = 1, nextSeg = 1, pending: number[] = [];
+  let nextId = 1, nextSeg = 1, pending: number[] = [], printed = 0;
   let settings: SettingsInfo = {
     updateCheck: true, keepAudio: true, denoiseDefault: true, consentShown: false, dataDir: "(モック)", model: "mock",
+    diarizeAvailable: true, diarizeError: null,
     network: [
       { purpose: "ライセンス認証・検証", destination: "販売プラットフォームのAPI", content: "ライセンスキー、端末の識別名", stoppable: false, enabled: true },
       { purpose: "更新の確認", destination: "配布元", content: "アプリのバージョン", stoppable: true, enabled: true },
@@ -141,25 +167,34 @@ export function makeMockApi(): Api {
     const ss = segs.get(id) ?? [];
     return { meeting: m(id), segments: ss, canUndo: (hist.get(id) ?? []).length > 0, speakers: [...new Set(ss.map((s) => s.speaker).filter(Boolean))], lowConfidence: 0.6 };
   };
-  const add = (names: string[], denoise: boolean): ImportResult[] => names.map((name) => {
+  const add = (names: string[], o: ProcessOptions): ImportResult[] => names.map((name) => {
     if (!/\.(m4a|mp3|wav|mp4|aac|flac|ogg|mov|m4v)$/i.test(name)) return { name, id: null, error: "対応している形式は m4a / mp3 / wav / mp4 などです" };
     const id = nextId++;
-    meetings = [{ id, title: name.replace(/\.[^.]+$/, ""), heldOn: null, participantsText: "", sourceName: name, hasAudio: true, durationMs: null, denoise, state: "queued", error: null, status: "draft", createdAt: Date.now() / 1000 }, ...meetings];
+    meetings = [{
+      id, title: name.replace(/\.[^.]+$/, ""), heldOn: null, participantsText: "", sourceName: name, hasAudio: true, durationMs: null,
+      denoise: o.denoise, state: "queued", error: null, status: "draft", createdAt: Date.now() / 1000,
+      diarize: o.diarize, numSpeakers: o.numSpeakers, language: o.language, rangeStartMs: o.rangeStartMs, rangeEndMs: o.rangeEndMs,
+      agenda: "", decisions: "", todos: [], tags: [],
+    }, ...meetings];
     pending.push(id);
     return { name, id, error: null };
   });
 
   return {
     kind: "mock",
-    async pickAndImport(denoise) { return add([`定例会議-${nextId}.m4a`], denoise); },
-    async importPaths(paths, denoise) { return add(paths.map((p) => p.split(/[\\/]/).pop()!), denoise); },
+    async pickAndImport(o) { return add([`定例会議-${nextId}.m4a`], o); },
+    async importPaths(paths, o) { return add(paths.map((p) => p.split(/[\\/]/).pop()!), o); },
     async onDrop() { return () => undefined; },
     async runJobs() {
       const ids = pending; pending = [];
       for (const id of ids) {
         meetings = meetings.map((x) => (x.id === id ? { ...x, state: "processing" } : x));
         for (let c = 1; c <= 3; c++) { current = { busy: true, pending: ids.length, meetingId: id, doneChunks: c, totalChunks: 3 }; await wait(250); }
-        segs.set(id, SCRIPT.map(([sp, t], i) => ({ id: nextSeg++, chunkIdx: Math.floor(i / 2), startMs: i * 4000, endMs: i * 4000 + 3500, speaker: sp, text: gl(t), rawText: t, confidence: i === 2 ? 0.45 : 0.9, edited: false })));
+        const mm = m(id);
+        segs.set(id, SCRIPT.map(([, t], i) => ({
+          id: nextSeg++, chunkIdx: Math.floor(i / 2), startMs: i * 4000, endMs: i * 4000 + 3500,
+          speaker: mm.diarize ? `話者${[1, 2, 1, 2, 3, 3][i]}` : "", text: gl(t), rawText: t, confidence: i === 2 || i === 4 ? 0.45 : 0.9, edited: false,
+        })));
         meetings = meetings.map((x) => (x.id === id ? { ...x, state: "done", durationMs: 24_000, hasAudio: settings.keepAudio } : x));
       }
       current = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
@@ -168,7 +203,47 @@ export function makeMockApi(): Api {
     async cancelJobs() {},
     async retry(id) { pending.push(id); },
     async progress() { return { ...current, pending: pending.length + (current.busy ? 1 : 0) }; },
-    async meetings() { return meetings; },
+    async meetings(f) {
+      let ms = f?.tag ? meetings.filter((x) => x.tags.includes(f.tag!)) : [...meetings];
+      if (f?.sort === "title") ms = ms.sort((a, b) => a.title.localeCompare(b.title));
+      if (f?.sort === "held_asc") ms = ms.sort((a, b) => (a.heldOn ?? "9999").localeCompare(b.heldOn ?? "9999"));
+      return ms;
+    },
+    async allTags() {
+      const c = new Map<string, number>();
+      for (const x of meetings) for (const t of x.tags) c.set(t, (c.get(t) ?? 0) + 1);
+      return [...c.entries()].sort();
+    },
+    async setTags(id, tags) { meetings = meetings.map((x) => (x.id === id ? { ...x, tags: [...new Set(tags.map((t) => t.trim()).filter(Boolean))].sort() } : x)); return det(id); },
+    async updateNotes(id, agenda, decisions, todos) {
+      if (todos.some((t) => t.due && !/^\d{4}-\d{2}-\d{2}$/.test(t.due))) throw new Error("ToDo の期限は YYYY-MM-DD の形で入力してください");
+      meetings = meetings.map((x) => (x.id === id ? { ...x, agenda, decisions, todos: todos.filter((t) => t.text.trim()), status: "draft" } : x));
+      return det(id);
+    },
+    async rediarize(id, n) {
+      cp(id);
+      const k = n ?? 3;
+      segs.set(id, (segs.get(id) ?? []).map((s, i) => ({ ...s, speaker: `話者${(i % k) + 1}` })));
+      return det(id);
+    },
+    async renameSpeaker(id, oldName, newName) {
+      if (!newName.trim()) throw new Error("名前を入力してください");
+      cp(id); segs.set(id, (segs.get(id) ?? []).map((s) => (s.speaker === oldName ? { ...s, speaker: newName.trim() } : s))); return det(id);
+    },
+    async findIn(id, q) { const t = q.trim().toLowerCase(); return t ? (segs.get(id) ?? []).filter((s) => s.text.toLowerCase().includes(t)).map((s) => s.id) : []; },
+    async replaceIn(id, f, r) {
+      if (!f) throw new Error("置き換える語を入力してください");
+      const hits = (segs.get(id) ?? []).filter((s) => s.text.includes(f)).length;
+      if (hits) { cp(id); segs.set(id, (segs.get(id) ?? []).map((s) => (s.text.includes(f) ? { ...s, text: s.text.split(f).join(r), edited: true } : s))); }
+      return [hits, await det(id)];
+    },
+    async reprocess(id, o) {
+      meetings = meetings.map((x) => (x.id === id ? { ...x, ...o, state: "queued", status: "draft" } : x));
+      segs.delete(id); hist.delete(id); pending.push(id);
+    },
+    async printPage() { printed++; },
+    async exportGlossary() { return "(モックでは書き出しません)"; },
+    async importGlossary() { glossary = [...glossary, { id: nextId++, wrong: "くらうど", right: "クラウド" }]; return [1, [], glossary]; },
     detail: det,
     async audioUrl() { return null; },
     async updateMeta(id, title, heldOn, participants) {

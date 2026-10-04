@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Api } from "./api";
 import { DetailView } from "./DetailView";
 import { GlossaryView } from "./GlossaryView";
+import { OptionsForm, defaultOptions, optionsValid } from "./OptionsForm";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
-import type { ImportResult, Meeting, Progress, SettingsInfo } from "./types";
+import type { ImportResult, Meeting, MeetingFilter, ProcessOptions, Progress, SettingsInfo } from "./types";
 import { STATE_LABEL, hms } from "./types";
 
 type Tab = "meetings" | "search" | "glossary" | "settings";
@@ -16,7 +17,10 @@ export function App({ api }: { api: Api }) {
   const [seekTo, setSeekTo] = useState<{ ms: number; n: number } | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [settings, setSettings] = useState<SettingsInfo | null>(null);
-  const [denoise, setDenoise] = useState(true);
+  const [opts, setOpts] = useState<ProcessOptions>(defaultOptions());
+  const [showOpts, setShowOpts] = useState(false);
+  const [filter, setFilter] = useState<MeetingFilter>({ tag: null, sort: "held_desc" });
+  const [tags, setTags] = useState<[string, number][]>([]);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [askConsent, setAskConsent] = useState<null | (() => void)>(null);
   const [version, setVersion] = useState(0);
@@ -24,12 +28,13 @@ export function App({ api }: { api: Api }) {
   const running = useRef(false);
 
   const refresh = useCallback(async () => {
-    const [ms, p] = await Promise.all([api.meetings(), api.progress()]);
+    const [ms, p, tg] = await Promise.all([api.meetings(filter), api.progress(), api.allTags()]);
     setMeetings(ms);
     setProgress(p);
+    setTags(tg);
     // 何も選んでいなければ、いちばん新しい議事録を開く
     setCur((c) => (c != null && ms.some((m) => m.id === c) ? c : ms[0]?.id ?? null));
-  }, [api]);
+  }, [api, filter]);
 
   const startJobs = useCallback(async () => {
     if (running.current) return;
@@ -49,9 +54,11 @@ export function App({ api }: { api: Api }) {
   }, [api, refresh]);
 
   useEffect(() => {
-    api.settings().then((s) => { setSettings(s); setDenoise(s.denoiseDefault); }).catch(() => undefined);
-    refresh().then(() => api.progress()).then((p) => { if (p.pending > 0) startJobs(); }).catch(() => undefined);
-  }, [api, refresh, startJobs]);
+    api.settings().then((s) => { setSettings(s); setOpts((o) => ({ ...o, denoise: s.denoiseDefault, diarize: o.diarize && s.diarizeAvailable })); }).catch(() => undefined);
+    api.progress().then((p) => { if (p.pending > 0) startJobs(); }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+  useEffect(() => { refresh().catch(() => undefined); }, [refresh]);
 
   /** 初回だけ、録音の同意についての注意を出してから取り込む */
   const withConsent = useCallback((go: () => void) => {
@@ -67,14 +74,17 @@ export function App({ api }: { api: Api }) {
     refresh().then(startJobs);
   }, [refresh, startJobs]);
 
-  const pick = () => withConsent(() => { api.pickAndImport(denoise).then(afterImport).catch((e) => setResults([{ name: "", id: null, error: String(e) }])); });
+  const pick = () => {
+    if (!optionsValid(opts)) { setShowOpts(true); return; }
+    withConsent(() => { api.pickAndImport(opts).then(afterImport).catch((e) => setResults([{ name: "", id: null, error: String(e) }])); });
+  };
 
   // ドラッグ&ドロップ(Tauri はファイルの場所を通知する)
-  const denoiseRef = useRef(denoise);
-  denoiseRef.current = denoise;
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
   useEffect(() => {
     let off: (() => void) | undefined;
-    api.onDrop((paths) => { if (paths.length) withConsent(() => { api.importPaths(paths, denoiseRef.current).then(afterImport); }); }).then((f) => { off = f; });
+    api.onDrop((paths) => { if (paths.length) withConsent(() => { api.importPaths(paths, optsRef.current).then(afterImport); }); }).then((f) => { off = f; });
     return () => off?.();
   }, [api, withConsent, afterImport]);
 
@@ -120,8 +130,11 @@ export function App({ api }: { api: Api }) {
             <aside className="side">
               <div className="side-head">
                 <button className="btn primary" onClick={pick}>録音を取り込む</button>
-                <label className="check"><input type="checkbox" checked={denoise} onChange={(e) => setDenoise(e.target.checked)} /> ノイズ除去</label>
+                <button className="link" onClick={() => setShowOpts((v) => !v)} aria-expanded={showOpts}>取り込みの設定 {showOpts ? "▲" : "▼"}</button>
               </div>
+              {showOpts
+                ? <div className="pad"><OptionsForm value={opts} onChange={setOpts} diarizeAvailable={settings?.diarizeAvailable ?? true} /></div>
+                : <p className="note pad">{[opts.denoise && "ノイズ除去", opts.diarize && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "人数は自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動判定"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定あり"].filter(Boolean).join("・") || "設定なし"}</p>}
               <p className="note pad">m4a / mp3 / wav / mp4 など。ここにドラッグしても取り込めます。元のファイルは変更しません。</p>
               {progress && (progress.busy || progress.pending > 0) && (
                 <div className="progress pad">
@@ -143,6 +156,18 @@ export function App({ api }: { api: Api }) {
               {results.some((r) => r.error) && (
                 <ul className="errors pad">{results.filter((r) => r.error).map((r, i) => <li key={i}>{r.name}: {r.error}</li>)}</ul>
               )}
+              <div className="list-tools pad">
+                <select aria-label="タグで絞り込み" value={filter.tag ?? ""} onChange={(e) => setFilter({ ...filter, tag: e.target.value || null })}>
+                  <option value="">すべてのタグ</option>
+                  {tags.map(([t, n]) => <option key={t} value={t}>{t}({n})</option>)}
+                </select>
+                <select aria-label="並べ替え" value={filter.sort ?? "held_desc"} onChange={(e) => setFilter({ ...filter, sort: e.target.value as MeetingFilter["sort"] })}>
+                  <option value="held_desc">日付の新しい順</option>
+                  <option value="held_asc">日付の古い順</option>
+                  <option value="created_desc">取り込んだ順</option>
+                  <option value="title">タイトル順</option>
+                </select>
+              </div>
               <ul className="items">
                 {meetings.map((m) => (
                   <li key={m.id}>
@@ -151,6 +176,7 @@ export function App({ api }: { api: Api }) {
                       <span className="d">{m.heldOn ?? "日付なし"}{m.durationMs ? ` ・ ${hms(m.durationMs)}` : ""}</span>
                       <span className={`badge s-${m.state}`}>{STATE_LABEL[m.state]}</span>
                       {m.status === "confirmed" && <span className="badge ok">確定</span>}
+                      {m.tags.map((t) => <span key={t} className="tag-chip">{t}</span>)}
                     </button>
                   </li>
                 ))}
@@ -159,7 +185,7 @@ export function App({ api }: { api: Api }) {
             </aside>
             <section className="content">
               {cur != null && meetings.some((m) => m.id === cur)
-                ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} onChanged={refresh} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs)} />
+                ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs)} />
                 : <div className="empty">左の一覧から議事録を選ぶか、録音を取り込んでください。</div>}
             </section>
           </div>

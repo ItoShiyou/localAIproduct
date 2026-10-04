@@ -21,7 +21,8 @@
 
 | ライセンス | 主な部品 | 義務(要旨) | 満たし方 |
 |---|---|---|---|
-| MIT | Whisper のモデルの重み(OpenAI)、whisper.cpp / ggml、Tauri の多く、React | 著作権表示と許諾文を、ソフトウェアの複製に含める | `THIRD_PARTY_NOTICES.txt` に全文。アプリ内で表示 |
+| MIT | Whisper のモデルの重み(OpenAI)、whisper.cpp / ggml、ONNX Runtime、Tauri の多く、React | 著作権表示と許諾文を、ソフトウェアの複製に含める | `THIRD_PARTY_NOTICES.txt` に全文。アプリ内で表示。ONNX Runtime は ThirdPartyNotices.txt も同梱 |
+| **CC BY 4.0** | WeSpeaker ResNet34-LM(話者の判別のモデル) | 帰属表示(作者名)、ライセンスの表示またはリンク、改変の有無の表示。追加の制限を課さない | `legal/wespeaker-model-NOTICE.txt`(作者・取得元・ハッシュ・「改変なし」・CC BY 4.0 全文)を同梱・表示 |
 | Apache-2.0 | Tauri の一部、tao など | ライセンスの写しを渡す。NOTICE ファイルがあれば、その内容を表示する。改変したファイルにはその旨 | 全文と NOTICE を同梱。改変はしていない |
 | BSD-3-Clause | nnnoiseless(RNNoise:Xiph.Org、Mozilla、Jean-Marc Valin ほか) | バイナリで配る場合、著作権表示・条件・免責を、文書かほかの資料に含める。名前を宣伝に使わない | 全文を同梱・表示。販売ページで RNNoise・Mozilla などの名前を推薦の形で使わない |
 | **MPL-2.0** | symphonia(音声の読み込み)、cssparser、selectors ほか | 実行形式で配る場合、そのファイルのソースコードの入手方法を知らせる(第3.2節)。ライセンスの写し。改変した MPL のファイルは公開 | **改変せずに使用**。`THIRD_PARTY_NOTICES.txt` の冒頭に、MPL の部品とソースの入手先(GitHub と crates.io の版つきURL)を列挙し、各部品に MPL-2.0 の全文を入れている。アプリ全体を公開する義務は無い(ファイル単位のコピーレフト) |
@@ -32,6 +33,7 @@
 | パブリックドメイン | SQLite | なし | 参考として掲載(libsqlite3-sys の MIT は掲載) |
 
 - **GPL・AGPL・LGPL のみの部品は含まない**(`cargo metadata` で確認。`r-efi` は MIT / Apache-2.0 / LGPL の選択式で、MIT を選ぶ)。ffmpeg(GPL ビルド)は使っていない。
+- 話者の判別には sherpa-onnx を使っていない(既定の静的リンクで GPL の espeak-ng を含むため)。
 - **ReazonSpeech 系・kotoba-whisper は含まない**(学習データの「著作権法30条の4の目的に限る」条件の扱いが未確認のため。`docs/licenses.md`)。
 - WebView(macOS の WKWebView、Windows の WebView2)は OS の部品で、同梱しない。
 

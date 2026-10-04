@@ -54,6 +54,18 @@
 | rusqlite(SQLite 同梱) | 0.40 | MIT(SQLite はパブリックドメイン) | 同上 |
 | React / React DOM | 18.3 | MIT | 同上 |
 
+### 話者の判別(2026-10-04 追加)
+
+| 名前 | 版 | ライセンス | 確認元 | 配布時に必要なこと |
+|---|---|---|---|---|
+| WeSpeaker ResNet34-LM(`voxceleb_resnet34_LM.onnx`、26.5MB、SHA-256 `7bb2f06e…`) | Hugging Face `Wespeaker/wespeaker-voxceleb-resnet34-LM` | **CC BY 4.0**(モデルカードの `license: cc-by-4.0`)。VoxCeleb2 Dev で学習 | モデルカード原文 | 帰属表示(WeSpeaker プロジェクト)、ライセンスへのリンク、改変の有無。`legal/wespeaker-model-NOTICE.txt` に記載し同梱 |
+| ONNX Runtime | 1.30.0(公式の osx-arm64 配布) | MIT | 配布物の LICENSE・ThirdPartyNotices.txt | 両方を同梱(`legal/`) |
+| rustfft / ort / ndarray / csv / encoding_rs / zip | — | MIT OR Apache-2.0 など | `cargo metadata` | 自動生成の表記に含まれる |
+
+- **sherpa-onnx(Rust の公式クレート)は使わない**: 静的リンクの既定で espeak-ng(GPL-3.0)を含むライブラリ群をリンクするため。話者の判別は、ONNX Runtime と自前の前処理(Kaldi 互換 fbank)・クラスタリングで実装した。
+- pyannote の分割モデル(segmentation-3.0、MIT だが Hugging Face で利用条件への同意ゲートあり)は使っていない。
+- **VoxCeleb のデータ自体の利用条件**(研究目的とされることがある)がモデルの商用利用に及ぶかは、モデルカード(CC BY 4.0)からは読み取れない。**販売前に要確認**(ReazonSpeech と同様の論点。モデルカードの許諾は商用可)。
+
 推移的な依存に GPL・AGPL は無い。`r-efi`(MIT OR Apache-2.0 OR LGPL-2.1-or-later の選択式)は MIT を選べる。`webpki-roots` は CDLA-Permissive-2.0(ライセンス認証の通信用、表記が必要)。
 
 ## テスト・開発のみで使うもの(配布物に含めない)

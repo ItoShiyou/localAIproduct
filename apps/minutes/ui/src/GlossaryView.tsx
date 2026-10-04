@@ -27,6 +27,19 @@ export function GlossaryView({ api }: { api: Api }) {
           <button className="btn primary" onClick={add}>追加</button>
         </div>
         {msg && <p className="msg err">{msg}</p>}
+        <div className="row">
+          <button className="btn small" onClick={async () => { try { const p = await api.exportGlossary(); if (p) setMsg(`書き出しました: ${p}`); } catch (e) { setMsg(String(e)); } }}>CSV に書き出す</button>
+          <button className="btn small" onClick={async () => {
+            try {
+              const r = await api.importGlossary();
+              if (!r) return;
+              const [n, skipped, list] = r;
+              setItems(list);
+              setMsg(`${n} 件を取り込みました${skipped.length ? `(${skipped.length} 行は飛ばしました: ${skipped.slice(0, 3).join(" / ")})` : ""}`);
+            } catch (e) { setMsg(String(e)); }
+          }}>CSV から取り込む</button>
+          <span className="note">列は「誤りやすい表記, 正しい表記」。表計算ソフトで編集できます(UTF-8 / Shift_JIS)。</span>
+        </div>
       </section>
       <table className="table">
         <thead><tr><th>誤りやすい表記</th><th>正しい表記</th><th></th></tr></thead>
