@@ -76,6 +76,8 @@ pub fn run() {
             if let Some(r) = &res {
                 fixed.push((r.join("models").join(commands::WHISPER_MODEL.file_name), "bundled"));
             }
+            // onnxruntime が作る端末の識別子ファイルは、利用者のフォルダではなく、アプリのデータフォルダの中に作らせる
+            diarize::set_ort_home(data_dir.join("ort-home"));
             let state = commands::AppState::new(data_dir, None, whisper_loader(), fixed)?;
             state.set_embedder_loader(embedder_loader(res.clone()));
             // 録音中の仮の文字に使う小さなモデル(開発用の環境変数 → 同梱)

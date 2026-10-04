@@ -15,3 +15,7 @@ testset-real/
 # 作業用
 .claude/
 .DS_Store
+
+# ライセンスの秘密鍵と、発行した顧客のライセンス(docs/license.md)。コミットしない
+*.key
+*.license

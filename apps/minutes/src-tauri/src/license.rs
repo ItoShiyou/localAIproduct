@@ -489,6 +489,19 @@ mod tests {
     }
 
     #[test]
+    fn 開発用の鍵はデバッグビルドだけが受け入れる() {
+        let dev_key = encode_key(&payload(None), &dev_signing_key());
+        let r = verify_here(&dev_key);
+        if cfg!(debug_assertions) {
+            assert!(r.unwrap().dev);
+        } else {
+            // 配布用のビルド: 開発用の鍵の署名は通らない(製品用の公開鍵が空なら鍵そのものが無い)
+            assert!(matches!(r.unwrap_err(), LicenseError::Signature | LicenseError::NoKey));
+        }
+        assert_eq!(trusted_keys().iter().any(|(_, dev)| *dev), cfg!(debug_assertions));
+    }
+
+    #[test]
     fn base32_と日付() {
         for d in [&b""[..], b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar"] {
             assert_eq!(b32_decode(&b32_encode(d)).unwrap(), d);

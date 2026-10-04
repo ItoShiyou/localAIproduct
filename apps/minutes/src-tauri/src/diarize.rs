@@ -124,6 +124,44 @@ pub fn normalize(mut v: Vec<f32>) -> Vec<f32> {
 #[cfg(feature = "diarize")]
 pub use onnx::OnnxEmbedder;
 
+/// onnxruntime が「ホームフォルダ」の下(macOS: `~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/`)に
+/// 端末の識別子(deviceid)とデータベースを作るのを、アプリ専用のフォルダに逃がすための場所。
+/// 読み込みと最初のセッションの作成の間だけ、環境変数 HOME(Windows は USERPROFILE など)をこのフォルダに向ける。
+/// Mac では、この方法で利用者のフォルダに何も作られないことを確認した(`docs/license.md` の「onnxruntime のファイル」)。
+/// Windows は未確認。
+static ORT_HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+pub fn set_ort_home(dir: std::path::PathBuf) {
+    let _ = ORT_HOME.set(dir);
+}
+
+/// 環境変数を一時的に差し替える(元に戻す)
+pub struct EnvSwap(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+impl EnvSwap {
+    pub fn home_to_private() -> Self {
+        let dir = ORT_HOME.get().cloned().unwrap_or_else(|| std::env::temp_dir().join("minutes-ort-home"));
+        let _ = std::fs::create_dir_all(&dir);
+        let keys: &[&'static str] = if cfg!(windows) { &["USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA"] } else { &["HOME"] };
+        let saved = keys.iter().map(|k| (*k, std::env::var_os(k))).collect();
+        for k in keys {
+            std::env::set_var(k, &dir);
+        }
+        Self(saved)
+    }
+}
+
+impl Drop for EnvSwap {
+    fn drop(&mut self) {
+        for (k, v) in self.0.drain(..) {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+    }
+}
+
 #[cfg(feature = "diarize")]
 mod onnx {
     use super::*;
@@ -141,6 +179,8 @@ mod onnx {
         pub fn new(ort_lib: &Path, model: &Path, threads: usize) -> Result<Self, String> {
             static INIT: std::sync::Once = std::sync::Once::new();
             let mut init_err = None;
+            // onnxruntime の識別子ファイルを、利用者のフォルダではなくアプリ専用のフォルダに作らせる
+            let _home = EnvSwap::home_to_private();
             INIT.call_once(|| match ort::init_from(ort_lib) {
                 Ok(b) => {
                     // onnxruntime の利用状況の送信(テレメトリ)は使わない
