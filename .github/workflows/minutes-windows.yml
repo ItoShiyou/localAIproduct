@@ -46,6 +46,54 @@ jobs:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
         run: cargo test --lib
 
+  # 文字起こしの速度だけを測る(ホスト型ランナー上。実機の値ではない)。small と turbo(Pro が使う)。whisper.cpp の CPU 命令の有効・無効を system_info で確認する
+  asr-perf:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [small, turbo]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/minutes/ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/minutes/src-tauri
+          key: perf
+      - name: UI を用意
+        run: cd ../ui && npm ci && npm run build
+      - name: 仮置き(build.rs が存在だけを確認するため)
+        run: |
+          mkdir -p resources/models resources/onnxruntime binaries
+          for f in THIRD_PARTY_NOTICES.txt models/ggml-large-v3-turbo-q5_0.bin models/ggml-small-q5_1.bin models/voxceleb_resnet34_LM.onnx onnxruntime/onnxruntime.dll; do : > "resources/$f"; done
+          : > binaries/minutes-summarizer-x86_64-pc-windows-msvc.exe
+      - name: モデルを取得
+        run: |
+          mkdir -p "$RUNNER_TEMP/m"
+          if [ "${{ matrix.model }}" = small ]; then
+            curl -sSfL -o "$RUNNER_TEMP/m/model.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin
+            sha256sum "$RUNNER_TEMP/m/model.bin" | grep -q ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+          else
+            cargo run -q --release --no-default-features --example fetch_model -- "$RUNNER_TEMP/m"
+            mv "$RUNNER_TEMP/m/"ggml-large-v3-turbo-q5_0.bin "$RUNNER_TEMP/m/model.bin"
+          fi
+          ls -la "$RUNNER_TEMP/m"
+      - name: 速度(t05_overlap 56 秒、スレッド 4)
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+          MINUTES_FILES: t05_overlap
+          MINUTES_THREADS: "4"
+        run: |
+          export MINUTES_WHISPER_MODEL="$(cygpath -w "$RUNNER_TEMP/m/model.bin")"
+          powershell -Command "Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List"
+          cargo test --release --test real_asr -- --nocapture
+
   bundle:
     runs-on: windows-latest
     needs: test

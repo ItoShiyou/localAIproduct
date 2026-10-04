@@ -34,6 +34,8 @@ fn 実モデルでテストセットを文字起こしする() {
     };
     let threads: i32 = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let files = std::env::var("MINUTES_FILES").unwrap_or_else(|_| "t01_clean,t02_aircon,t03_keyboard,t04_farmic,t05_overlap".into());
+    // CPU 命令(AVX2・FMA・F16C など)が有効なビルドかを残す(Windows の速度の確認用)
+    println!("system_info: {}", whisper_rs::print_system_info());
     let asr = WhisperAsr::new(Path::new(&model), threads).unwrap();
     let ts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset");
     let d = std::env::temp_dir().join(format!("min-real-{}", std::process::id()));
