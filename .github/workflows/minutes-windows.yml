@@ -22,8 +22,8 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -50,8 +50,8 @@ jobs:
     runs-on: windows-latest
     needs: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -64,7 +64,7 @@ jobs:
             apps/minutes/summarizer
           key: bundle
       - name: モデルと onnxruntime のキャッシュ(ハッシュは prepare_bundle.sh に固定)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             apps/minutes/src-tauri/resources/models
@@ -85,13 +85,13 @@ jobs:
         run: ../ui/node_modules/.bin/tauri build --bundles msi
       - name: 成果物の大きさ
         run: ls -la target/release/bundle/*/ || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: minutes-windows-nsis
           path: apps/minutes/src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 7
           compression-level: 0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: minutes-windows-msi
@@ -99,3 +99,140 @@ jobs:
           retention-days: 7
           compression-level: 0
           if-no-files-found: warn
+
+  # Windows 実機が無いため、CI の windows-latest で インストール→起動→画面→バックエンド→アンインストール を確認する。
+  # 実機(SmartScreen・マイク・i5 クラスの速さ)の代わりにはならない。測れるのは「起動して落ちないか」「DLL が揃うか」まで。
+  smoke:
+    runs-on: windows-latest
+    needs: bundle
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    env:
+      APPID: dev.localaiproduct.minutes
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: minutes-windows-nsis
+          path: dl-nsis
+      - uses: actions/download-artifact@v5
+        with:
+          name: minutes-windows-msi
+          path: dl-msi
+        continue-on-error: true
+
+      - name: NSIS を静かにインストールして、ファイルの位置を確認
+        run: |
+          $setup = Get-ChildItem dl-nsis -Filter *.exe | Select-Object -First 1
+          "installer: $($setup.Name) $($setup.Length) bytes"
+          $p = Start-Process $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          "installer exit code: $($p.ExitCode)"
+          $dir = Join-Path $env:LOCALAPPDATA 'minutes'
+          if (-not (Test-Path $dir)) {
+            "既定の場所に無いので探す"
+            $exe = Get-ChildItem $env:LOCALAPPDATA, $env:ProgramFiles -Recurse -Filter minutes.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $exe) { throw "minutes.exe が見つからない" }
+            $dir = $exe.DirectoryName
+          }
+          "INSTDIR=$dir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "--- インストール先の一覧 ---"
+          Get-ChildItem $dir -Recurse -File | ForEach-Object { '{0,14:N0}  {1}' -f $_.Length, $_.FullName.Substring($dir.Length) }
+          $need = @('minutes.exe','onnxruntime.dll','THIRD_PARTY_NOTICES.txt','ggml-large-v3-turbo-q5_0.bin','ggml-small-q5_1.bin','voxceleb_resnet34_LM.onnx')
+          $missing = @()
+          foreach ($n in $need) { if (-not (Get-ChildItem $dir -Recurse -Filter $n -File)) { $missing += $n } }
+          if (-not (Get-ChildItem $dir -Recurse -File | Where-Object { $_.Name -like 'minutes-summarizer*.exe' })) { $missing += 'minutes-summarizer*.exe' }
+          if ($missing) { throw "足りないファイル: $($missing -join ', ')" }
+          "必要なファイルはすべてあった"
+
+      - name: 要約のサイドカーが起動するか(DLL の不足の確認)
+        run: |
+          $sc = Get-ChildItem $env:INSTDIR -Recurse -File | Where-Object { $_.Name -like 'minutes-summarizer*.exe' } | Select-Object -First 1
+          # 引数なしでは「--model が必要です」を出して終了コード 2 で終わるのが正しい。DLL が無いと 0xC0000135 で起動できない
+          $out = & $sc.FullName 2>&1 | Out-String
+          "exit=$LASTEXITCODE"
+          $out
+          if ($LASTEXITCODE -ne 2) { throw "想定外の終了コード $LASTEXITCODE" }
+
+      - name: 起動して 30 秒待ち、ウィンドウ・クラッシュ・データフォルダを確認(既定の版)
+        run: ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag free -Shot "$PWD/shot-free.png"
+
+      - name: 起動の確認(MINUTES_TIER=pro)
+        run: |
+          $env:MINUTES_TIER = 'pro'
+          ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag pro -Shot "$PWD/shot-pro.png"
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: minutes-windows-smoke-screenshots
+          path: |
+            shot-*.png
+            launch-*.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/minutes/src-tauri
+          key: smoke
+      - name: UI を用意(tauri の build.rs が frontendDist を見るため)
+        run: |
+          cd apps/minutes/ui
+          npm ci
+          npm run build
+      - name: 同梱物の仮置き(build.rs が存在だけを確認するため。実物は INSTDIR のものを使う)
+        shell: bash
+        run: |
+          cd apps/minutes/src-tauri
+          mkdir -p resources/models resources/onnxruntime binaries
+          for f in THIRD_PARTY_NOTICES.txt models/ggml-large-v3-turbo-q5_0.bin models/ggml-small-q5_1.bin models/voxceleb_resnet34_LM.onnx onnxruntime/onnxruntime.dll; do : > "resources/$f"; done
+          : > binaries/minutes-summarizer-x86_64-pc-windows-msvc.exe
+      - name: バックエンドの確認(同梱の small モデルで合成音声を文字起こしし、RTF を出す)
+        # 合成音声(testset の t05_overlap、56 秒)を実アプリと同じ処理に通す。誤り率は参考で、落ちずに終わるかを見る
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: |
+          $m = Get-ChildItem $env:INSTDIR -Recurse -Filter ggml-small-q5_1.bin | Select-Object -First 1
+          $env:MINUTES_WHISPER_MODEL = $m.FullName
+          $env:MINUTES_FILES = 't05_overlap'
+          $env:MINUTES_THREADS = '4'
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          Get-CimInstance Win32_ComputerSystem | ForEach-Object { 'RAM bytes: ' + $_.TotalPhysicalMemory }
+          cd apps/minutes/src-tauri
+          cargo test --release --test real_asr -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "cargo test が失敗" }
+
+      - name: NSIS を静かにアンインストールして、消えたか確認
+        if: always()
+        run: |
+          $u = Get-ChildItem $env:INSTDIR -Filter 'uninstall*.exe' | Select-Object -First 1
+          if (-not $u) { throw "uninstall.exe が無い" }
+          Get-Process minutes -ErrorAction SilentlyContinue | Stop-Process -Force
+          $p = Start-Process $u.FullName -ArgumentList '/S' -Wait -PassThru
+          "uninstall exit code: $($p.ExitCode)"
+          Start-Sleep 5
+          if (Test-Path (Join-Path $env:INSTDIR 'minutes.exe')) { throw "minutes.exe が残っている" }
+          "残り: " + ((Get-ChildItem $env:INSTDIR -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count) + " 個"
+          "データフォルダ(利用者のデータなので残るのが通常): " + (Test-Path (Join-Path $env:APPDATA $env:APPID))
+
+      - name: MSI を静かにインストール・アンインストール
+        continue-on-error: true
+        run: |
+          $msi = Get-ChildItem dl-msi -Filter *.msi | Select-Object -First 1
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/l*v', 'msi-install.log' -Wait -PassThru
+          "msi install exit code: $($p.ExitCode)"
+          $exe = Get-ChildItem $env:LOCALAPPDATA, $env:ProgramFiles -Recurse -Filter minutes.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($exe) { "installed: $($exe.FullName)" } else { "minutes.exe が見つからない" }
+          $p = Start-Process msiexec -ArgumentList '/x', "`"$($msi.FullName)`"", '/qn', '/l*v', 'msi-uninstall.log' -Wait -PassThru
+          "msi uninstall exit code: $($p.ExitCode)"
+          Start-Sleep 5
+          $left = Get-ChildItem $env:LOCALAPPDATA, $env:ProgramFiles -Recurse -Filter minutes.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($left) { throw "アンインストール後も残っている: $($left.FullName)" } else { "アンインストール後は残っていない" }
+          if ($null -eq $exe) { throw "MSI で入っていなかった" }
