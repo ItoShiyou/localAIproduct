@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
 import type { GlossaryEntry, Plan } from "./types";
+import { PageHead } from "./PageHead";
 
 export function GlossaryView({ api, plan }: { api: Api; plan?: Plan | null }) {
   const locked = !(plan?.glossary ?? true);
@@ -18,8 +19,9 @@ export function GlossaryView({ api, plan }: { api: Api; plan?: Plan | null }) {
 
   return (
     <div className="pane">
+      <PageHead label="Glossary" title="用語辞書">社名や専門用語など、誤りやすい言葉の正しい表記を登録しておく場所です。</PageHead>
       <section className="card">
-        <h2>用語辞書{locked && <span className="pro">有料版</span>}</h2>
+        <h2>表記を登録する{locked && <span className="pro">有料版</span>}</h2>
         {locked && <p className="msg err">用語辞書は有料版の機能です。</p>}
         <p className="note">専門用語や固有名詞を、文字起こしの後に正しい表記へ置き換えます。文字起こしの結果そのものは残るので、確認画面で元に戻せます。正しい表記は、文字起こしのヒントにも使います。</p>
         <div className="row">

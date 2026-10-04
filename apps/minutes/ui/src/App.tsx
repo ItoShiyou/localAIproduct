@@ -105,6 +105,7 @@ export function App({ api }: { api: Api }) {
     setSeekTo({ ms, n: Date.now() });
   };
 
+  const startRecording = () => withConsent(() => setRecordOpts({ ...opts, rangeStartMs: null, rangeEndMs: null }));
   const shown = q.trim() ? meetings.filter((m) => (m.title + " " + m.tags.join(" ")).toLowerCase().includes(q.trim().toLowerCase())) : meetings;
   const nav: [Tab, string, JSX.Element][] = [
     ["meetings", "議事録", <svg key="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 3h9l4 4v14H6z" /><path d="M9 11h7M9 15h7M9 7h4" /></svg>],
@@ -137,7 +138,7 @@ export function App({ api }: { api: Api }) {
         </div>
         <div className="side-actions">
           <button className="btn primary" onClick={pick} title="録音ファイル(m4a・mp3・wav・mp4 など)を選ぶ。ここにドラッグしても取り込めます">＋ 録音を取り込む</button>
-          <button className="btn rec" disabled={!!recordOpts} onClick={() => withConsent(() => setRecordOpts({ ...opts, rangeStartMs: null, rangeEndMs: null }))} aria-label="● 録音する">録音</button>
+          <button className="btn rec" disabled={!!recordOpts} onClick={startRecording} aria-label="● 録音する">録音</button>
         </div>
         <div className="opts-toggle">
           <span className="note">{[opts.denoise && (plan?.denoise ?? true) && "ノイズ除去", opts.diarize && (plan?.diarize ?? true) && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定"].filter(Boolean).join("・") || "設定なし"}</span>
@@ -202,7 +203,7 @@ export function App({ api }: { api: Api }) {
             </li>
           ))}
         </ul>
-        {!meetings.length && <p className="note pad">まだ議事録はありません。録音を取り込むか、「録音」で始めましょう。</p>}
+        {!meetings.length && <p className="note pad">まだ議事録はありません。</p>}
         <p className="disclaimer">文字起こしには誤りが含まれます。重要な箇所は音声で確認してください。録音の同意を得る責任は利用者にあります。</p>
         <nav className="side-nav" role="tablist">
           {nav.map(([t, label, icon]) => (
@@ -215,7 +216,23 @@ export function App({ api }: { api: Api }) {
         <section className="content">
           {tab === "meetings" && (cur != null && meetings.some((m) => m.id === cur)
             ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} plan={plan} progress={progress} jobsActive={jobsActive} jobError={jobError} onResume={startJobs} onOpenSettings={() => setTab("settings")} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs).catch((e) => notify("err", `やり直せませんでした: ${e}`))} />
-            : <div className="empty"><img src={logo} alt="" width={56} /><p>左の「録音を取り込む」か「録音」から始めましょう。</p></div>)}
+            : meetings.length ? <div className="empty"><p>左の一覧から議事録を選んでください。</p></div> : (
+              <div className="welcome" data-testid="welcome">
+                <span className="label">Start here</span>
+                <h1>録音を、この端末の中で<br />議事録にしましょう。</h1>
+                <p>録音ファイルを取り込むか、マイクで録音を始めてください。文字起こしはこのパソコンの中で行い、録音や文字を外に送りません。</p>
+                <div className="row">
+                  <button className="btn primary" onClick={pick}>録音ファイルを選ぶ</button>
+                  <button className="btn rec" disabled={!!recordOpts} onClick={startRecording}>マイクで録音を始める</button>
+                </div>
+                <ol className="steps">
+                  <li><b>取り込む・録る</b>m4a・mp3・wav・mp4 など。この画面にドラッグしても取り込めます。</li>
+                  <li><b>確かめて直す</b>印の付いた文から聞き直して、話者や言葉を直します。</li>
+                  <li><b>確定して書き出す</b>確定すると、議事録をファイルに書き出せます。</li>
+                </ol>
+                <p className="fine">文字起こしには誤りが含まれます。重要な箇所は音声で確認してください。録音の同意を得る責任は利用者にあります。</p>
+              </div>
+            ))}
           {tab === "search" && <SearchView api={api} onOpen={openAt} />}
           {tab === "glossary" && <GlossaryView api={api} plan={plan} />}
           {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}

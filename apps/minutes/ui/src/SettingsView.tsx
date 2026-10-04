@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Api } from "./api";
 import type { Flag, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
 import { PRO_LABEL } from "./types";
+import { PageHead } from "./PageHead";
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
@@ -156,6 +157,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
 
   return (
     <div className="pane">
+      <PageHead label="Settings" title="設定">プラン・モデル・処理の既定・データの扱いをまとめています。録音や文字の内容は、このパソコンの外に送りません。</PageHead>
       {notices != null && (
         <div className="modal" role="dialog" aria-label="ライセンスの全文">
           <div className="modal-body wide">

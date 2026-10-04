@@ -3,7 +3,7 @@ import type { Api } from "./api";
 import { OptionsForm, optionsValid } from "./OptionsForm";
 import { notify } from "./toast";
 import type { Detail, ExportFormat, Plan, ProcessOptions, Progress, Segment, SettingsInfo, Todo } from "./types";
-import { LANGUAGE_LABEL, STATE_LABEL, hms, speakerColor } from "./types";
+import { LANGUAGE_LABEL, STATE_LABEL, hms, setSpeakerOrder, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 import { SummaryPanel } from "./SummaryPanel";
@@ -468,6 +468,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   if (!d) return <div className="empty">{msg ?? "読み込み中…"}</div>;
   const m = d.meeting;
   const done = m.state === "done";
+  setSpeakerOrder([...new Set(segs.map((s) => s.speaker).filter(Boolean))]);
 
   const saveMeta = () => {
     const tags = meta.tags.split(/[、,，\s]+/).map((t) => t.trim()).filter(Boolean);
@@ -733,7 +734,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             <article className="reading" data-testid="reading">
               {paras.map((p) => (
                 <div key={p.id} className={"p" + (now >= p.t && now < p.end ? " playing" : "")} onClick={() => seek(p.t, false)}>
-                  <div className="who" style={{ color: speakerColor(p.sp) }}>{p.sp || "—"}<small>{hms(p.t)}</small></div>
+                  <div className="who"><span><i style={{ background: p.sp ? speakerColor(p.sp) : "var(--line-strong)" }} />{p.sp || "—"}</span><small>{hms(p.t)}</small></div>
                   <div>{p.tx}</div>
                 </div>
               ))}

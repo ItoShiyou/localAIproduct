@@ -83,9 +83,15 @@ export function parseTime(s: string): number | null {
   return t.split(":").map(Number).reduce((a, v) => a * 60 + v, 0) * 1000;
 }
 
-/** 話者ごとの色(名前から決める。色はデザイントークンの --spk-1〜8) */
+let speakerOrder: string[] = [];
+/** 開いている議事録の話者を、出てきた順に覚える(名前を付け替えても、同じ位置の話者は同じ色のまま。名前の当て推量で色が重ならない) */
+export function setSpeakerOrder(names: string[]) { speakerOrder = names; }
+
+/** 話者ごとの色(色はデザイントークンの --spk-1〜8)。開いている議事録では出てきた順、それ以外は名前から決める */
 export function speakerColor(name: string): string {
   if (!name) return "transparent";
+  const i = speakerOrder.indexOf(name);
+  if (i >= 0) return `var(--spk-${(i % 8) + 1})`;
   const m = /^話者(\d+)$/.exec(name);
   if (m) return `var(--spk-${((Number(m[1]) - 1) % 8) + 1})`;
   let h = 0;
