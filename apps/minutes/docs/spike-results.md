@@ -209,7 +209,7 @@
 - 起動の確認(.app を直接起動、HOME を一時のフォルダに替えて利用者のデータには触れない): 通常と `MINUTES_TIER=pro` のどちらも 20 秒生きており(RSS 約 160MB)、標準エラーは 0 バイト。
 
 
-## 11. Windows のスモークテスト(GitHub Actions の windows-latest、2026-10-04)
+## 12. Windows のスモークテスト(GitHub Actions の windows-latest、2026-10-04)
 
 実機が無いため、`.github/workflows/minutes-windows.yml` の `smoke` ジョブ(bundle の後)で確認した。run 37208515285(https://github.com/ItoShiyou/localAIproduct/actions/runs/37208515285 )。環境は GitHub のホスト型ランナー(Windows 11 相当 10.0.26100、AMD EPYC 7763 の 2 コア/4 論理、メモリ約 16GB)で、**実機・最低ライン機の代わりにはならない**。
 
