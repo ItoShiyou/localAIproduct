@@ -743,7 +743,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
           {/* 要約は、タブを切り替えても下書き(確認前)が消えないよう、表示を隠すだけにする */}
           <div hidden={view !== "summary"}>
             <SummaryPanel api={api} d={d} plan={plan} onOpenSettings={() => onOpenSettings?.()}
-              onImport={async (n, count) => { apply(await api.updateNotes(id, n.agenda, n.decisions, n.todos)); setMsg(`${count} 件をメモに追加しました(「メモ」で確認・修正できます)`); onChanged(); }} />
+              onImport={async (n, count) => { await flush(); const x = await run(() => api.updateNotes(id, n.agenda, n.decisions, n.todos), `${count} 件をメモに追加しました(「メモ」で確認・修正できます)`); if (!x) throw new Error("メモに追加できませんでした"); }} />
           </div>
         </div>
       </div>

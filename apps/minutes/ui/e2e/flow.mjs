@@ -203,7 +203,7 @@ assert.equal(await page.getByTestId("notes").getByLabel("議題").inputValue(), 
 await page.getByRole("tab", { name: /要約/ }).click();
 await dr.getByTestId("summary-import").click();
 await dr.getByTestId("summary-confirm-yes").click();
-await page.getByText("4 件をメモに追加しました").waitFor();
+await page.getByText(/4 件をメモに追加しました/).first().waitFor();
 await dr.waitFor({ state: "detached" }).catch(() => undefined);
 await page.getByRole("tab", { name: /議題・決定事項・ToDo/ }).click();
 const n2 = page.getByTestId("notes");
