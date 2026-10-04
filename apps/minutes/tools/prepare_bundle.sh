@@ -48,3 +48,6 @@ fi
 "$PY" "$ROOT/tools/gen_notices.py" "$APP/src-tauri" "$APP/ui" "$APP/src-tauri/resources/THIRD_PARTY_NOTICES.txt" \
   --features tauri,whisper,diarize --extra "$APP/legal/extra.json"
 echo "準備できました: $(du -sh resources | cut -f1)"
+
+# --- 要約のサイドカー(別の実行ファイル)を作って src-tauri/binaries/ に置く(bundle.externalBin)。tools/build_summarizer.sh ---
+bash "$APP/tools/build_summarizer.sh"

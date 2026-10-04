@@ -1,6 +1,6 @@
 // 議事録の画面の流れを、モックAPI(ブラウザだけ)で Playwright により確認する。スクリーンショットを docs/ui/ に保存する。
 // 取り込み(設定・同意)→ 処理 → 話者(名前の変更・判別し直し)→ 文を押して移動・要確認の巡回 → 修正・結合・分割・元に戻す
-// → 検索・置換 → 定型欄・タグ・絞り込み → 確定 → 書き出し(Word・PDF)→ やり直しの画面 → 検索 → 用語辞書(CSV)→ 設定
+// → 検索・置換 → 定型欄・タグ・絞り込み → 要約(追加機能。取得 → 下書き → 中断 → 確認して取り込む)→ 確定 → 書き出し(Word・PDF)→ やり直しの画面 → 検索 → 用語辞書(CSV)→ 設定
 // 実際の文字起こし・話者の判別は src-tauri/tests/real_*.rs、処理の再開は pipeline のテストで確認する。
 // 使い方: (ui/ で) npx vite --port 5175 &  PLAYWRIGHT_DIR=<playwright を入れた場所> CHROMIUM=<実行ファイル> node e2e/flow.mjs
 import { createRequire } from "node:module";
@@ -159,6 +159,64 @@ await page.getByText("内容を直したため下書きに戻りました").wait
 await page.locator(".d-actions .badge.muted", { hasText: "下書き" }).waitFor();
 await shot("4b-draft-toast");
 
+// 6b) 要約(追加機能。モックのモデル): 未取得 → 設定で取得 → 下書き → 中断 → 確認して取り込む(確認するまで保存されない)
+await page.getByRole("tab", { name: /要約/ }).click();
+const sum = page.getByTestId("summary");
+await sum.getByTestId("summary-note").getByText("要約は自動で作った下書きです。内容を確認してから使ってください。").waitFor();
+await sum.getByTestId("summary-nomodel").waitFor();
+assert.equal(await sum.getByTestId("summary-run").count(), 0, "モデルが無ければ要約は始められない");
+await sum.getByRole("button", { name: "設定を開く" }).click();
+const sm = page.getByTestId("summary-model");
+await sm.getByText("Apache-2.0").first().waitFor();
+await sm.getByRole("button", { name: "取得する" }).click();
+await sm.getByTestId("summary-model-progress").waitFor();
+await sm.getByText("取得済み").waitFor();
+await shot("7-summary-settings");
+await page.getByRole("tab", { name: "議事録" }).click();
+await page.getByRole("tab", { name: /要約/ }).click();
+// 中断できる
+await page.getByTestId("summary-run").click();
+await page.getByTestId("summary-progress").waitFor();
+await page.getByTestId("summary-cancel").click();
+await page.getByTestId("summary-error").getByText("要約を中断しました").waitFor();
+assert.equal(await page.getByTestId("summary-draft").count(), 0, "中断したら下書きは出ない");
+// もう一度作る → 下書き(チェック付き)。ここまでメモは変わっていない
+await page.getByTestId("summary-run").click();
+const dr = page.getByTestId("summary-draft");
+await dr.waitFor({ timeout: 10000 });
+await shot("8-summary-draft");
+assert.equal(await dr.getByLabel("要点を取り込む").count(), 2);
+assert.equal(await dr.getByLabel("ToDo を取り込む").count(), 2);
+await page.getByRole("tab", { name: /議題・決定事項・ToDo/ }).click();
+assert.equal(await page.getByTestId("notes").getByLabel("議題").inputValue(), "見積もり\n展示会の準備", "確認するまでメモは変わらない");
+await page.getByRole("tab", { name: /要約/ }).click();
+await dr.waitFor(); // タブを切り替えても下書きは残る
+// 直す・外す: 2つ目の要点は取り込まない、ToDo の担当を直す
+await dr.getByLabel("要点を取り込む").nth(1).uncheck();
+await dr.getByLabel("担当").first().fill("鈴木");
+await dr.getByLabel("決定事項", { exact: true }).first().fill("ブースの設営は外部に依頼する(確認済み)");
+await dr.getByTestId("summary-import").click();
+await dr.getByTestId("summary-confirm").getByText("選んだ 4 件").waitFor();
+await dr.getByTestId("summary-confirm").getByRole("button", { name: "やめる" }).click();
+await page.getByRole("tab", { name: /議題・決定事項・ToDo/ }).click();
+assert.equal(await page.getByTestId("notes").getByLabel("議題").inputValue(), "見積もり\n展示会の準備", "やめたら保存されない");
+await page.getByRole("tab", { name: /要約/ }).click();
+await dr.getByTestId("summary-import").click();
+await dr.getByTestId("summary-confirm-yes").click();
+await page.getByText("4 件をメモに追加しました").waitFor();
+await dr.waitFor({ state: "detached" }).catch(() => undefined);
+await page.getByRole("tab", { name: /議題・決定事項・ToDo/ }).click();
+const n2 = page.getByTestId("notes");
+const agenda = await n2.getByLabel("議題").inputValue();
+assert.match(agenda, /^見積もり\n展示会の準備\n新しい見積もりについて/, "要点は議題の末尾に足される");
+assert.ok(!agenda.includes("ブースの設営は外部に依頼済み"), "チェックを外した要点は入らない");
+assert.match(await n2.getByLabel("決定事項").inputValue(), /^パンフレットは五百部\nブースの設営は外部に依頼する\(確認済み\)$/);
+const todoTexts = await n2.getByPlaceholder("やること").evaluateAll((els) => els.map((e) => e.value));
+assert.deepEqual(todoTexts, ["入稿", "見積もりの回答内容を共有する(期限: 来週の月曜日まで)", "展示会の準備状況を確認する"], "日付でない期限は文に添える");
+assert.deepEqual(await n2.getByPlaceholder("担当").evaluateAll((els) => els.map((e) => e.value)), ["鈴木", "鈴木", ""]);
+assert.equal(await n2.getByLabel("期限").last().inputValue(), "2026-11-01");
+await page.getByRole("tab", { name: "編集" }).click();
+
 // 7) 確定 → 書き出し(Word・PDF)
 assert.equal(await page.getByLabel("書き出し").isDisabled(), true, "確定前は書き出せない");
 await page.getByRole("button", { name: "確定", exact: true }).click();
@@ -230,5 +288,5 @@ await page.getByRole("button", { name: "全データを削除…" }).click();
 assert.equal(await page.getByRole("button", { name: "削除する" }).isDisabled(), true);
 
 assert.deepEqual(errors, []);
-console.log("ok: 取り込み設定 → 話者 → 移動・要確認 → 修正 → 検索置換 → 定型欄・タグ → 確定・Word・PDF → やり直し → 検索 → 辞書CSV → 録音 → 設定");
+console.log("ok: 取り込み設定 → 話者 → 移動・要確認 → 修正 → 検索置換 → 定型欄・タグ → 要約 → 確定・Word・PDF → やり直し → 検索 → 辞書CSV → 録音 → 設定");
 await browser.close();

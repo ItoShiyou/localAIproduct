@@ -16,6 +16,14 @@
     "note": "Attribution: WeSpeaker project (wenet-e2e). Used without modification."
   },
   {
+    "name": "Qwen3-4B-Instruct-2507 (Alibaba Cloud / Qwen team), GGUF Q4_K_M quantization by Unsloth",
+    "version": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf (SHA-256 3605803b982cb64a…). Optional add-on downloaded by the user on request (summary feature, paid tier)",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507 / https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+    "text_file": "qwen3-model-LICENSE.txt",
+    "note": "The model card of Qwen/Qwen3-4B-Instruct-2507 states `license: apache-2.0`. The GGUF file is a quantization of the original weights (no fine-tuning by this app). Outputs are drafts generated automatically and must be checked by the user."
+  },
+  {
     "name": "ONNX Runtime",
     "version": "1.30.0 (onnxruntime-osx-arm64-1.30.0, official release)",
     "license": "MIT",

@@ -113,3 +113,20 @@ export interface Plan {
   remainingMs: number | null;
 }
 export const PRO_LABEL = "有料版";
+
+/** 要約(有料版の追加機能)。src-tauri/src/summary.rs の DTO と同じ形 */
+export interface SummaryStatus {
+  name: string; installed: boolean; downloaded: number; size: number;
+  downloading: boolean; source: "managed" | "env" | "none"; error: string | null;
+  /** 要約のエンジン(サイドカー)がアプリに入っているか */
+  engine: boolean;
+  license: string; licenseUrl: string;
+  running: boolean; meetingId: number | null; step: number; total: number; phase: string; generated: number;
+}
+export interface DraftTodo { text: string; owner: string; due: string }
+export interface SummaryDraft { summary: string[]; decisions: string[]; todos: DraftTodo[] }
+export interface SummaryResult {
+  draft: SummaryDraft;
+  stats: { chunks: number; promptTokens: number; genTokens: number; prefillSeconds: number; genSeconds: number; seconds: number };
+}
+export const SUMMARY_NOTE = "要約は自動で作った下書きです。内容を確認してから使ってください。";

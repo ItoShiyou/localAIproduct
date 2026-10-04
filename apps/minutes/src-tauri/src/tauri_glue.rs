@@ -282,6 +282,38 @@ pub async fn delete_model(state: State<'_, AppState>) -> Result<ModelDto, String
 }
 
 #[tauri::command]
+pub async fn summary_status(state: State<'_, AppState>) -> Result<crate::summary::SummaryStatusDto, String> {
+    Ok(state.summary_status())
+}
+
+/// 要約のモデルを取得する(利用者が設定画面で押したときだけ。有料版のみ)。終わるまで返らない。進み具合は summary_status で見る。
+#[tauri::command]
+pub async fn download_summary_model(state: State<'_, AppState>) -> Result<crate::summary::SummaryStatusDto, String> {
+    state.download_summary_model()
+}
+
+#[tauri::command]
+pub fn cancel_summary_download(state: State<'_, AppState>) {
+    state.cancel_summary_download()
+}
+
+#[tauri::command]
+pub async fn delete_summary_model(state: State<'_, AppState>) -> Result<crate::summary::SummaryStatusDto, String> {
+    state.delete_summary_model()
+}
+
+/// 要約の下書きを作る(保存しない。終わるまで返らない。進み具合は summary_status、中断は cancel_summarize)。
+#[tauri::command]
+pub async fn summarize(state: State<'_, AppState>, id: i64) -> Result<crate::summary::SummaryResult, String> {
+    state.summarize(id)
+}
+
+#[tauri::command]
+pub fn cancel_summarize(state: State<'_, AppState>) {
+    state.cancel_summarize()
+}
+
+#[tauri::command]
 pub async fn third_party_notices(state: State<'_, AppState>) -> Result<String, String> {
     state.third_party_notices()
 }
