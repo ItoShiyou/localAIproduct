@@ -160,6 +160,7 @@ jobs(id, kind, state, progress, error, payload_json)
 - (2026-10-04 決定)モデルはアプリに同梱して、アプリ単体で売る。設定画面からの取得は、同梱モデルが見つからない場合の予備として残す。第三者ライセンスの表記は `docs/legal-notices.md` のとおりアプリに同梱・表示
 - symphonia(MPL-2.0)の配布時の表記・ソース入手方法の告知の書き方
 - (2026-10-04)Windows: GitHub Actions(windows-latest)でテストと NSIS/MSI の作成まで通った(`docs/spike-results.md` の 9。要約のサイドカーを含む構成でも通過、9b)。残り: Windows 実機でのインストール・起動・マイク録音(WebView2)・最低ライン機での速度の確認、Windows のコード署名(証明書の取得。止まる対象)、署名なしの SmartScreen 警告の扱い
+- (2026-10-04)Mac での通し検証(`docs/spike-results.md` の 11)。要約サイドカーの実行権限の不具合などを直した。要判断: onnxruntime が `~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/` に端末の識別子ファイルを作る(送信はしない見込みだが、止める手段が未確認)。このまま許容するか、onnxruntime を自前のビルドに替えるか。無料版の録音は累計の残りで自動停止するようにした(利用者向けの表示文言の確認)
 - 初期の論点: 採用する文字起こしモデル(候補3つの実測結果と、ライセンスの確認)、ffmpeg の同梱可否、話者分離の軽い手段の有無、要約を初版に入れるか(推奨: 入れない)
 
 ## リリース前チェック(`checklists/release.md`)の状況(2026-10-04、議事録)

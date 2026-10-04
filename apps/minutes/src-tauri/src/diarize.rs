@@ -143,7 +143,8 @@ mod onnx {
             let mut init_err = None;
             INIT.call_once(|| match ort::init_from(ort_lib) {
                 Ok(b) => {
-                    b.commit();
+                    // onnxruntime の利用状況の送信(テレメトリ)は使わない
+                    b.with_telemetry(false).commit();
                 }
                 Err(e) => init_err = Some(e.to_string()),
             });
