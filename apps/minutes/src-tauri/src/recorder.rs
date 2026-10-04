@@ -138,7 +138,18 @@ impl LiveRecorder {
         let cancel = Arc::new(AtomicBool::new(false));
         let (db, pcm, p2, c2) = (db_path.to_path_buf(), pcm_path.clone(), pending.clone(), cancel.clone());
         let worker = std::thread::spawn(move || -> Result<(), String> {
-            let store = Store::open(&db).map_err(|e| e.to_string())?;
+            // 開く瞬間は busy_timeout がまだ効かず、録音を始めた側の接続と重なると失敗することがある(Windows の CI で確認)ので数回やり直す
+            let mut tries = 0;
+            let store = loop {
+                match Store::open(&db) {
+                    Ok(s) => break s,
+                    Err(e) if tries >= 50 => return Err(e.to_string()),
+                    Err(_) => {
+                        tries += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            };
             for job in rx {
                 let segs = if job.silent || c2.load(Ordering::SeqCst) {
                     vec![]
