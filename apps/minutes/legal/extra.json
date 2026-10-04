@@ -6,5 +6,27 @@
     "url": "https://github.com/openai/whisper / https://huggingface.co/ggerganov/whisper.cpp",
     "text_file": "whisper-model-LICENSE.txt",
     "note": "The model weights are released by OpenAI under the MIT License. The ggml-format file is distributed by the whisper.cpp project (MIT)."
+  },
+  {
+    "name": "WeSpeaker ResNet34-LM speaker embedding model",
+    "version": "voxceleb_resnet34_LM.onnx",
+    "license": "CC-BY-4.0",
+    "url": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM",
+    "text_file": "wespeaker-model-NOTICE.txt",
+    "note": "Attribution: WeSpeaker project (wenet-e2e). Used without modification."
+  },
+  {
+    "name": "ONNX Runtime",
+    "version": "1.30.0 (onnxruntime-osx-arm64-1.30.0, official release)",
+    "license": "MIT",
+    "url": "https://github.com/microsoft/onnxruntime",
+    "text_file": "onnxruntime-LICENSE.txt"
+  },
+  {
+    "name": "ONNX Runtime third-party notices",
+    "version": "1.30.0",
+    "license": "(various, see text)",
+    "url": "https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt",
+    "text_file": "onnxruntime-ThirdPartyNotices.txt"
   }
 ]

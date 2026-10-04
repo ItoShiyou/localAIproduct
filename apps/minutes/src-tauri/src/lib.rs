@@ -3,6 +3,7 @@
 pub mod asr;
 pub mod audio;
 pub mod commands;
+pub mod diarize;
 pub mod export;
 pub mod pipeline;
 pub mod store;
@@ -21,6 +22,30 @@ pub fn whisper_loader() -> commands::AsrLoader {
         {
             let _ = path;
             Err("このビルドには文字起こしのエンジンが含まれていません".into())
+        }
+    })
+}
+
+/// 話者の判別(WeSpeaker、ONNX Runtime)。場所は 開発用の環境変数(MINUTES_ORT_LIB / MINUTES_SPK_MODEL)→ アプリに同梱 の順。
+pub fn embedder_loader(resources: Option<std::path::PathBuf>) -> commands::EmbedderLoader {
+    Box::new(move || -> Result<Box<dyn diarize::Embedder>, String> {
+        #[cfg(feature = "diarize")]
+        {
+            let pick = |env: &str, rel: &[&str]| -> Option<std::path::PathBuf> {
+                std::env::var(env).ok().map(std::path::PathBuf::from).filter(|p| p.exists()).or_else(|| {
+                    resources.as_ref().map(|r| rel.iter().fold(r.clone(), |p, s| p.join(s))).filter(|p| p.exists())
+                })
+            };
+            let lib_name = if cfg!(windows) { "onnxruntime.dll" } else { "libonnxruntime.dylib" };
+            let lib = pick("MINUTES_ORT_LIB", &["onnxruntime", lib_name]).ok_or("話者の判別に使う onnxruntime が見つかりません")?;
+            let model = pick("MINUTES_SPK_MODEL", &["models", "voxceleb_resnet34_LM.onnx"]).ok_or("話者の判別のモデルが見つかりません")?;
+            let threads = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(4);
+            Ok(Box::new(diarize::OnnxEmbedder::new(&lib, &model, threads)?))
+        }
+        #[cfg(not(feature = "diarize"))]
+        {
+            let _ = &resources;
+            Err("このビルドには話者の判別が含まれていません".into())
         }
     })
 }
@@ -48,6 +73,7 @@ pub fn run() {
                 fixed.push((r.join("models").join(commands::WHISPER_MODEL.file_name), "bundled"));
             }
             let state = commands::AppState::new(data_dir, None, whisper_loader(), fixed)?;
+            state.set_embedder_loader(embedder_loader(res.clone()));
             *state.notices_path.lock().unwrap() = res.map(|r| r.join("THIRD_PARTY_NOTICES.txt"));
             app.manage(state);
             Ok(())
@@ -87,6 +113,17 @@ pub fn run() {
             tauri_glue::cancel_model_download,
             tauri_glue::delete_model,
             tauri_glue::third_party_notices,
+            tauri_glue::all_tags,
+            tauri_glue::set_tags,
+            tauri_glue::update_notes,
+            tauri_glue::rediarize,
+            tauri_glue::rename_speaker,
+            tauri_glue::find_in,
+            tauri_glue::replace_in,
+            tauri_glue::reprocess,
+            tauri_glue::print_page,
+            tauri_glue::export_glossary,
+            tauri_glue::import_glossary,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");

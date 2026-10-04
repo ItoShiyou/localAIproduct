@@ -27,11 +27,19 @@ sha2 = "0.10"
 symphonia = { version = "0.5", default-features = false, features = ["wav", "pcm", "mp3", "aac", "isomp4", "flac", "ogg", "vorbis", "adpcm"] }
 nnnoiseless = { version = "0.5", default-features = false }
 whisper-rs = { version = "0.15", optional = true }
+rustfft = "6"
+csv = "1"
+encoding_rs = "0.8"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray", "std"], optional = true }
+ndarray = { version = "0.17", optional = true }
 tauri = { version = "2", features = ["protocol-asset"], optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 
 [features]
-default = ["tauri", "whisper"]
+default = ["tauri", "whisper", "diarize"]
 tauri = ["dep:tauri", "dep:tauri-plugin-dialog"]
 # whisper.cpp(whisper-rs)による文字起こし。ビルドに cmake と C/C++ コンパイラが要る
 whisper = ["dep:whisper-rs"]
+# 話者の判別(ONNX Runtime 上の WeSpeaker)。実行時に onnxruntime の共有ライブラリを読み込む
+diarize = ["dep:ort", "dep:ndarray"]

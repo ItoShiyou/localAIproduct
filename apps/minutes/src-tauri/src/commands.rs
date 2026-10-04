@@ -7,7 +7,8 @@
 use crate::asr::Asr;
 use crate::export::{render, Format};
 use crate::pipeline::{self, Options, JOB_KIND};
-use crate::store::{GlossaryEntry, Meeting, SearchHit, Segment, Store};
+use crate::diarize::Embedder;
+use crate::store::{GlossaryEntry, Meeting, MeetingFilter, ProcessOptions, SearchHit, Segment, Store, Todo};
 use factory_core::jobs::Jobs;
 use factory_core::model_manager::{ModelManager, ModelSpec, ModelStatus};
 use factory_core::settings::{AppData, NetworkEntry, Settings};
@@ -31,6 +32,9 @@ pub const WHISPER_MODEL: ModelSpec = ModelSpec {
     sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
     size: 574_041_195,
 };
+
+/// 話者の判別の特徴を作る関数(本番は ONNX の WeSpeaker、テストは差し替え)。無ければ判別しない
+pub type EmbedderLoader = Box<dyn Fn() -> Result<Box<dyn Embedder>, String> + Send + Sync>;
 
 /// モデルの場所から文字起こしエンジンを作る関数(本番は whisper、テストは差し替え)
 pub type AsrLoader = Box<dyn Fn(&Path) -> Result<Box<dyn Asr>, String> + Send + Sync>;
@@ -78,6 +82,9 @@ pub struct SettingsDto {
     pub data_dir: String,
     /// 文字起こしのモデル名。"none" ならモデル未設定
     pub model: String,
+    /// 話者の判別が使えるか(使えなければ理由)
+    pub diarize_available: bool,
+    pub diarize_error: Option<String>,
 }
 
 pub fn network_entries() -> Vec<NetworkEntry> {
@@ -105,6 +112,9 @@ pub struct AppState {
     pub cancel: Arc<AtomicBool>,
     pub busy: AtomicBool,
     pub current: Mutex<(Option<i64>, i64, i64)>,
+    emb: Mutex<Option<Arc<dyn Embedder>>>,
+    emb_loader: Mutex<Option<EmbedderLoader>>,
+    emb_error: Mutex<Option<String>>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -137,6 +147,9 @@ impl AppState {
             cancel: Arc::new(AtomicBool::new(false)),
             busy: AtomicBool::new(false),
             current: Mutex::new((None, 0, 0)),
+            emb: Mutex::new(None),
+            emb_loader: Mutex::new(None),
+            emb_error: Mutex::new(None),
         })
     }
 
@@ -148,10 +161,40 @@ impl AppState {
         self.app.root.join(DB_FILE)
     }
 
+    /// 話者の判別の特徴を作る関数を設定する(起動時)。
+    pub fn set_embedder_loader(&self, l: EmbedderLoader) {
+        *self.emb_loader.lock().unwrap_or_else(|p| p.into_inner()) = Some(l);
+    }
+
+    /// 話者の判別の特徴(初回に読み込む)。使えなければ None(理由は `embedder_error`)。
+    pub fn embedder(&self) -> Option<Arc<dyn Embedder>> {
+        let mut g = self.emb.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(e) = g.as_ref() {
+            return Some(e.clone());
+        }
+        let loader = self.emb_loader.lock().unwrap_or_else(|p| p.into_inner());
+        match loader.as_ref().map(|l| l()) {
+            Some(Ok(e)) => {
+                let e: Arc<dyn Embedder> = Arc::from(e);
+                *g = Some(e.clone());
+                Some(e)
+            }
+            Some(Err(msg)) => {
+                *self.emb_error.lock().unwrap_or_else(|p| p.into_inner()) = Some(msg);
+                None
+            }
+            None => None,
+        }
+    }
+
+    pub fn embedder_error(&self) -> Option<String> {
+        self.emb_error.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
     // ---------------- 取り込みと処理 ----------------
 
     /// 録音ファイルを取り込む(コピーし、処理の待ちに入れる)。議事録の id を返す。
-    pub fn import_audio(&self, path: &Path, denoise: bool) -> Result<i64, String> {
+    pub fn import_audio(&self, path: &Path, opts: &ProcessOptions) -> Result<i64, String> {
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
         if !AUDIO_EXTS.contains(&ext.as_str()) {
             return Err("対応している形式は m4a / mp3 / wav / mp4 などです".into());
@@ -168,7 +211,11 @@ impl AppState {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "録音".into());
         let store = self.store();
-        let id = store.add_meeting(&stem, &name, "", denoise).map_err(err)?;
+        let id = store.add_meeting(&stem, &name, "", opts.denoise).map_err(err)?;
+        if let Err(e) = store.set_options(id, opts) {
+            let _ = store.delete_meeting(id);
+            return Err(e.to_string());
+        }
         let dest = dir.join(format!("{id}.{ext}"));
         if std::fs::copy(path, &dest).is_err() {
             let _ = store.delete_meeting(id);
@@ -193,8 +240,10 @@ impl AppState {
                 return Err(e);
             }
         };
+        let emb = self.embedder();
         let res = Store::open(&self.db_path()).map_err(err).and_then(|worker| {
-            pipeline::run_jobs(&worker, asr.as_ref(), &self.app.root.join("work"), &Options { keep_audio }, &self.cancel, |mid, d, t| {
+            let opts = Options { keep_audio, embedder: emb.as_deref() };
+            pipeline::run_jobs(&worker, asr.as_ref(), &self.app.root.join("work"), &opts, &self.cancel, |mid, d, t| {
                 *self.current.lock().unwrap_or_else(|p| p.into_inner()) = (Some(mid), d, t);
             })
         });
@@ -316,6 +365,94 @@ impl AppState {
         self.store().meetings().map_err(err)
     }
 
+    pub fn meetings_filtered(&self, f: &MeetingFilter) -> Result<Vec<Meeting>, String> {
+        self.store().meetings_filtered(f).map_err(err)
+    }
+
+    pub fn all_tags(&self) -> Result<Vec<(String, i64)>, String> {
+        self.store().all_tags().map_err(err)
+    }
+
+    pub fn set_tags(&self, id: i64, tags: &[String]) -> Result<DetailDto, String> {
+        self.store().set_tags(id, tags).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn update_notes(&self, id: i64, agenda: &str, decisions: &str, todos: &[Todo]) -> Result<DetailDto, String> {
+        self.store().update_notes(id, agenda, decisions, todos).map_err(err)?;
+        self.detail(id)
+    }
+
+    /// 話者を判別し直す(人数を指定できる)。利用者が付けた名前も上書きする(元に戻せる)。
+    /// 声の特徴が求めてあればそれを使い、無ければ音声から求める(音声を残していない議事録はできない)。
+    pub fn rediarize(&self, id: i64, num_speakers: Option<i64>) -> Result<DetailDto, String> {
+        let store = self.store();
+        let have = !store.windows(id).map_err(err)?.is_empty();
+        if have {
+            pipeline::relabel(&store, id, num_speakers, true)?;
+        } else {
+            drop(store);
+            let emb = self.embedder().ok_or_else(|| self.embedder_error().unwrap_or_else(|| "話者の判別のモデルがありません".into()))?;
+            let (audio, _) = self.store().paths(id).map_err(err)?;
+            let audio = audio.ok_or("音声を残していないため、話者を判別できません")?;
+            let tmp = self.app.root.join("work").join(format!("diarize-{id}.pcm"));
+            std::fs::create_dir_all(tmp.parent().unwrap()).map_err(err)?;
+            crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp)?;
+            let r = pipeline::diarize_meeting(&self.store(), emb.as_ref(), &tmp, id, num_speakers, true);
+            let _ = std::fs::remove_file(&tmp);
+            r?;
+        }
+        self.store().db.conn.execute("UPDATE meetings SET num_speakers=?2 WHERE id=?1", (id, num_speakers)).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn rename_speaker(&self, id: i64, old: &str, new: &str) -> Result<DetailDto, String> {
+        if new.trim().is_empty() {
+            return Err("名前を入力してください".into());
+        }
+        self.store().rename_speaker(id, old, new).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn find_in(&self, id: i64, query: &str) -> Result<Vec<i64>, String> {
+        self.store().find_in(id, query).map_err(err)
+    }
+
+    pub fn replace_in(&self, id: i64, find: &str, replace: &str) -> Result<(usize, DetailDto), String> {
+        let n = self.store().replace_in(id, find, replace).map_err(err)?;
+        Ok((n, self.detail(id)?))
+    }
+
+    /// 設定(言語・範囲・話者など)を変えて、最初から文字起こしし直す。それまでの修正は消える(画面で確認してから呼ぶ)。
+    pub fn reprocess(&self, id: i64, opts: &ProcessOptions) -> Result<(), String> {
+        if self.current.lock().unwrap_or_else(|p| p.into_inner()).0 == Some(id) {
+            return Err("処理中です。中断してからやり直してください".into());
+        }
+        let store = self.store();
+        let (audio, pcm) = store.paths(id).map_err(err)?;
+        if audio.is_none() {
+            return Err("音声を残していないため、文字起こしし直せません".into());
+        }
+        store.set_options(id, opts).map_err(err)?;
+        let tx = store.db.conn.unchecked_transaction().map_err(err)?;
+        for sql in [
+            "DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE meeting_id=?1)",
+            "DELETE FROM diar_windows WHERE meeting_id=?1",
+            "DELETE FROM segments WHERE meeting_id=?1",
+            "DELETE FROM segment_history WHERE meeting_id=?1",
+            "DELETE FROM chunks WHERE meeting_id=?1",
+            "DELETE FROM jobs WHERE json_extract(payload_json, '$.meeting_id')=?1",
+            "UPDATE meetings SET state='queued', error=NULL, status='draft', pcm_path=NULL WHERE id=?1",
+        ] {
+            tx.execute(sql, [id]).map_err(err)?;
+        }
+        tx.commit().map_err(err)?;
+        if let Some(p) = pcm {
+            let _ = std::fs::remove_file(p);
+        }
+        pipeline::enqueue(&store, id).map(|_| ())
+    }
+
     pub fn detail(&self, id: i64) -> Result<DetailDto, String> {
         let store = self.store();
         let meeting = store.meeting(id).map_err(err)?.ok_or("見つかりません")?;
@@ -406,7 +543,7 @@ impl AppState {
         if m.status != "confirmed" {
             return Err("確定した議事録だけを書き出せます。確認画面で確定してください".into());
         }
-        let body = render(f, &m, &store.segments(id).map_err(err)?);
+        let body = render(f, &m, &store.segments(id).map_err(err)?)?;
         std::fs::write(dest, body).map_err(|_| "書き出し先に保存できません".to_string())
     }
 
@@ -447,6 +584,21 @@ impl AppState {
         self.store().glossary().map_err(err)
     }
 
+    pub fn export_glossary(&self, dest: &Path) -> Result<(), String> {
+        let bytes = self.store().glossary_csv().map_err(err)?;
+        std::fs::write(dest, bytes).map_err(|_| "書き出し先に保存できません".to_string())
+    }
+
+    /// CSV から用語辞書に取り込む。(取り込んだ数, 飛ばした行の理由, 取り込み後の一覧)
+    pub fn import_glossary(&self, src: &Path) -> Result<(usize, Vec<String>, Vec<GlossaryEntry>), String> {
+        let bytes = std::fs::read(src).map_err(|_| "ファイルを読めません".to_string())?;
+        if bytes.len() > 10 * 1024 * 1024 {
+            return Err("ファイルが大きすぎます(10MBまで)".into());
+        }
+        let (n, skipped) = self.store().import_glossary_csv(&bytes).map_err(err)?;
+        Ok((n, skipped, self.glossary()?))
+    }
+
     pub fn add_glossary(&self, wrong: &str, right: &str) -> Result<Vec<GlossaryEntry>, String> {
         self.store().add_glossary(wrong, right).map_err(err)?;
         self.glossary()
@@ -469,6 +621,8 @@ impl AppState {
             network: self.app.network_list(&network_entries(), UPDATE_PURPOSE),
             data_dir: self.app.root.to_string_lossy().into(),
             model: self.model_path().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into()),
+            diarize_available: self.embedder().is_some(),
+            diarize_error: self.embedder_error(),
         }
     }
 
@@ -527,7 +681,7 @@ mod tests {
         let d = tmp("model");
         let s = state(&d, None);
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
-        let id = s.import_audio(&src, false).unwrap();
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
         let st = s.model_status();
         assert_eq!((st.source, st.status.installed, st.status.size), ("none", false, WHISPER_MODEL.size));
         assert!(s.run_jobs().unwrap_err().contains("モデルがありません"));
@@ -551,9 +705,9 @@ mod tests {
     fn 取り込み_処理_修正_確定_書き出し_検索_全削除まで通る() {
         let d = tmp("flow");
         let s = state(&d, Some(Box::new(FakeAsr { text: "やまだ商事の件です".into() })));
-        assert!(s.import_audio(Path::new("/nope/x.txt"), true).is_err());
+        assert!(s.import_audio(Path::new("/nope/x.txt"), &ProcessOptions::default()).is_err());
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
-        let id = s.import_audio(&src, false).unwrap();
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
         assert!(src.exists());
         assert_eq!(s.meetings().unwrap()[0].state, "queued");
         s.add_glossary("やまだ商事", "山田商事").unwrap();
@@ -601,7 +755,7 @@ mod tests {
         let st = s.model_status();
         assert_eq!((st.source, st.status.installed), ("bundled", true));
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
-        let id = s.import_audio(&src, false).unwrap();
+        let id = s.import_audio(&src, &ProcessOptions { denoise: false, ..Default::default() }).unwrap();
         s.run_jobs().unwrap();
         assert!(s.detail(id).unwrap().segments[0].text.contains("res"));
         std::fs::remove_dir_all(&d).ok();

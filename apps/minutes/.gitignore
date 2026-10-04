@@ -2,3 +2,5 @@ src-tauri/gen/
 # 配布物の準備で作るもの(tools/prepare_bundle.sh)。モデルは大きいのでコミットしない
 src-tauri/resources/models/
 src-tauri/resources/THIRD_PARTY_NOTICES.txt
+testset/generated/
+src-tauri/resources/onnxruntime/

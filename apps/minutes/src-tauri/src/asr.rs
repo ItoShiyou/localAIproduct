@@ -15,8 +15,9 @@ pub struct AsrSegment {
 }
 
 pub trait Asr: Send + Sync {
-    /// `hint` は用語辞書の正しい表記など、認識のヒント(空でもよい)。`cancel` が立ったら途中で止めて Err を返す。
-    fn transcribe(&self, pcm: &[f32], hint: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String>;
+    /// `hint` は用語辞書の正しい表記など、認識のヒント(空でもよい)。`language` は "ja" | "en" | "auto"。
+    /// `cancel` が立ったら途中で止めて Err を返す。
+    fn transcribe(&self, pcm: &[f32], hint: &str, language: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String>;
     fn name(&self) -> String;
 }
 
@@ -26,7 +27,7 @@ pub struct FakeAsr {
 }
 
 impl Asr for FakeAsr {
-    fn transcribe(&self, pcm: &[f32], _hint: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
+    fn transcribe(&self, pcm: &[f32], _hint: &str, _language: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
         if cancel.load(Ordering::SeqCst) {
             return Err("中断しました".into());
         }
@@ -44,7 +45,7 @@ pub struct MissingAsr {
 }
 
 impl Asr for MissingAsr {
-    fn transcribe(&self, _: &[f32], _: &str, _: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
+    fn transcribe(&self, _: &[f32], _: &str, _: &str, _: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
         Err(self.reason.clone())
     }
     fn name(&self) -> String {
@@ -83,9 +84,14 @@ mod whisper {
     }
 
     impl Asr for WhisperAsr {
-        fn transcribe(&self, pcm: &[f32], hint: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
+        fn transcribe(&self, pcm: &[f32], hint: &str, language: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<AsrSegment>, String> {
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-            params.set_language(Some("ja"));
+            // "auto" は区間ごとに言語を推定する(英語と日本語が混ざる会議向け)
+            params.set_language(Some(match language {
+                "en" => "en",
+                "auto" => "auto",
+                _ => "ja",
+            }));
             params.set_n_threads(self.threads);
             params.set_no_context(true);
             params.set_suppress_blank(true);

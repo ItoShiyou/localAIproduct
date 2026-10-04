@@ -2,7 +2,7 @@
 //! 重い処理(取り込み・文字起こし・書き出し)は async コマンドにして、画面のスレッドを止めない。
 
 use crate::commands::*;
-use crate::store::{GlossaryEntry, Meeting, SearchHit};
+use crate::store::{GlossaryEntry, Meeting, MeetingFilter, ProcessOptions, SearchHit, Todo};
 use std::path::PathBuf;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
@@ -15,12 +15,12 @@ pub struct ImportResult {
     pub error: Option<String>,
 }
 
-fn import_many(state: &AppState, paths: Vec<PathBuf>, denoise: bool) -> Vec<ImportResult> {
+fn import_many(state: &AppState, paths: Vec<PathBuf>, opts: &ProcessOptions) -> Vec<ImportResult> {
     paths
         .into_iter()
         .map(|p| {
             let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            match state.import_audio(&p, denoise) {
+            match state.import_audio(&p, opts) {
                 Ok(id) => ImportResult { name, id: Some(id), error: None },
                 Err(e) => ImportResult { name, id: None, error: Some(e) },
             }
@@ -30,16 +30,16 @@ fn import_many(state: &AppState, paths: Vec<PathBuf>, denoise: bool) -> Vec<Impo
 
 /// OS のダイアログで録音ファイルを選んで取り込む(複数可)。取り消したら空。
 #[tauri::command]
-pub async fn pick_and_import(app: tauri::AppHandle, state: State<'_, AppState>, denoise: bool) -> Result<Vec<ImportResult>, String> {
+pub async fn pick_and_import(app: tauri::AppHandle, state: State<'_, AppState>, opts: ProcessOptions) -> Result<Vec<ImportResult>, String> {
     let Some(files) = app.dialog().file().add_filter("録音・動画", &AUDIO_EXTS).blocking_pick_files() else { return Ok(vec![]) };
     let paths = files.into_iter().filter_map(|f| f.into_path().ok()).collect();
-    Ok(import_many(&state, paths, denoise))
+    Ok(import_many(&state, paths, &opts))
 }
 
 /// ドラッグ&ドロップされたファイルを取り込む。
 #[tauri::command]
-pub async fn import_paths(state: State<'_, AppState>, paths: Vec<String>, denoise: bool) -> Result<Vec<ImportResult>, String> {
-    Ok(import_many(&state, paths.into_iter().map(PathBuf::from).collect(), denoise))
+pub async fn import_paths(state: State<'_, AppState>, paths: Vec<String>, opts: ProcessOptions) -> Result<Vec<ImportResult>, String> {
+    Ok(import_many(&state, paths.into_iter().map(PathBuf::from).collect(), &opts))
 }
 
 #[tauri::command]
@@ -63,8 +63,69 @@ pub async fn progress(state: State<'_, AppState>) -> Result<ProgressDto, String>
 }
 
 #[tauri::command]
-pub async fn meetings(state: State<'_, AppState>) -> Result<Vec<Meeting>, String> {
-    state.meetings()
+pub async fn meetings(state: State<'_, AppState>, filter: Option<MeetingFilter>) -> Result<Vec<Meeting>, String> {
+    state.meetings_filtered(&filter.unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn all_tags(state: State<'_, AppState>) -> Result<Vec<(String, i64)>, String> {
+    state.all_tags()
+}
+
+#[tauri::command]
+pub async fn set_tags(state: State<'_, AppState>, id: i64, tags: Vec<String>) -> Result<DetailDto, String> {
+    state.set_tags(id, &tags)
+}
+
+#[tauri::command]
+pub async fn update_notes(state: State<'_, AppState>, id: i64, agenda: String, decisions: String, todos: Vec<Todo>) -> Result<DetailDto, String> {
+    state.update_notes(id, &agenda, &decisions, &todos)
+}
+
+#[tauri::command]
+pub async fn rediarize(state: State<'_, AppState>, id: i64, num_speakers: Option<i64>) -> Result<DetailDto, String> {
+    state.rediarize(id, num_speakers)
+}
+
+#[tauri::command]
+pub async fn rename_speaker(state: State<'_, AppState>, id: i64, old: String, new: String) -> Result<DetailDto, String> {
+    state.rename_speaker(id, &old, &new)
+}
+
+#[tauri::command]
+pub async fn find_in(state: State<'_, AppState>, id: i64, query: String) -> Result<Vec<i64>, String> {
+    state.find_in(id, &query)
+}
+
+#[tauri::command]
+pub async fn replace_in(state: State<'_, AppState>, id: i64, find: String, replace: String) -> Result<(usize, DetailDto), String> {
+    state.replace_in(id, &find, &replace)
+}
+
+#[tauri::command]
+pub async fn reprocess(state: State<'_, AppState>, id: i64, opts: ProcessOptions) -> Result<(), String> {
+    state.reprocess(id, &opts)
+}
+
+/// 画面を印刷する(印刷用の表示に切り替えてから呼ぶ。OS の印刷ダイアログから PDF として保存できる)。
+#[tauri::command]
+pub fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn export_glossary(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let Some(dest) = app.dialog().file().set_file_name("用語辞書.csv").add_filter("CSV", &["csv"]).blocking_save_file() else { return Ok(None) };
+    let dest = dest.into_path().map_err(|e| e.to_string())?;
+    state.export_glossary(&dest)?;
+    Ok(Some(dest.to_string_lossy().into()))
+}
+
+#[tauri::command]
+pub async fn import_glossary(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<(usize, Vec<String>, Vec<GlossaryEntry>)>, String> {
+    let Some(src) = app.dialog().file().add_filter("CSV", &["csv", "txt"]).blocking_pick_file() else { return Ok(None) };
+    let src = src.into_path().map_err(|e| e.to_string())?;
+    state.import_glossary(&src).map(Some)
 }
 
 #[tauri::command]
