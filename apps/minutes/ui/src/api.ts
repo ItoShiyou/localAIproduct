@@ -234,7 +234,7 @@ export function makeMockApi(): Api {
       for (const x of meetings) for (const t of x.tags) c.set(t, (c.get(t) ?? 0) + 1);
       return [...c.entries()].sort();
     },
-    async setTags(id, tags) { meetings = meetings.map((x) => (x.id === id ? { ...x, tags: [...new Set(tags.map((t) => t.trim()).filter(Boolean))].sort() } : x)); return det(id); },
+    async setTags(id, tags) { meetings = meetings.map((x) => (x.id === id ? { ...x, tags: [...new Set(tags.map((t) => t.trim()).filter(Boolean))].sort(), status: "draft" } : x)); return det(id); },
     async updateNotes(id, agenda, decisions, todos) {
       if (todos.some((t) => t.due && !/^\d{4}-\d{2}-\d{2}$/.test(t.due))) throw new Error("ToDo の期限は YYYY-MM-DD の形で入力してください");
       meetings = meetings.map((x) => (x.id === id ? { ...x, agenda, decisions, todos: todos.filter((t) => t.text.trim()), status: "draft" } : x));
@@ -318,7 +318,7 @@ export function makeMockApi(): Api {
       meetings = meetings.map((x) => (x.id === id ? { ...x, title, heldOn, participantsText: participants, status: "draft" } : x));
       return det(id);
     },
-    async editText(sid, text) { const id = owner(sid); cp(id); segs.set(id, segs.get(id)!.map((s) => (s.id === sid ? { ...s, text, edited: true } : s))); return det(id); },
+    async editText(sid, text) { await wait(300); const id = owner(sid); cp(id); segs.set(id, segs.get(id)!.map((s) => (s.id === sid ? { ...s, text, edited: true } : s))); return det(id); },
     async setSpeaker(sid, speaker, following) {
       const id = owner(sid); cp(id);
       const ss = segs.get(id)!; const i = ss.findIndex((s) => s.id === sid); const old = ss[i].speaker;

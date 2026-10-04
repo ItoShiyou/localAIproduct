@@ -6,6 +6,7 @@ import { OptionsForm, defaultOptions, optionsValid } from "./OptionsForm";
 import { Recorder } from "./Recorder";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
+import { Toasts, notify } from "./toast";
 import type { ImportResult, Meeting, MeetingFilter, Plan, ProcessOptions, Progress, SettingsInfo } from "./types";
 import { STATE_LABEL, ago, hms } from "./types";
 import logo from "../../core/brand/logo.svg";
@@ -30,6 +31,7 @@ export function App({ api }: { api: Api }) {
   const [askConsent, setAskConsent] = useState<null | (() => void)>(null);
   const [version, setVersion] = useState(0);
   const [jobError, setJobError] = useState<string | null>(null);
+  const [jobsActive, setJobsActive] = useState(false);
   const running = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -45,15 +47,17 @@ export function App({ api }: { api: Api }) {
   const startJobs = useCallback(async () => {
     if (running.current) return;
     running.current = true;
+    setJobsActive(true);
     const timer = setInterval(() => { refresh().catch(() => undefined); }, 800);
     try {
       setJobError(null);
-      await api.runJobs().catch((e) => setJobError(String(e)));
+      await api.runJobs().catch((e) => { const t = String(e).replace(/^Error:\s*/, ""); setJobError(t); notify("err", `文字起こしを続けられませんでした: ${t}`); });
       // 画面を開き直したときなど、すでに裏で処理中なら(runJobs はすぐ戻る)、終わるまで進み具合を見続ける
       while ((await api.progress()).busy) await new Promise((r) => setTimeout(r, 1000));
     } finally {
       clearInterval(timer);
       running.current = false;
+      setJobsActive(false);
       await refresh();
       setVersion((v) => v + 1);
     }
@@ -75,6 +79,7 @@ export function App({ api }: { api: Api }) {
   const afterImport = useCallback((rs: ImportResult[]) => {
     if (!rs.length) return;
     setResults(rs);
+    for (const r of rs) if (r.error) notify("err", `取り込めませんでした(${r.name || "ファイル"}): ${r.error}`);
     const first = rs.find((r) => r.id != null);
     if (first?.id != null) setCur(first.id);
     refresh().then(startJobs);
@@ -82,7 +87,7 @@ export function App({ api }: { api: Api }) {
 
   const pick = () => {
     if (!optionsValid(opts)) { setShowOpts(true); return; }
-    withConsent(() => { api.pickAndImport(opts).then(afterImport).catch((e) => setResults([{ name: "", id: null, error: String(e) }])); });
+    withConsent(() => { api.pickAndImport(opts).then(afterImport).catch((e) => { setResults([{ name: "", id: null, error: String(e) }]); notify("err", `取り込めませんでした: ${e}`); }); });
   };
 
   // ドラッグ&ドロップ(Tauri はファイルの場所を通知する)
@@ -90,7 +95,7 @@ export function App({ api }: { api: Api }) {
   optsRef.current = opts;
   useEffect(() => {
     let off: (() => void) | undefined;
-    api.onDrop((paths) => { if (paths.length) withConsent(() => { api.importPaths(paths, optsRef.current).then(afterImport); }); }).then((f) => { off = f; });
+    api.onDrop((paths) => { if (paths.length) withConsent(() => { api.importPaths(paths, optsRef.current).then(afterImport).catch((e) => notify("err", `取り込めませんでした: ${e}`)); }); }).then((f) => { off = f; });
     return () => off?.();
   }, [api, withConsent, afterImport]);
 
@@ -209,13 +214,14 @@ export function App({ api }: { api: Api }) {
       <main className="main">
         <section className="content">
           {tab === "meetings" && (cur != null && meetings.some((m) => m.id === cur)
-            ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} plan={plan} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs)} />
+            ? <DetailView key={cur} api={api} id={cur} version={version} seekTo={seekTo} settings={settings} plan={plan} progress={progress} jobsActive={jobsActive} jobError={jobError} onResume={startJobs} onOpenSettings={() => setTab("settings")} onChanged={refresh} onReprocessed={() => refresh().then(startJobs)} onDeleted={() => { setCur(null); refresh(); }} onRetry={() => api.retry(cur).then(() => refresh()).then(startJobs).catch((e) => notify("err", `やり直せませんでした: ${e}`))} />
             : <div className="empty"><img src={logo} alt="" width={56} /><p>左の「録音を取り込む」か「録音」から始めましょう。</p></div>)}
           {tab === "search" && <SearchView api={api} onOpen={openAt} />}
           {tab === "glossary" && <GlossaryView api={api} plan={plan} />}
           {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}
         </section>
       </main>
+      <Toasts />
     </div>
   );
 }

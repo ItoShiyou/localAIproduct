@@ -301,3 +301,20 @@ details.more .menu { position: absolute; right: 0; top: 38px; z-index: 6; backgr
 .pane { max-width: 980px; margin: 0 auto; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 14px; }
 .pane > .card:first-child h2, .pane h2 { font-family: var(--font-serif); font-size: 16px; }
 .card input:not([type]), .card input[type=text] { min-width: 220px; }
+
+/* ---- お知らせ・保存の状態・止まっている理由 ---- */
+.toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 30; display: flex; flex-direction: column; gap: 8px; align-items: center; width: min(560px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface); box-shadow: var(--shadow-3); font-size: 13px; line-height: 1.6; max-width: 100%; animation: fade .15s var(--ease); }
+.toast.ok { border-color: var(--ok); background: var(--ok-soft); color: var(--ink); }
+.toast.info { border-color: var(--warn); background: var(--warn-soft); color: var(--ink); }
+.toast.err { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.toast-text { flex: 1; word-break: break-word; }
+.toast-x { border: 0; background: none; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.save-ind { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.save-ind.saving { color: var(--flame-deep); }
+.save-ind.err { color: var(--danger); font-weight: 600; white-space: normal; }
+.save-ind .link { margin-left: 4px; }
+.d-why { margin: 4px 0 0; text-align: right; font-size: 12px; color: var(--warn); line-height: 1.6; }
+.stall { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 8px 0 10px; padding: 10px 14px; border-radius: var(--r-md); background: var(--danger-soft); border: 1px solid var(--danger); color: var(--danger); font-size: 13px; line-height: 1.6; }
+.stall.wait { background: var(--warn-soft); border-color: var(--warn); color: var(--ink); }
+.stall .grow { min-width: 200px; }

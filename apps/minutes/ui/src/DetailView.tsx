@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api";
 import { OptionsForm, optionsValid } from "./OptionsForm";
-import type { Detail, ExportFormat, Plan, ProcessOptions, Segment, SettingsInfo, Todo } from "./types";
+import { notify } from "./toast";
+import type { Detail, ExportFormat, Plan, ProcessOptions, Progress, Segment, SettingsInfo, Todo } from "./types";
 import { LANGUAGE_LABEL, STATE_LABEL, hms, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
@@ -218,9 +219,10 @@ function PrintDialog({ value, onChange, onPrint, onClose }: { value: PrintOption
 }
 
 /** 1つの議事録の確認画面 */
-export function DetailView({ api, id, version, seekTo, settings, plan, onChanged, onDeleted, onRetry, onReprocessed }: {
+export function DetailView({ api, id, version, seekTo, settings, plan, progress, jobsActive, jobError, onChanged, onDeleted, onRetry, onReprocessed, onResume, onOpenSettings }: {
   api: Api; id: number; version: number; seekTo: { ms: number; n: number } | null; settings: SettingsInfo | null; plan: Plan | null;
-  onChanged: () => void; onDeleted: () => void; onRetry: () => void; onReprocessed: () => void;
+  progress: Progress | null; jobsActive: boolean; jobError: string | null;
+  onChanged: () => void; onDeleted: () => void; onRetry: () => void; onReprocessed: () => void; onResume: () => void; onOpenSettings: () => void;
 }) {
   const [d, setD] = useState<Detail | null>(null);
   const [audio, setAudio] = useState<string | null>(null);
@@ -242,14 +244,27 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
   const player = useRef<HTMLAudioElement>(null);
   const pausedByTyping = useRef(false);
   const lastPlaying = useRef<number | undefined>(undefined);
+  // 保存の状態(順番待ちの数・最後の結果)
+  const [pending, setPending] = useState(0);
+  const [saveRes, setSaveRes] = useState<{ ok: true; at: Date } | { ok: false; why: string; retry: () => void } | null>(null);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const statusRef = useRef<string | null>(null);
+  const expectDraft = useRef(false);
+  const fails = useRef(0);
 
   const apply = useCallback((x: Detail) => {
+    // 確定のあとに内容を直すと、下書きに戻る。黙って戻ると「確定が効かない」ように見えるので知らせる
+    if (statusRef.current === "confirmed" && x.meeting.status === "draft" && !expectDraft.current) {
+      notify("info", "内容を直したため下書きに戻りました。もう一度「確定」を押してください");
+    }
+    expectDraft.current = false;
+    statusRef.current = x.meeting.status;
     setD(x);
     setMeta({ title: x.meeting.title, heldOn: x.meeting.heldOn ?? "", participants: x.meeting.participantsText, tags: x.meeting.tags.join("、") });
   }, []);
 
   useEffect(() => {
-    api.detail(id).then(apply).catch((e) => setMsg(String(e)));
+    api.detail(id).then(apply).catch((e) => { setMsg(String(e)); notify("err", `読み込めませんでした: ${e}`); });
     api.audioUrl(id).then(setAudio).catch(() => setAudio(null));
   }, [api, id, version, apply]);
 
@@ -282,10 +297,37 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
     return () => { alive = false; };
   }, [api, id, audio, d?.meeting.recording, d?.meeting.state]);
 
-  const run = useCallback(async (f: () => Promise<Detail>, after?: string) => {
-    try { apply(await f()); setMsg(after ?? null); onChanged(); }
-    catch (e) { setMsg(String(e)); }
+  /** 変更を伴う操作は、1本の列に並べて順番に実行する(入力欄を離れた保存と「確定」が前後しないように)。成功したら新しい内容を返す */
+  const run = useCallback((f: () => Promise<Detail>, after?: string, opts?: { toDraft?: boolean }): Promise<Detail | null> => {
+    setPending((n) => n + 1);
+    const job = chain.current.then(async () => {
+      try {
+        if (opts?.toDraft) expectDraft.current = true;
+        const x = await f();
+        apply(x);
+        setSaveRes({ ok: true, at: new Date() });
+        if (after) notify("ok", after);
+        onChanged();
+        return x;
+      } catch (e) {
+        expectDraft.current = false;
+        fails.current++;
+        const why = String(e).replace(/^Error:\s*/, "");
+        setSaveRes({ ok: false, why, retry: () => { run(f, after, opts); } });
+        notify("err", `保存できませんでした: ${why}`);
+        return null;
+      } finally { setPending((n) => n - 1); }
+    });
+    chain.current = job;
+    return job;
   }, [apply, onChanged]);
+
+  /** 入力中の欄を確定(blur)させ、その保存を含めて順番待ちが空になるまで待つ */
+  const flush = useCallback(async () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await new Promise((r) => setTimeout(r, 0));
+    await chain.current;
+  }, []);
 
   // 文の操作(memo の Row に渡すため、ref で最新を持つ)
   const actions = useRef<RowActions>(null as unknown as RowActions);
@@ -380,12 +422,23 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
     run(() => api.updateMeta(id, meta.title, meta.heldOn || null, meta.participants));
   };
 
+  const confirm = async () => {
+    const before = fails.current;
+    await flush();
+    if (fails.current !== before) { notify("err", "直した内容を保存できなかったため、確定しませんでした。保存し直してから「確定」を押してください"); return; }
+    const x = await run(() => api.confirm(id));
+    if (!x) return;
+    if (x.meeting.status === "confirmed") notify("ok", "確定しました。書き出せます");
+    else notify("err", "確定できませんでした。下書きのままです。もう一度「確定」を押してください");
+  };
+
   const exp = async (f: ExportFormat | "wav" | "pdf") => {
     try {
+      await flush();
       if (f === "pdf") { setPrintAsk(true); return; }
       const p = f === "wav" ? await api.exportDenoised(id) : await api.exportAs(id, f);
-      if (p) setMsg(`書き出しました: ${p}`);
-    } catch (e) { setMsg(String(e)); }
+      if (p) notify("ok", `書き出しました: ${p}`);
+    } catch (e) { notify("err", `書き出せませんでした: ${String(e).replace(/^Error:\s*/, "")}`); }
   };
 
   const doFind = async (q: string) => {
@@ -408,6 +461,30 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
     file: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14H6z" /></svg>,
   };
   const views: [View, string, string?][] = [["read", "記録"], ["edit", "編集"], ["memo", "メモ", "議題・決定事項・ToDo"], ["summary", "要約"]];
+  const busyHere = !!progress && progress.busy && progress.meetingId === id;
+  const confirmWhy: string | null =
+    m.recording ? "録音中です。録音を止めて、文字起こしが終わると確定できます"
+    : m.state === "failed" ? `処理できませんでした: ${m.error ?? "理由は不明です"}。「やり直す」を押してください`
+    : m.state === "processing" ? `文字起こし中のため、終わるまで確定できません${busyHere && progress!.totalChunks ? `(${progress!.doneChunks}/${progress!.totalChunks} 区間)` : ""}`
+    : m.state === "queued" ? (progress?.busy ? "ほかの議事録を文字起こし中です。順番が来ると始まります。終わるまで確定できません" : "待ちの状態です。左の「再開」で文字起こしを始めてください")
+    : d.provisional ? "正確なモデルで文字起こし中です(仮の文字が残っています)。置き換わるまで確定できません"
+    : null;
+  // 処理が止まっているとき: 理由と次にすることを、スクロールしても見える所(ヘッダー)に出す
+  const limitHit = /有料版/.test(m.error ?? "");
+  const stall: { kind: "err" | "wait"; text: string; action: string; go: () => void; settings?: boolean } | null =
+    m.state === "failed"
+      ? {
+        kind: "err",
+        text: `文字起こしが止まりました: ${m.error ?? "理由は不明です"}。${limitHit ? "有料版にすると、続きから文字起こしできます。" : /モデル/.test(m.error ?? "") ? "設定でモデルを用意してから、やり直してください。" : "音声は残っています。やり直すと、最初から文字起こしします。"}`,
+        action: limitHit ? "続きから文字起こし" : "やり直す", go: onRetry, settings: /モデル/.test(m.error ?? ""),
+      }
+      : m.state === "queued" && !m.recording && !jobsActive && progress && !progress.busy && progress.pending > 0
+        ? {
+          kind: "wait",
+          text: jobError ? `文字起こしを始められませんでした: ${jobError}` : "文字起こしの順番待ちで止まっています(待ち " + progress.pending + " 件)。「再開」を押すと始まります。",
+          action: "再開", go: onResume, settings: /モデル/.test(jobError ?? ""),
+        }
+        : null;
   const durMs = m.durationMs ?? (segs.length ? segs[segs.length - 1].endMs : 0);
   const readOnly = d.provisional || m.recording;
   const paras: { id: number; t: number; sp: string; tx: string; end: number }[] = [];
@@ -424,11 +501,14 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
           <input className="d-title" aria-label="タイトル" value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} onBlur={saveMeta}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
           <div className="d-actions">
+            <span className={"save-ind " + (pending > 0 ? "saving" : saveRes && !saveRes.ok ? "err" : "")} aria-live="polite" data-testid="save-ind">
+              {pending > 0 ? "保存中…" : saveRes?.ok ? `保存済み ${saveRes.at.getHours()}:${String(saveRes.at.getMinutes()).padStart(2, "0")}` : saveRes ? <>保存できませんでした({saveRes.why})<button className="link" onClick={saveRes.retry}>再試行</button></> : ""}
+            </span>
             <span className={`badge s-${m.state}`}>{m.recording ? "録音中" : STATE_LABEL[m.state]}</span>
             <span className={"badge " + (m.status === "confirmed" ? "ok" : "muted")}>{m.status === "confirmed" ? "確定" : "下書き"}</span>
             {m.status === "draft"
-              ? <button className="btn primary" disabled={!done || readOnly} onClick={() => run(() => api.confirm(id), "確定しました。書き出せます")}>確定</button>
-              : <button className="btn" onClick={() => run(() => api.unconfirm(id))}>下書きに戻す</button>}
+              ? <button className="btn primary" disabled={!!confirmWhy} title={confirmWhy ?? "内容を確認できたら押してください"} aria-describedby={confirmWhy ? "confirm-why" : undefined} onClick={confirm}>確定</button>
+              : <button className="btn" onClick={() => run(() => api.unconfirm(id), undefined, { toDraft: true })}>下書きに戻す</button>}
             <select aria-label="書き出し" value="" disabled={m.status !== "confirmed"} onChange={(e) => { if (e.target.value) exp(e.target.value as ExportFormat | "wav" | "pdf"); }}>
               <option value="">⤓ 書き出し…</option>
               {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
@@ -438,6 +518,14 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
             </select>
           </div>
         </div>
+        {m.status === "draft" && confirmWhy && <p className="d-why" id="confirm-why" data-testid="confirm-why">{confirmWhy}</p>}
+        {stall && (
+          <div className={"stall" + (stall.kind === "wait" ? " wait" : "")} role="alert" data-testid="stall">
+            <span className="grow">{stall.text}</span>
+            {stall.settings && <button className="btn small" onClick={onOpenSettings}>設定を開く</button>}
+            <button className="btn small primary" onClick={stall.go}>{stall.action}</button>
+          </div>
+        )}
         <div className="meta-row">
           <span className="mi">{ic.clock}{durMs ? hms(durMs) : "--:--"}</span>
           <span className="mi">{ic.globe}{LANGUAGE_LABEL[m.language]}</span>
@@ -491,7 +579,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
             <span className="grow" />
             <button className="btn small" disabled={!d.canUndo} onClick={() => run(() => api.undo(id))} title="元に戻す">↶ 元に戻す</button>
             <button className="btn small" onClick={() => setFind((f) => ({ ...f, open: !f.open }))}>検索・置換</button>
-            <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); setMsg(`用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); } catch (e) { setMsg(String(e)); } }}>用語辞書を適用</button>
+            <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); notify("ok", `用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); onChanged(); } catch (e) { notify("err", `用語辞書を適用できませんでした: ${e}`); } }}>用語辞書を適用</button>
             <details className="more">
               <summary className="btn small icon" aria-label="その他">⋯</summary>
               <div className="menu">
@@ -499,7 +587,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
                   onClick={() => setRedo({ denoise: m.denoise, diarize: m.diarize, numSpeakers: m.numSpeakers, language: m.language, rangeStartMs: m.rangeStartMs, rangeEndMs: m.rangeEndMs })}>設定を変えてやり直す</button>
                 {!delAsk ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>削除</button> : (
                   <span className="ask">音声と文字をまとめて消します。
-                    <button className="btn small danger" onClick={async () => { try { await api.deleteMeeting(id); onDeleted(); } catch (e) { setMsg(String(e)); setDelAsk(false); } }}>消す</button>
+                    <button className="btn small danger" onClick={async () => { try { await flush(); await api.deleteMeeting(id); onDeleted(); } catch (e) { notify("err", `削除できませんでした: ${e}`); setDelAsk(false); } }}>消す</button>
                     <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
                   </span>
                 )}
@@ -517,8 +605,8 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
             <p className="msg err">これまでの修正(文・話者・結合・分割)は消えます。タイトル・日付・参加者・議題などは残ります。</p>
             <div className="row">
               <button className="btn danger" disabled={!optionsValid(redo)} onClick={async () => {
-                try { await api.reprocess(id, redo); setRedo(null); setMsg("やり直しを始めました"); onReprocessed(); api.detail(id).then(apply); }
-                catch (e) { setMsg(String(e)); }
+                try { await flush(); await api.reprocess(id, redo); setRedo(null); notify("ok", "やり直しを始めました"); onReprocessed(); api.detail(id).then(apply); }
+                catch (e) { notify("err", `やり直せませんでした: ${e}`); }
               }}>やり直す</button>
               <button className="btn" onClick={() => setRedo(null)}>やめる</button>
             </div>
@@ -535,8 +623,6 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
             </p>
           )}
           {m.status !== "confirmed" && done && !d.provisional && view === "edit" && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
-          {msg && <p className="msg">{msg}</p>}
-          {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>{/有料版/.test(m.error ?? "") ? "続きから文字起こし" : "やり直す"}</button></p>}
           {plan?.tier === "free" && done && <p className="note">無料版は小さなモデルで文字起こししています。有料版では、より正確なモデルで文字起こしし直せます。</p>}
 
           {find.open && (
@@ -548,8 +634,8 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
               <button className="btn small" disabled={!find.hits.length} onClick={() => stepFind(1)}>次へ</button>
               <input placeholder="置き換える語" value={find.r} onChange={(e) => setFind({ ...find, r: e.target.value })} />
               <button className="btn small" disabled={!find.q} onClick={async () => {
-                try { const [n, x] = await api.replaceIn(id, find.q, find.r); apply(x); setMsg(`${n} 件の文で置き換えました(「元に戻す」で戻せます)`); setFind({ ...find, hits: [], i: 0 }); onChanged(); }
-                catch (e) { setMsg(String(e)); }
+                try { await flush(); const [n, x] = await api.replaceIn(id, find.q, find.r); apply(x); notify("ok", `${n} 件の文で置き換えました(「元に戻す」で戻せます)`); setFind({ ...find, hits: [], i: 0 }); onChanged(); }
+                catch (e) { notify("err", `置き換えられませんでした: ${e}`); }
               }}>すべて置換</button>
               <button className="link" onClick={() => setFind({ ...find, open: false, hits: [] })}>閉じる</button>
             </div>
@@ -616,7 +702,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, onChanged
       <datalist id="speakers">{d.speakers.map((s) => <option key={s} value={s} />)}</datalist>
       {printAsk && (
         <PrintDialog value={printOpts} onChange={setPrintOpts} onClose={() => setPrintAsk(false)}
-          onPrint={async () => { setPrintAsk(false); try { await api.printPage(); setMsg("印刷の画面で「PDF として保存」を選ぶと、PDF にできます"); } catch (e) { setMsg(String(e)); } }} />
+          onPrint={async () => { setPrintAsk(false); try { await api.printPage(); notify("ok", "印刷の画面で「PDF として保存」を選ぶと、PDF にできます"); } catch (e) { notify("err", `印刷の画面を開けませんでした: ${e}`); } }} />
       )}
       <PrintDoc d={d} o={printOpts} />
     </div>

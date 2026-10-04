@@ -130,6 +130,22 @@ await page.waitForFunction(() => document.querySelectorAll(".items li").length =
 await page.getByLabel("タグで絞り込み").selectOption("");
 await page.waitForFunction(() => document.querySelectorAll(".items li").length === 1); // 取り込みは1件
 
+// 6.5) 入力した直後(入力欄を離す前)に「確定」を押しても、直した文が保存されてから確定される(保存と確定が前後しない)
+const raced = "確定の直前に直した文です。";
+await segs.nth(0).locator("textarea").fill(raced);
+await page.getByRole("button", { name: "確定", exact: true }).click();
+await page.locator(".d-actions .badge.ok", { hasText: "確定" }).waitFor({ timeout: 5000 });
+await page.getByText("確定しました。書き出せます").waitFor();
+await page.getByTestId("save-ind").getByText(/保存済み/).waitFor();
+assert.equal((await segTexts())[0], raced, "直した文が残る");
+assert.equal(await page.locator(".d-actions .badge.ok").innerText(), "確定", "下書きに戻っていない");
+// 確定したあとに直すと下書きに戻る。そのことを知らせる
+await segs.nth(0).locator("textarea").fill(raced + "追記");
+await segs.nth(0).locator("textarea").blur();
+await page.getByText("内容を直したため下書きに戻りました").waitFor();
+await page.locator(".d-actions .badge.muted", { hasText: "下書き" }).waitFor();
+await shot("4b-draft-toast");
+
 // 7) 確定 → 書き出し(Word・PDF)
 assert.equal(await page.getByLabel("書き出し").isDisabled(), true, "確定前は書き出せない");
 await page.getByRole("button", { name: "確定", exact: true }).click();
