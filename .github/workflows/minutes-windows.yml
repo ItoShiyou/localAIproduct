@@ -37,6 +37,10 @@ jobs:
         run: cd ../ui && npm ci && npm run build
       - name: テスト(ロジックのみ)
         run: cargo test --lib --no-default-features
+      - name: 同梱物の仮置き(tauri_build が存在だけを確認するため。テストでは使わない)
+        run: |
+          mkdir -p resources/models resources/onnxruntime
+          for f in THIRD_PARTY_NOTICES.txt models/ggml-large-v3-turbo-q5_0.bin models/ggml-small-q5_1.bin models/voxceleb_resnet34_LM.onnx onnxruntime/onnxruntime.dll; do : > "resources/$f"; done
       - name: テスト(既定の機能)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
