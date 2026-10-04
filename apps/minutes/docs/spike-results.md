@@ -208,3 +208,18 @@
 - onnxruntime(アプリ起動時に読み込まれる)は、`~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/` に端末の識別子(deviceid)とデータベースを作る。バイナリの文字列には "Collector URL is not set, no upload." とあり、起動中 20 秒の間にアプリが開いたネットワークの接続は無かった(`lsof`)。`with_telemetry(false)` を指定したが、ファイルの作成は止まらなかった。SPEC の通信一覧には載せていない(通信ではないが、利用者のフォルダに残る)。
 - 起動の確認(.app を直接起動、HOME を一時のフォルダに替えて利用者のデータには触れない): 通常と `MINUTES_TIER=pro` のどちらも 20 秒生きており(RSS 約 160MB)、標準エラーは 0 バイト。
 
+
+## 11. Windows のスモークテスト(GitHub Actions の windows-latest、2026-10-04)
+
+実機が無いため、`.github/workflows/minutes-windows.yml` の `smoke` ジョブ(bundle の後)で確認した。run 37208515285(https://github.com/ItoShiyou/localAIproduct/actions/runs/37208515285 )。環境は GitHub のホスト型ランナー(Windows 11 相当 10.0.26100、AMD EPYC 7763 の 2 コア/4 論理、メモリ約 16GB)で、**実機・最低ライン機の代わりにはならない**。
+
+- **NSIS(未署名)の静かなインストール(`/S`)**: 終了コード 0、`%LOCALAPPDATA%\minutes` に入った。minutes.exe、onnxruntime.dll、THIRD_PARTY_NOTICES.txt、文字起こしのモデル 2 つ、話者のモデル、`minutes-summarizer*.exe` が揃っていた。インストーラの大きさ 730,258,849 バイト。
+- **起動**: 30 秒後も生存、メインウィンドウあり(タイトル「議事録(仮称)」)、msedgewebview2 のプロセス 6 個、メモリ(WorkingSet)約 81MB(起動直後・何も処理していない状態)。アプリのエラーのイベントログは無し。`MINUTES_TIER=pro` の起動も同じく生存。
+- **データフォルダ**: `%APPDATA%\dev.localaiproduct.minutes` に `minutes.sqlite3`(81,920 バイト)と `usage.dat` が作られた。
+- **画面**: デスクトップの撮影(1024x768)で、WebView2 が画面を描画していた(左に取り込み・録音ボタン、無料版の残り表示、右に案内文)。有料の指定では、無料版の残り表示が消え、「ノイズ除去・話者の判別(自動)」が出た。アーティファクト `minutes-windows-smoke-screenshots`(shot-free.png、shot-pro.png、起動ログ)、保持 7 日。
+- **要約のサイドカー**: 引数なしで起動し、「--model が必要です」を出して終了コード 2(想定どおり。DLL の不足は無い)。**要約モデルを読み込んでの要約は未確認**(モデルは同梱せず、CI では取得していない)。
+- **文字起こし(実アプリと同じ処理、同梱の small モデル ggml-small-q5_1、スレッド 4、合成音声 t05_overlap 55.7 秒)**: 落ちずに完了した。処理時間 252 秒(RTF 4.5。ノイズ除去あり・なしでほぼ同じ)。この音声は 2 話者の同時発話で、誤り率 0.30 は参考値(難条件)。**この RTF は、共有のホスト型ランナー(4 論理 CPU)での値で、1 本のみ・原因は未調査**。i5-12500 クラスの実機の速さを示すものではない。なお Mac(M2)の small モデルでの同種の値とは条件が違い比べられない。
+- **NSIS のアンインストール(`/S`)**: 終了コード 0、インストール先は空になった。データフォルダは残った(利用者のデータなので想定どおり)。
+- **MSI(`msiexec /i /qn`、`/x /qn`)**: インストール・アンインストールとも終了コード 0。インストール先は同じく `%LOCALAPPDATA%\minutes`、アンインストール後に minutes.exe は残らなかった。
+- **今回も未確認(実機が要る)**: SmartScreen の警告、マイク録音(getUserMedia と WebView2 の許可)、実機の速さ・メモリ、Windows での要約の実行、日本語ファイル名・OneDrive 配下のパスなど実環境の差。
+- **アプリの不具合は見つからなかった**(アプリ側のコードは変更していない)。確認のために `.github/scripts/win-launch-check.ps1` を追加した。
