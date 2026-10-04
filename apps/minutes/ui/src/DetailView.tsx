@@ -18,9 +18,17 @@ interface RowActions {
 }
 
 /** 1つの文。再生位置が変わるたびに全部を描き直さないよう、memo にする */
-const Row = memo(function Row({ s, last, playing, hit, low, speakers, actions }: {
-  s: Segment; last: boolean; playing: boolean; hit: boolean; low: boolean; speakers: string[]; actions: React.MutableRefObject<RowActions>;
+const Row = memo(function Row({ s, last, playing, hit, low, speakers, actions, readOnly }: {
+  s: Segment; last: boolean; playing: boolean; hit: boolean; low: boolean; speakers: string[]; actions: React.MutableRefObject<RowActions>; readOnly: boolean;
 }) {
+  if (readOnly) {
+    return (
+      <li id={`seg-${s.id}`} className={"seg provisional" + (playing ? " playing" : "")} data-testid="segment" onClick={() => actions.current.seek(s.startMs, false)}>
+        <div className="seg-head"><span className="time">{hms(s.startMs)}</span>{s.chunkIdx < 0 && <span className="badge muted">仮</span>}</div>
+        <p className="seg-text">{s.text}</p>
+      </li>
+    );
+  }
   const ta = useRef<HTMLTextAreaElement>(null);
   return (
     <li id={`seg-${s.id}`} className={"seg" + (playing ? " playing" : "") + (low ? " low" : "") + (hit ? " hit" : "")} data-testid="segment"
@@ -62,9 +70,12 @@ function Notes({ d, onSave }: { d: Detail; onSave: (agenda: string, decisions: s
   const [agenda, setAgenda] = useState(m.agenda);
   const [decisions, setDecisions] = useState(m.decisions);
   const [todos, setTodos] = useState<Todo[]>(m.todos);
-  useEffect(() => { setAgenda(m.agenda); setDecisions(m.decisions); setTodos(m.todos); }, [m.agenda, m.decisions, m.todos]);
+  // 入力中の内容を、保存の応答(古いことがある)で上書きしないよう、画面側の値を正とする(議事録を切り替えると作り直される)
+  const saved = useRef({ agenda: m.agenda, decisions: m.decisions, todos: JSON.stringify(m.todos) });
   const save = (t = todos) => {
-    if (agenda === m.agenda && decisions === m.decisions && JSON.stringify(t) === JSON.stringify(m.todos)) return;
+    const now = { agenda, decisions, todos: JSON.stringify(t) };
+    if (now.agenda === saved.current.agenda && now.decisions === saved.current.decisions && now.todos === saved.current.todos) return;
+    saved.current = now;
     onSave(agenda, decisions, t);
   };
   const setTodo = (i: number, p: Partial<Todo>) => setTodos(todos.map((t, j) => (j === i ? { ...t, ...p } : t)));
@@ -146,7 +157,12 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
     api.audioUrl(id).then(setAudio).catch(() => setAudio(null));
   }, [api, id, version, apply]);
 
-  // 処理中は少しずつ結果が増えるので、読み直す
+  // 処理中・録音中は少しずつ結果が増えるので、読み直す(録音中は最新の文まで送る)
+  useEffect(() => {
+    if (!d || !d.meeting.recording) return;
+    const last = d.segments[d.segments.length - 1];
+    if (last) document.getElementById(`seg-${last.id}`)?.scrollIntoView({ block: "end" });
+  }, [d]);
   useEffect(() => {
     if (!d || (d.meeting.state !== "processing" && d.meeting.state !== "queued")) return;
     const t = setInterval(() => api.detail(id).then(apply).catch(() => undefined), 1500);
@@ -344,7 +360,13 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
         </div>
       )}
 
-      {m.status !== "confirmed" && done && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
+      {(d.provisional || m.recording) && (
+        <p className="banner" data-testid="provisional">
+          {m.recording ? "録音中です。" : "正確なモデルで文字起こししています。"}
+          いま表示しているのは録音中の仮の文字(精度は低め)で、正確な文字起こしができた所から順に置き換わります。置き換わるまで編集できません。
+        </p>
+      )}
+      {m.status !== "confirmed" && done && !d.provisional && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
       {msg && <p className="msg">{msg}</p>}
       {m.state === "failed" && <p className="msg err">処理できませんでした: {m.error} <button className="btn small" onClick={onRetry}>やり直す</button></p>}
 
@@ -429,7 +451,7 @@ export function DetailView({ api, id, version, seekTo, settings, onChanged, onDe
       <ol className="segs">
         {segs.map((s, i) => (
           <Row key={`${s.id}-${s.text}-${s.speaker}`} s={s} last={i + 1 >= segs.length} playing={s.id === playing} hit={hitSet.has(s.id) && find.hits[find.i] === s.id}
-            low={s.confidence < d.lowConfidence} speakers={d.speakers} actions={actions} />
+            low={s.confidence < d.lowConfidence} speakers={d.speakers} actions={actions} readOnly={d.provisional || m.recording} />
         ))}
       </ol>
       {!segs.length && <p className="empty">{done ? "文字にできる音声がありませんでした。" : "文字起こしの結果はここに表示されます。"}</p>}

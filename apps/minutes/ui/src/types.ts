@@ -21,6 +21,7 @@ export interface Meeting {
   decisions: string;
   todos: Todo[];
   tags: string[];
+  recording: boolean;
 }
 
 export type Language = "ja" | "en" | "auto";
@@ -44,7 +45,8 @@ export interface Segment {
   edited: boolean;
 }
 
-export interface Detail { meeting: Meeting; segments: Segment[]; canUndo: boolean; speakers: string[]; lowConfidence: number }
+export interface Detail { meeting: Meeting; segments: Segment[]; canUndo: boolean; speakers: string[]; lowConfidence: number; provisional: boolean }
+export interface RecordStatus { meetingId: number; elapsedMs: number; pendingChunks: number; level: number }
 export interface Progress { busy: boolean; pending: number; meetingId: number | null; doneChunks: number; totalChunks: number }
 export interface ImportResult { name: string; id: number | null; error: string | null }
 export interface SearchHit { meetingId: number; title: string; heldOn: string | null; segmentId: number; startMs: number; text: string }

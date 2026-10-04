@@ -29,6 +29,7 @@ nnnoiseless = { version = "0.5", default-features = false }
 whisper-rs = { version = "0.15", optional = true }
 rustfft = "6"
 csv = "1"
+base64 = "0.22"
 encoding_rs = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray", "std"], optional = true }

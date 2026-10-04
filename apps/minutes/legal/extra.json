@@ -1,7 +1,7 @@
 [
   {
-    "name": "Whisper large-v3-turbo model weights (OpenAI), ggml q5_0 conversion by the whisper.cpp project",
-    "version": "ggml-large-v3-turbo-q5_0.bin (SHA-256 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2)",
+    "name": "Whisper model weights (OpenAI): large-v3-turbo and small, ggml q5 conversions by the whisper.cpp project",
+    "version": "ggml-large-v3-turbo-q5_0.bin (SHA-256 394221709cd5ad1f…), ggml-small-q5_1.bin (SHA-256 ae85e4a935d7a567…)",
     "license": "MIT",
     "url": "https://github.com/openai/whisper / https://huggingface.co/ggerganov/whisper.cpp",
     "text_file": "whisper-model-LICENSE.txt",

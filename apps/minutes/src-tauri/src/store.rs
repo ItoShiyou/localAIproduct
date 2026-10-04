@@ -11,7 +11,7 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const MIGRATIONS: [&str; 3] = [
+pub const MIGRATIONS: [&str; 4] = [
     "CREATE TABLE meetings(
         id INTEGER PRIMARY KEY, title TEXT NOT NULL, held_on TEXT, participants_text TEXT NOT NULL DEFAULT '',
         source_name TEXT NOT NULL, audio_path TEXT, pcm_path TEXT, duration_ms INTEGER,
@@ -48,6 +48,8 @@ pub const MIGRATIONS: [&str; 3] = [
      CREATE TABLE meeting_tags(meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE, tag TEXT NOT NULL, PRIMARY KEY (meeting_id, tag));
      CREATE TABLE diar_windows(id INTEGER PRIMARY KEY, meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, emb BLOB NOT NULL);
      CREATE INDEX diar_windows_meeting ON diar_windows(meeting_id, start_ms);",
+    // 2026-10-04: アプリ内のリアルタイム録音(録音中の議事録の印)
+    "ALTER TABLE meetings ADD COLUMN recording INTEGER NOT NULL DEFAULT 0;",
 ];
 
 pub const LOW_CONFIDENCE: f64 = 0.6;
@@ -91,6 +93,8 @@ pub struct Meeting {
     pub decisions: String,
     pub todos: Vec<Todo>,
     pub tags: Vec<String>,
+    /// アプリ内で録音中
+    pub recording: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -211,7 +215,7 @@ impl Store {
 
     const MCOLS: &'static str = "id, title, held_on, participants_text, source_name, audio_path IS NOT NULL, duration_ms, denoise, state, error, status, created_at,
          diarize, num_speakers, language, range_start_ms, range_end_ms, agenda, decisions, todos_json,
-         (SELECT group_concat(tag, char(31)) FROM (SELECT tag FROM meeting_tags t WHERE t.meeting_id = meetings.id ORDER BY tag))";
+         (SELECT group_concat(tag, char(31)) FROM (SELECT tag FROM meeting_tags t WHERE t.meeting_id = meetings.id ORDER BY tag)), recording";
 
     fn meeting_of(r: &rusqlite::Row) -> rusqlite::Result<Meeting> {
         let todos: String = r.get(19)?;
@@ -224,6 +228,7 @@ impl Store {
             range_start_ms: r.get(15)?, range_end_ms: r.get(16)?, agenda: r.get(17)?, decisions: r.get(18)?,
             todos: serde_json::from_str(&todos).unwrap_or_default(),
             tags: tags.map(|t| t.split('\u{1f}').map(String::from).collect()).unwrap_or_default(),
+            recording: r.get::<_, i64>(21)? != 0,
         })
     }
 
@@ -379,6 +384,47 @@ impl Store {
 
     // ---------------- 区間(処理の単位) ----------------
 
+    /// 録音中に区間を1つ足す(区切れたところで)
+    pub fn add_chunk(&self, id: i64, idx: i64, start_ms: i64, end_ms: i64, silent: bool) -> Result<(), CoreError> {
+        self.db
+            .conn
+            .execute("INSERT OR REPLACE INTO chunks(meeting_id, idx, start_ms, end_ms, silent) VALUES (?1,?2,?3,?4,?5)", (id, idx, start_ms, end_ms, silent as i64))
+            .map_err(e)?;
+        Ok(())
+    }
+
+    /// 仮の文字(録音中の簡易版)が残っているか
+    pub fn has_provisional(&self, id: i64) -> Result<bool, CoreError> {
+        self.db.conn.query_row("SELECT count(*) FROM segments WHERE meeting_id=?1 AND chunk_idx<0", [id], |r| r.get::<_, i64>(0)).map(|n| n > 0).map_err(e)
+    }
+
+    /// 仮の文字を消す(正確な文字起こしが終わったあと、重ならずに残った分)
+    pub fn clear_provisional(&self, id: i64) -> Result<(), CoreError> {
+        self.db.conn.execute("DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE meeting_id=?1 AND chunk_idx<0)", [id]).map_err(e)?;
+        self.db.conn.execute("DELETE FROM segments WHERE meeting_id=?1 AND chunk_idx<0", [id]).map_err(e)?;
+        Ok(())
+    }
+
+    /// 録音を止めたあと、正確な文字起こしをやり直すための準備(区間と作業ファイルの記録を消す。仮の文字は残す)
+    pub fn reset_for_final(&self, id: i64) -> Result<(), CoreError> {
+        self.db.conn.execute("DELETE FROM chunks WHERE meeting_id=?1", [id]).map_err(e)?;
+        self.db
+            .conn
+            .execute("UPDATE meetings SET recording=0, pcm_path=NULL, state='queued', error=NULL, updated_at=?2 WHERE id=?1", (id, now()))
+            .map_err(e)?;
+        Ok(())
+    }
+
+    pub fn set_recording(&self, id: i64, on: bool) -> Result<(), CoreError> {
+        self.db.conn.execute("UPDATE meetings SET recording=?2, updated_at=?3 WHERE id=?1", (id, on as i64, now())).map_err(e)?;
+        Ok(())
+    }
+
+    pub fn set_audio_path(&self, id: i64, path: &str) -> Result<(), CoreError> {
+        self.db.conn.execute("UPDATE meetings SET audio_path=?2 WHERE id=?1", (id, path)).map_err(e)?;
+        Ok(())
+    }
+
     pub fn has_chunks(&self, id: i64) -> Result<bool, CoreError> {
         self.db.conn.query_row("SELECT count(*) FROM chunks WHERE meeting_id=?1", [id], |r| r.get::<_, i64>(0)).map(|n| n > 0).map_err(e)
     }
@@ -414,6 +460,12 @@ impl Store {
         let tx = self.db.conn.unchecked_transaction().map_err(e)?;
         tx.execute("DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE meeting_id=?1 AND chunk_idx=?2)", (id, idx)).map_err(e)?;
         tx.execute("DELETE FROM segments WHERE meeting_id=?1 AND chunk_idx=?2", (id, idx)).map_err(e)?;
+        // 録音中の仮の文字(chunk_idx が負)は、正確な文字起こしの区間と重なる分から置き換える
+        if idx >= 0 {
+            let del = "FROM segments WHERE meeting_id=?1 AND chunk_idx<0 AND start_ms<?3 AND end_ms>?2";
+            tx.execute(&format!("DELETE FROM segments_fts WHERE rowid IN (SELECT id {del})"), (id, chunk_start_ms, chunk_end_ms)).map_err(e)?;
+            tx.execute(&format!("DELETE {del}"), (id, chunk_start_ms, chunk_end_ms)).map_err(e)?;
+        }
         for s in segs {
             let start = (chunk_start_ms + s.start_ms as i64).min(chunk_end_ms);
             let end = (chunk_start_ms + s.end_ms as i64).clamp(start, chunk_end_ms);

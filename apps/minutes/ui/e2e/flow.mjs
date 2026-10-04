@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const shots = path.resolve(here, "../../docs/ui");
 const URL = process.env.URL ?? "http://127.0.0.1:5175/";
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
@@ -161,7 +161,21 @@ await page.locator(".hits button").first().click();
 await page.getByLabel("タイトル").waitFor();
 await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=segment]")].some((s) => s.classList.contains("playing") && s.querySelector("textarea").value.includes("見本市")));
 
-// 10) 設定
+// 10) マイクで録音(仮の文字 → 止めると正確な文字起こしで置き換わる)
+await page.getByRole("tab", { name: "議事録" }).click();
+await page.getByRole("button", { name: "● 録音する" }).click();
+const rec = page.getByTestId("recorder");
+await rec.getByText("録音中").waitFor({ timeout: 10000 });
+await page.getByTestId("provisional").waitFor();
+await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=segment]")].some((s) => s.textContent.includes("仮の文字")), null, { timeout: 15000 });
+await shot("6-recording");
+assert.equal(await segs.locator("textarea").count(), 0, "仮の文字は編集できない");
+await rec.getByRole("button", { name: "止めて保存" }).click();
+await rec.waitFor({ state: "detached" });
+await page.waitForFunction(() => !document.querySelector("[data-testid=provisional]") && document.querySelectorAll("[data-testid=segment] textarea").length > 0, null, { timeout: 15000 });
+assert.ok(!(await segTexts()).some((t) => t.includes("仮の文字")), "正確な文字に置き換わる");
+
+// 11) 設定
 await page.getByRole("tab", { name: "設定" }).click();
 await page.getByText("通信一覧").waitFor();
 const model = page.getByTestId("model");
@@ -171,5 +185,5 @@ await page.getByRole("button", { name: "全データを削除…" }).click();
 assert.equal(await page.getByRole("button", { name: "削除する" }).isDisabled(), true);
 
 assert.deepEqual(errors, []);
-console.log("ok: 取り込み設定 → 話者 → 移動・要確認 → 修正 → 検索置換 → 定型欄・タグ → 確定・Word・PDF → やり直し → 検索 → 辞書CSV → 設定");
+console.log("ok: 取り込み設定 → 話者 → 移動・要確認 → 修正 → 検索置換 → 定型欄・タグ → 確定・Word・PDF → やり直し → 検索 → 辞書CSV → 録音 → 設定");
 await browser.close();

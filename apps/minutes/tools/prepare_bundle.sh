@@ -17,6 +17,9 @@ fetch() { # <URL> <保存先> <SHA-256>
   [[ "$(shasum -a 256 "$2.part" | cut -d' ' -f1)" == "$3" ]] || { echo "ハッシュが一致しません: $1" >&2; rm -f "$2.part"; exit 1; }
   mv "$2.part" "$2"
 }
+# 録音中の仮の文字に使う小さなモデル(Whisper small、MIT)
+fetch https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin \
+  resources/models/ggml-small-q5_1.bin ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
 fetch https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/resolve/main/voxceleb_resnet34_LM.onnx \
   resources/models/voxceleb_resnet34_LM.onnx 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068
 if [[ "$(uname -s)" == "Darwin" ]]; then

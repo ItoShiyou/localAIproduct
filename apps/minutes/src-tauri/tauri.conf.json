@@ -51,6 +51,7 @@
     "resources": [
       "resources/THIRD_PARTY_NOTICES.txt",
       "resources/models/ggml-large-v3-turbo-q5_0.bin",
+      "resources/models/ggml-small-q5_1.bin",
       "resources/models/voxceleb_resnet34_LM.onnx",
       "resources/onnxruntime/*"
     ],

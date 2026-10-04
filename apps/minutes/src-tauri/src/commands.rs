@@ -69,6 +69,8 @@ pub struct DetailDto {
     pub can_undo: bool,
     pub speakers: Vec<String>,
     pub low_confidence: f64,
+    /// 録音中の仮の文字(精度が低い)が含まれる。正確な文字起こしが終わるまで編集できない
+    pub provisional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -115,6 +117,10 @@ pub struct AppState {
     emb: Mutex<Option<Arc<dyn Embedder>>>,
     emb_loader: Mutex<Option<EmbedderLoader>>,
     emb_error: Mutex<Option<String>>,
+    recorder: Mutex<Option<crate::recorder::LiveRecorder>>,
+    /// 録音中の仮の文字に使う、速い小さなモデル(初回に読み込む)と、その場所
+    live_asr: Mutex<Option<Arc<dyn Asr>>>,
+    live_models: Mutex<Vec<PathBuf>>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -133,6 +139,12 @@ impl AppState {
         let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
         // 前回、処理の途中で終了していたら、続きの区間から再開できるようにする
         Jobs::new(&store.db).recover().map_err(err)?;
+        // 録音中にアプリが終わった議事録は、そこまでの文字を残して「失敗」にする(音声は作業用のまま残らない)
+        store
+            .db
+            .conn
+            .execute("UPDATE meetings SET state='failed', recording=0, error='録音中にアプリが終了しました(そこまでの文字は残っています)' WHERE recording=1", [])
+            .map_err(err)?;
         store.db.conn.execute("UPDATE meetings SET state='queued' WHERE state='processing'", []).map_err(err)?;
         Ok(Self {
             store: Mutex::new(store),
@@ -150,6 +162,9 @@ impl AppState {
             emb: Mutex::new(None),
             emb_loader: Mutex::new(None),
             emb_error: Mutex::new(None),
+            recorder: Mutex::new(None),
+            live_asr: Mutex::new(None),
+            live_models: Mutex::new(Vec::new()),
         })
     }
 
@@ -359,6 +374,94 @@ impl AppState {
         std::fs::read_to_string(p).map_err(|_| "ライセンス表記のファイルを読めません".to_string())
     }
 
+    // ---------------- アプリ内の録音 ----------------
+
+    /// 録音中に使う小さなモデルの候補の場所(起動時に設定)
+    pub fn set_live_models(&self, paths: Vec<PathBuf>) {
+        *self.live_models.lock().unwrap_or_else(|p| p.into_inner()) = paths;
+    }
+
+    /// 録音中の仮の文字のエンジン。小さなモデルが無ければ、正確なモデルを使う(重くなるが動く)。
+    fn live_engine(&self) -> Result<Arc<dyn Asr>, String> {
+        let mut g = self.live_asr.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(a) = g.as_ref() {
+            return Ok(a.clone());
+        }
+        let path = self.live_models.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|p| p.exists()).cloned();
+        let a: Arc<dyn Asr> = match path {
+            Some(p) => Arc::from((self.loader)(&p)?),
+            None => self.engine()?,
+        };
+        *g = Some(a.clone());
+        Ok(a)
+    }
+
+    /// マイクの録音を始める(議事録を作り、話しながら文字にしていく)。議事録の id を返す。
+    pub fn record_start(&self, opts: &ProcessOptions) -> Result<i64, String> {
+        let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
+        if rec.is_some() {
+            return Err("すでに録音中です".into());
+        }
+        let asr = self.live_engine()?;
+        let store = self.store();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let title = format!("録音 {}", now);
+        let id = store.add_meeting(&title, "マイク録音", "", opts.denoise).map_err(err)?;
+        let mut o = opts.clone();
+        o.range_start_ms = None;
+        o.range_end_ms = None;
+        store.set_options(id, &o).map_err(err)?;
+        store.set_state(id, "processing", None).map_err(err)?;
+        store.set_recording(id, true).map_err(err)?;
+        let hint = store.glossary_hint().map_err(err)?;
+        let lang = store.meeting(id).map_err(err)?.map(|m| m.language).unwrap_or_else(|| "ja".into());
+        drop(store);
+        match crate::recorder::LiveRecorder::start(&self.db_path(), &self.app.root.join("work"), id, asr, hint, lang, opts.denoise) {
+            Ok(r) => {
+                *rec = Some(r);
+                Ok(id)
+            }
+            Err(e) => {
+                let _ = self.store().delete_meeting(id);
+                Err(e)
+            }
+        }
+    }
+
+    /// 音を足す。`pcm_b64` は 16kHz モノラル i16(リトルエンディアン)を Base64 にしたもの。
+    pub fn record_push(&self, pcm_b64: &str) -> Result<crate::recorder::RecordStatus, String> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD.decode(pcm_b64).map_err(|_| "音のデータが不正です".to_string())?;
+        let x: Vec<f32> = bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
+        let r = rec.as_mut().ok_or("録音していません")?;
+        r.push(&self.store(), &x)
+    }
+
+    pub fn record_status(&self) -> Option<crate::recorder::RecordStatus> {
+        self.recorder.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|r| r.status())
+    }
+
+    /// 止める(残りの仮の文字が出るまで待ち、正確な文字起こしを待ちに入れる。画面はそのあと run_jobs を呼ぶ)。
+    pub fn record_stop(&self) -> Result<DetailDto, String> {
+        let r = self.recorder.lock().unwrap_or_else(|p| p.into_inner()).take().ok_or("録音していません")?;
+        let id = r.meeting_id;
+        let store = Store::open(&self.db_path()).map_err(err)?;
+        if let Err(e) = r.stop(&store, &self.app.root.join("audio")) {
+            let _ = store.set_recording(id, false);
+            let _ = store.set_state(id, "failed", Some(&e));
+            return Err(e);
+        }
+        self.detail(id)
+    }
+
+    /// 録音を捨てる(議事録ごと消す)。
+    pub fn record_discard(&self) -> Result<(), String> {
+        let r = self.recorder.lock().unwrap_or_else(|p| p.into_inner()).take().ok_or("録音していません")?;
+        let store = Store::open(&self.db_path()).map_err(err)?;
+        r.discard(&store)
+    }
+
     // ---------------- 議事録 ----------------
 
     pub fn meetings(&self) -> Result<Vec<Meeting>, String> {
@@ -463,7 +566,8 @@ impl AppState {
                 speakers.push(s.speaker.clone());
             }
         }
-        Ok(DetailDto { can_undo: store.can_undo(id).map_err(err)?, meeting, segments, speakers, low_confidence: crate::store::LOW_CONFIDENCE })
+        let provisional = segments.iter().any(|s| s.chunk_idx < 0);
+        Ok(DetailDto { can_undo: store.can_undo(id).map_err(err)?, meeting, segments, speakers, low_confidence: crate::store::LOW_CONFIDENCE, provisional })
     }
 
     /// 再生用の音声ファイルの場所(画面は asset プロトコルで読む)。残していなければ None。

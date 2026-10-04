@@ -271,3 +271,28 @@ pub async fn delete_model(state: State<'_, AppState>) -> Result<ModelDto, String
 pub async fn third_party_notices(state: State<'_, AppState>) -> Result<String, String> {
     state.third_party_notices()
 }
+
+#[tauri::command]
+pub async fn record_start(state: State<'_, AppState>, opts: ProcessOptions) -> Result<i64, String> {
+    state.record_start(&opts)
+}
+
+#[tauri::command]
+pub async fn record_push(state: State<'_, AppState>, pcm: String) -> Result<crate::recorder::RecordStatus, String> {
+    state.record_push(&pcm)
+}
+
+#[tauri::command]
+pub fn record_status(state: State<'_, AppState>) -> Option<crate::recorder::RecordStatus> {
+    state.record_status()
+}
+
+#[tauri::command]
+pub async fn record_stop(state: State<'_, AppState>) -> Result<DetailDto, String> {
+    state.record_stop()
+}
+
+#[tauri::command]
+pub async fn record_discard(state: State<'_, AppState>) -> Result<(), String> {
+    state.record_discard()
+}

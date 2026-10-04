@@ -6,6 +6,7 @@ pub mod commands;
 pub mod diarize;
 pub mod export;
 pub mod pipeline;
+pub mod recorder;
 pub mod store;
 #[cfg(feature = "tauri")]
 pub mod tauri_glue;
@@ -74,6 +75,15 @@ pub fn run() {
             }
             let state = commands::AppState::new(data_dir, None, whisper_loader(), fixed)?;
             state.set_embedder_loader(embedder_loader(res.clone()));
+            // 録音中の仮の文字に使う小さなモデル(開発用の環境変数 → 同梱)
+            let mut live = Vec::new();
+            if let Ok(p) = std::env::var("MINUTES_LIVE_MODEL") {
+                live.push(std::path::PathBuf::from(p));
+            }
+            if let Some(r) = &res {
+                live.push(r.join("models").join("ggml-small-q5_1.bin"));
+            }
+            state.set_live_models(live);
             *state.notices_path.lock().unwrap() = res.map(|r| r.join("THIRD_PARTY_NOTICES.txt"));
             app.manage(state);
             Ok(())
@@ -124,6 +134,11 @@ pub fn run() {
             tauri_glue::print_page,
             tauri_glue::export_glossary,
             tauri_glue::import_glossary,
+            tauri_glue::record_start,
+            tauri_glue::record_push,
+            tauri_glue::record_status,
+            tauri_glue::record_stop,
+            tauri_glue::record_discard,
         ])
         .run(tauri::generate_context!())
         .expect("tauri アプリの起動に失敗しました");

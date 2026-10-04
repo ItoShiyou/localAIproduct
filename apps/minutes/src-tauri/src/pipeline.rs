@@ -124,6 +124,8 @@ pub fn process_meeting(
             let (done, total) = store.chunk_progress(meeting_id).map_err(|e| e.to_string())?;
             on_chunk(done, total);
         }
+        // 録音中の仮の文字で、正確な文字起こしと重ならずに残った分を消す
+        store.clear_provisional(meeting_id).map_err(|e| e.to_string())?;
         // 3) 話者の判別(作業用の音声があるうちに)
         if m.diarize {
             if let Some(emb) = opts.embedder {

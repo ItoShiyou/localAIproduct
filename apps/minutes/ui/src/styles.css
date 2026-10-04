@@ -174,3 +174,16 @@ nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: va
   .print-doc .ts { color: #666; font-size: 9pt; }
   .print-doc p { margin: 0 0 6pt; }
 }
+
+/* ---- 録音 ---- */
+.btn.rec { color: #c0392b; border-color: #e6b0aa; }
+.recorder { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-color: #e6b0aa; }
+.recorder .row { margin: 0; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #bbb; display: inline-block; }
+.rec-dot.on { background: #e74c3c; animation: blink 1.2s infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+.meter { flex: 1; min-width: 60px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; display: inline-block; }
+.meter span { display: block; height: 100%; background: #27ae60; }
+.banner { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef3fd; color: #1f4fa8; font-size: 13px; }
+.seg.provisional { cursor: default; opacity: .85; }
+.seg-text { margin: 4px 0 0; font-size: 15px; line-height: 1.6; color: var(--sub); }

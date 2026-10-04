@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, ProcessOptions, Progress, SearchHit, Segment, SettingsInfo, Todo } from "./types";
+import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, ProcessOptions, Progress, RecordStatus, SearchHit, Segment, SettingsInfo, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -30,6 +30,13 @@ export interface Api {
   printPage(): Promise<void>;
   exportGlossary(): Promise<string | null>;
   importGlossary(): Promise<[number, string[], GlossaryEntry[]] | null>;
+  /** マイクの録音を始める(議事録の id) */
+  recordStart(opts: ProcessOptions): Promise<number>;
+  /** 16kHz モノラル i16 を Base64 にした音を足す */
+  recordPush(pcmB64: string): Promise<RecordStatus>;
+  /** 止める(正確な文字起こしを待ちに入れる。そのあと runJobs を呼ぶ) */
+  recordStop(): Promise<Detail>;
+  recordDiscard(): Promise<void>;
   detail(id: number): Promise<Detail>;
   /** 再生用の URL(音声を残していなければ null) */
   audioUrl(id: number): Promise<string | null>;
@@ -100,6 +107,10 @@ export function makeTauriApi(t: TauriGlobal): Api {
     printPage: () => invoke("print_page"),
     exportGlossary: () => invoke("export_glossary"),
     importGlossary: () => invoke("import_glossary"),
+    recordStart: (opts) => invoke("record_start", { opts }),
+    recordPush: (pcm) => invoke("record_push", { pcm }),
+    recordStop: () => invoke("record_stop"),
+    recordDiscard: () => invoke("record_discard"),
     detail: (id) => invoke("detail", { id }),
     async audioUrl(id) {
       const p = await invoke<string | null>("audio_path", { id });
@@ -146,6 +157,7 @@ export function makeMockApi(): Api {
   const hist = new Map<number, Segment[][]>();
   let glossary: GlossaryEntry[] = [];
   let nextId = 1, nextSeg = 1, pending: number[] = [], printed = 0;
+  let recording: { id: number; pushes: number } | null = null;
   let settings: SettingsInfo = {
     updateCheck: true, keepAudio: true, denoiseDefault: true, consentShown: false, dataDir: "(モック)", model: "mock",
     diarizeAvailable: true, diarizeError: null,
@@ -165,7 +177,7 @@ export function makeMockApi(): Api {
   const owner = (sid: number) => { for (const [id, ss] of segs) if (ss.some((s) => s.id === sid)) return id; throw new Error("文が見つかりません"); };
   const det = async (id: number): Promise<Detail> => {
     const ss = segs.get(id) ?? [];
-    return { meeting: m(id), segments: ss, canUndo: (hist.get(id) ?? []).length > 0, speakers: [...new Set(ss.map((s) => s.speaker).filter(Boolean))], lowConfidence: 0.6 };
+    return { meeting: m(id), segments: ss, canUndo: (hist.get(id) ?? []).length > 0, speakers: [...new Set(ss.map((s) => s.speaker).filter(Boolean))], lowConfidence: 0.6, provisional: ss.some((s) => s.chunkIdx < 0) };
   };
   const add = (names: string[], o: ProcessOptions): ImportResult[] => names.map((name) => {
     if (!/\.(m4a|mp3|wav|mp4|aac|flac|ogg|mov|m4v)$/i.test(name)) return { name, id: null, error: "対応している形式は m4a / mp3 / wav / mp4 などです" };
@@ -174,7 +186,7 @@ export function makeMockApi(): Api {
       id, title: name.replace(/\.[^.]+$/, ""), heldOn: null, participantsText: "", sourceName: name, hasAudio: true, durationMs: null,
       denoise: o.denoise, state: "queued", error: null, status: "draft", createdAt: Date.now() / 1000,
       diarize: o.diarize, numSpeakers: o.numSpeakers, language: o.language, rangeStartMs: o.rangeStartMs, rangeEndMs: o.rangeEndMs,
-      agenda: "", decisions: "", todos: [], tags: [],
+      agenda: "", decisions: "", todos: [], tags: [], recording: false,
     }, ...meetings];
     pending.push(id);
     return { name, id, error: null };
@@ -243,6 +255,34 @@ export function makeMockApi(): Api {
     },
     async printPage() { printed++; },
     async exportGlossary() { return "(モックでは書き出しません)"; },
+    async recordStart(o) {
+      const [r] = add(["マイク録音.wav"], o);
+      const id = r.id!;
+      pending = pending.filter((x) => x !== id);
+      meetings = meetings.map((x) => (x.id === id ? { ...x, title: "録音", sourceName: "マイク録音", state: "processing", recording: true } : x));
+      segs.set(id, []);
+      recording = { id, pushes: 0 };
+      return id;
+    },
+    async recordPush() {
+      if (!recording) throw new Error("録音していません");
+      recording.pushes++;
+      const id = recording.id;
+      if (recording.pushes % 6 === 0) {
+        const i = recording.pushes / 6 - 1;
+        segs.set(id, [...(segs.get(id) ?? []), { id: nextSeg++, chunkIdx: -(i + 1), startMs: i * 3000, endMs: i * 3000 + 2800, speaker: "", text: `仮の文字 ${i + 1}`, rawText: "", confidence: 0.5, edited: false }]);
+      }
+      return { meetingId: id, elapsedMs: recording.pushes * 500, pendingChunks: 0, level: 0.05 };
+    },
+    async recordStop() {
+      if (!recording) throw new Error("録音していません");
+      const id = recording.id;
+      recording = null;
+      meetings = meetings.map((x) => (x.id === id ? { ...x, state: "queued", recording: false, durationMs: 24_000 } : x));
+      pending.push(id);
+      return det(id);
+    },
+    async recordDiscard() { if (recording) { const id = recording.id; meetings = meetings.filter((x) => x.id !== id); segs.delete(id); recording = null; } },
     async importGlossary() { glossary = [...glossary, { id: nextId++, wrong: "くらうど", right: "クラウド" }]; return [1, [], glossary]; },
     detail: det,
     async audioUrl() { return null; },

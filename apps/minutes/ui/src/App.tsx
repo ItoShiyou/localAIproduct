@@ -3,6 +3,7 @@ import type { Api } from "./api";
 import { DetailView } from "./DetailView";
 import { GlossaryView } from "./GlossaryView";
 import { OptionsForm, defaultOptions, optionsValid } from "./OptionsForm";
+import { Recorder } from "./Recorder";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
 import type { ImportResult, Meeting, MeetingFilter, ProcessOptions, Progress, SettingsInfo } from "./types";
@@ -21,6 +22,7 @@ export function App({ api }: { api: Api }) {
   const [showOpts, setShowOpts] = useState(false);
   const [filter, setFilter] = useState<MeetingFilter>({ tag: null, sort: "held_desc" });
   const [tags, setTags] = useState<[string, number][]>([]);
+  const [recordOpts, setRecordOpts] = useState<ProcessOptions | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [askConsent, setAskConsent] = useState<null | (() => void)>(null);
   const [version, setVersion] = useState(0);
@@ -130,12 +132,21 @@ export function App({ api }: { api: Api }) {
             <aside className="side">
               <div className="side-head">
                 <button className="btn primary" onClick={pick}>録音を取り込む</button>
+                <button className="btn rec" disabled={!!recordOpts} onClick={() => withConsent(() => setRecordOpts({ ...opts, rangeStartMs: null, rangeEndMs: null }))}>● 録音する</button>
                 <button className="link" onClick={() => setShowOpts((v) => !v)} aria-expanded={showOpts}>取り込みの設定 {showOpts ? "▲" : "▼"}</button>
               </div>
               {showOpts
                 ? <div className="pad"><OptionsForm value={opts} onChange={setOpts} diarizeAvailable={settings?.diarizeAvailable ?? true} /></div>
                 : <p className="note pad">{[opts.denoise && "ノイズ除去", opts.diarize && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "人数は自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動判定"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定あり"].filter(Boolean).join("・") || "設定なし"}</p>}
               <p className="note pad">m4a / mp3 / wav / mp4 など。ここにドラッグしても取り込めます。元のファイルは変更しません。</p>
+              {recordOpts && (
+                <div className="pad">
+                  <Recorder api={api} opts={recordOpts}
+                    onStarted={(id) => { setCur(id); refresh(); }}
+                    onStopped={(id) => { setRecordOpts(null); setCur(id); refresh().then(startJobs); }}
+                    onCancel={() => { setRecordOpts(null); refresh(); }} />
+                </div>
+              )}
               {progress && (progress.busy || progress.pending > 0) && (
                 <div className="progress pad">
                   <div className="bar"><span style={{ width: `${progress.totalChunks ? (progress.doneChunks / progress.totalChunks) * 100 : 0}%` }} /></div>
