@@ -7,14 +7,17 @@ set -euo pipefail
 APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$APP/../.." && pwd)"
 cd "$APP/src-tauri"
+# macOS は shasum、Windows(Git Bash)は sha256sum を使う
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+PY="$(command -v python3 || command -v python)"
 cargo run -q --release --no-default-features --example fetch_model -- "$APP/src-tauri/resources/models"
 rm -f resources/models/*.part
 
 fetch() { # <URL> <保存先> <SHA-256>
-  if [[ -f "$2" ]] && [[ "$(shasum -a 256 "$2" | cut -d' ' -f1)" == "$3" ]]; then return; fi
+  if [[ -f "$2" ]] && [[ "$(sha256 "$2")" == "$3" ]]; then return; fi
   mkdir -p "$(dirname "$2")"
   curl -sSfL -o "$2.part" "$1"
-  [[ "$(shasum -a 256 "$2.part" | cut -d' ' -f1)" == "$3" ]] || { echo "ハッシュが一致しません: $1" >&2; rm -f "$2.part"; exit 1; }
+  [[ "$(sha256 "$2.part")" == "$3" ]] || { echo "ハッシュが一致しません: $1" >&2; rm -f "$2.part"; exit 1; }
   mv "$2.part" "$2"
 }
 # 録音中の仮の文字に使う小さなモデル(Whisper small、MIT)
@@ -29,8 +32,18 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   tar xzf "$TGZ" -C "$(dirname "$TGZ")"
   mkdir -p resources/onnxruntime
   cp "$(dirname "$TGZ")/onnxruntime-osx-arm64-1.30.0/lib/libonnxruntime.1.30.0.dylib" resources/onnxruntime/libonnxruntime.dylib
+else
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    ZIP="$(mktemp -d)/ort.zip"
+    fetch https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-win-x64-1.30.0.zip "$ZIP" \
+      c6ba983baf5681af108599675d2a89c2d145512d02de28aed0bff177cd0ba949
+    mkdir -p resources/onnxruntime
+    # dll だけ取り出す(zip には 400MB の pdb も入っている)
+    "$PY" -c "import sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);open(sys.argv[2],'wb').write(z.read('onnxruntime-win-x64-1.30.0/lib/onnxruntime.dll'))" \
+      "$ZIP" resources/onnxruntime/onnxruntime.dll ;;
+  esac
 fi
 (cd "$APP/ui" && npm ci --silent)
-python3 "$ROOT/tools/gen_notices.py" "$APP/src-tauri" "$APP/ui" "$APP/src-tauri/resources/THIRD_PARTY_NOTICES.txt" \
+"$PY" "$ROOT/tools/gen_notices.py" "$APP/src-tauri" "$APP/ui" "$APP/src-tauri/resources/THIRD_PARTY_NOTICES.txt" \
   --features tauri,whisper,diarize --extra "$APP/legal/extra.json"
 echo "準備できました: $(du -sh resources | cut -f1)"

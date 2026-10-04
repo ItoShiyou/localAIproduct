@@ -1,0 +1,95 @@
+name: minutes-windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac/verify]
+    paths:
+      - "apps/minutes/**"
+      - "core/**"
+      - "tools/**"
+      - ".github/workflows/minutes-windows.yml"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: apps/minutes/src-tauri
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/minutes/ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/minutes/src-tauri
+          key: test
+      - name: UI を用意(tauri の build.rs が frontendDist を見るため)
+        run: cd ../ui && npm ci && npm run build
+      - name: テスト(ロジックのみ)
+        run: cargo test --lib --no-default-features
+      - name: テスト(既定の機能)
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: cargo test --lib
+
+  bundle:
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/minutes/ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/minutes/src-tauri
+          key: bundle
+      - name: モデルと onnxruntime のキャッシュ(ハッシュは prepare_bundle.sh に固定)
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/minutes/src-tauri/resources/models
+            apps/minutes/src-tauri/resources/onnxruntime
+          key: minutes-resources-win-${{ hashFiles('apps/minutes/tools/prepare_bundle.sh', 'apps/minutes/src-tauri/examples/fetch_model.rs') }}
+      - name: 同梱物を用意
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../tools/prepare_bundle.sh
+      - name: インストーラ(NSIS)
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../ui/node_modules/.bin/tauri build --bundles nsis
+      - name: インストーラ(MSI)
+        continue-on-error: true
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../ui/node_modules/.bin/tauri build --bundles msi
+      - name: 成果物の大きさ
+        run: ls -la target/release/bundle/*/ || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: minutes-windows-nsis
+          path: apps/minutes/src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 7
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: minutes-windows-msi
+          path: apps/minutes/src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: warn
