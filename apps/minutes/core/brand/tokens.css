@@ -1,44 +1,58 @@
 /*
  * シリーズ共通のデザイントークン(色・字・余白・角丸・影・動き)。全アプリと Web で同じものを使う。
- * 思想: 「途中を照らす」— 紙のような生成りの地に、ロウソクの灯り(琥珀)をひとつ。急かさない、比べない、責めない。
+ * 思想: 「手元に灯す」— 静かな灰白の地に、墨の文字。灯り(琥珀)は小さく、ひとつだけ。
+ *       飾りより余白と 1px の罫で区切る。急かさない、比べない、責めない。
+ * 2026-10-05 改訂: 生成り+明朝の「紙と炎」から、灰白+太いゴシックの「静かな工房」へ(理由は README.md)。
+ *       変数の名前は前の版と同じにして、アプリ側の参照を壊さない(--paper は地、--flame は灯り)。
  * 他社の配色・ロゴはまねない(docs/brand-brief.md)。
  * 使い方: アプリの CSS の先頭で @import する。色は必ず変数で参照する。
  */
 :root {
-  /* 地と面 */
-  --paper: #fbf7f0;        /* 背景(生成り) */
-  --paper-2: #f5efe4;      /* 一段沈んだ面(サイドバー) */
-  --surface: #fffdf9;      /* カード */
-  --surface-hover: #fff8ee;
-  --line: #e8dfd0;         /* 罫線 */
-  --line-strong: #d8ccb8;
-  /* 文字 */
-  --ink: #2b2622;          /* 本文(墨) */
-  --ink-2: #5d544c;        /* 補足 */
-  --ink-3: #9a8f84;        /* 薄い補足 */
-  /* 灯り(アクセント) */
-  --flame: #d9822b;        /* 灯り(主) */
-  --flame-deep: #b8661a;
-  --flame-soft: #fbe9d3;
-  --glow: 0 0 0 4px rgba(217, 130, 43, .14);
-  /* 夜(副アクセント・落ち着いた藍) */
-  --night: #34506b;
-  --night-soft: #e6edf3;
+  /* 地と面(わずかに緑みの灰白。石や和紙の色) */
+  --paper: #f3f3ef;        /* 背景 */
+  --paper-2: #e9eae4;      /* 一段沈んだ面(サイドバー・色面) */
+  --surface: #fbfbf8;      /* 面(入力・文のカード) */
+  --surface-hover: #f6f6f2;
+  --line: #dcddd5;         /* 罫線(1px) */
+  --line-strong: #c3c5bb;
+  /* 文字(墨) */
+  --ink: #1d2220;          /* 本文・主のボタン */
+  --ink-2: #4d5450;        /* 補足(地の上で 7:1) */
+  --ink-3: #646b66;        /* 薄い補足(地の上で 4.5:1 以上) */
+  /* 灯り(アクセント。点・線・進み具合など、小さな面だけに使う) */
+  --flame: #c27a1f;        /* 灯り(飾り・印。文字には使わない) */
+  --flame-deep: #8c5810;   /* 灯りの色の文字・リンク(地の上で 5:1) */
+  --flame-soft: #f4e9d6;   /* 灯りの淡い面(再生中の文など) */
+  --glow: 0 0 0 3px rgba(194, 122, 31, .28);
+  /* 夜(手元の灯りを置く、藍黒の帯と副アクセント) */
+  --night: #34495a;        /* 処理中の印などの文字 */
+  --night-soft: #e2e8ec;
+  --night-deep: #1b232b;   /* 暗い帯の地 */
+  --night-ink: #e9ebe7;    /* 暗い帯の文字 */
+  --night-ink-2: #a9b2b8;
+  --night-line: #2f3a44;
+  --night-flame: #e6a756;  /* 暗い帯の上の灯り */
   /* 状態 */
-  --ok: #3f7d4e;   --ok-soft: #e4f0e6;
-  --warn: #a8701a; --warn-soft: #fbf0d9;
-  --danger: #b4432f; --danger-soft: #f8e4df;
-  /* 話者の色(落ち着いた色相。8色) */
-  --spk-1: #c0632b; --spk-2: #3d6f8f; --spk-3: #5c8a4e; --spk-4: #9a4f78;
-  --spk-5: #b8892a; --spk-6: #4f6fb0; --spk-7: #8a6248; --spk-8: #3f8a85;
-  /* 字 */
-  --font-ui: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif;
+  --ok: #2e6a46;   --ok-soft: #e2efe5;
+  --warn: #8a5c10; --warn-soft: #f7edd8;
+  --danger: #a53a29; --danger-soft: #f6e3df;
+  /* 話者の色(色相を離した 8 色。点・線に使い、名前の文字は墨で書く) */
+  --spk-1: #c0612b; --spk-2: #2f6f9a; --spk-3: #4f8a3e; --spk-4: #8a4fa0;
+  --spk-5: #a8800f; --spk-6: #b8395a; --spk-7: #56636e; --spk-8: #2a8a86;
+  /* 字(見出しも本文もゴシック。明朝は印刷物の本文だけに使う) */
+  --font-ui: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans JP", system-ui, sans-serif;
+  --font-label: "Helvetica Neue", "Segoe UI", Arial, var(--font-ui); /* 字間を開けた小さな英字のラベル */
   --font-serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* 余白・角丸・影 */
-  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-pill: 999px;
-  --shadow-1: 0 1px 2px rgba(60, 40, 20, .06), 0 1px 1px rgba(60, 40, 20, .04);
-  --shadow-2: 0 6px 20px rgba(60, 40, 20, .08), 0 2px 6px rgba(60, 40, 20, .05);
-  --shadow-3: 0 18px 50px rgba(60, 40, 20, .16);
+  --track-label: .2em;     /* 英字ラベルの字間 */
+  --track-head: .03em;     /* 見出しの字間 */
+  /* 余白・角丸・影(影はほぼ使わない。浮かせるもの=メニュー・ダイアログ・お知らせだけ) */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px rgba(20, 28, 26, .10), 0 1px 3px rgba(20, 28, 26, .06);
+  --shadow-3: 0 20px 48px rgba(20, 28, 26, .16), 0 2px 6px rgba(20, 28, 26, .06);
+  /* 動き(短く、1回だけ) */
   --ease: cubic-bezier(.2, .7, .2, 1);
+  --dur-1: .15s;           /* 色・下線 */
+  --dur-2: .45s;           /* 現れる */
 }
