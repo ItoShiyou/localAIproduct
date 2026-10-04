@@ -5,6 +5,7 @@ pub mod audio;
 pub mod commands;
 pub mod diarize;
 pub mod export;
+pub mod license;
 pub mod pipeline;
 pub mod plan;
 pub mod recorder;
@@ -167,6 +168,14 @@ pub fn run() {
             tauri_glue::record_stop,
             tauri_glue::record_discard,
             tauri_glue::plan,
+            tauri_glue::license_status,
+            tauri_glue::install_license,
+            tauri_glue::install_license_file,
+            tauri_glue::pick_and_install_license,
+            tauri_glue::remove_license,
+            tauri_glue::machine_code,
+            tauri_glue::import_summary_model,
+            tauri_glue::pick_and_import_summary_model,
             tauri_glue::waveform,
         ])
         .run(tauri::generate_context!())

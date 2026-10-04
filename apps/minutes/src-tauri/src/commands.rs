@@ -92,6 +92,10 @@ pub struct SettingsDto {
     pub denoise_default: bool,
     pub consent_shown: bool,
     pub network: Vec<NetworkEntry>,
+    /// ネットワークを使わない(通信する機能をすべて止める)
+    pub offline_mode: bool,
+    /// オフライン版のライセンスのため、切り替えられない
+    pub offline_forced: bool,
     pub data_dir: String,
     /// 文字起こしのモデル名。"none" ならモデル未設定
     pub model: String,
@@ -103,7 +107,6 @@ pub struct SettingsDto {
 pub fn network_entries() -> Vec<NetworkEntry> {
     let e = |p: &str, d: &str, c: &str, stoppable: bool| NetworkEntry { purpose: p.into(), destination: d.into(), content: c.into(), stoppable, enabled: true };
     vec![
-        e("ライセンス認証・検証", "販売プラットフォームのAPI", "ライセンスキー、端末の識別名", false),
         e(UPDATE_PURPOSE, "配布元", "アプリのバージョン", true),
         e("モデルの取得(操作したときのみ)", "モデルの配布元(文字起こし・要約のモデル)", "モデル名", false),
     ]
@@ -139,6 +142,11 @@ pub struct AppState {
     tier: Mutex<Tier>,
     /// 無料版の使った量の記録
     ledger: Mutex<Ledger>,
+    /// 有効なライセンス(オフライン検証済み)と、保存したキーの無効の理由
+    license: Mutex<Option<crate::license::LicenseInfo>>,
+    license_error: Mutex<Option<String>>,
+    /// テスト用: この端末の端末コードの差し替え
+    machine_override: Mutex<Option<String>>,
     /// 要約(有料版の追加機能。モデルは後から取得、推論は別プロセス)
     pub summary: crate::summary::SummaryRuntime,
 }
@@ -147,16 +155,29 @@ fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
 
-/// ライセンスとつなぐまでの判定: 環境変数 MINUTES_TIER(pro / free)→ 開発用のビルドは有料版、配布用は無料版。
-fn default_tier() -> Tier {
-    match std::env::var("MINUTES_TIER").as_deref() {
-        Ok("pro") => Tier::Pro,
-        Ok("free") => Tier::Free,
-        _ if cfg!(debug_assertions) => Tier::Pro,
-        _ => Tier::Free,
-    }
+/// 有効なライセンスが無いときの判定(デバッグビルドだけ環境変数 MINUTES_TIER。配布用は無料版)
+fn fallback_tier() -> Tier {
+    crate::plan::resolve_tier(false, std::env::var("MINUTES_TIER").ok().as_deref(), cfg!(debug_assertions))
 }
 
+pub const LICENSE_FILE: &str = "license.key";
+pub const OFFLINE_ONLY: &str = "ネットワークを使わない設定のため、取得できません。ファイルから取り込んでください";
+
+/// ライセンスの状態(画面に出す)
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LicenseStatusDto {
+    /// 有効なライセンスがある
+    pub valid: bool,
+    pub info: Option<crate::license::LicenseInfo>,
+    /// キーは保存されているが無効(別の端末用など)なときの理由
+    pub error: Option<String>,
+    /// この端末の端末コード(取れなければ None)
+    pub machine_code: Option<String>,
+    pub tier: Tier,
+    /// ネットワークの機能を止めている(オフライン版は常に true)
+    pub network_disabled: bool,
+}
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDto {
@@ -187,7 +208,7 @@ impl AppState {
             .execute("UPDATE meetings SET state='failed', recording=0, error='録音中にアプリが終了しました(そこまでの文字は残っています)' WHERE recording=1", [])
             .map_err(err)?;
         store.db.conn.execute("UPDATE meetings SET state='queued' WHERE state='processing'", []).map_err(err)?;
-        Ok(Self {
+        let state = Self {
             store: Mutex::new(store),
             asr: Mutex::new(asr.map(Arc::from)),
             loader,
@@ -208,10 +229,15 @@ impl AppState {
             recorder: Mutex::new(None),
             live_asr: Mutex::new(None),
             live_models: Mutex::new(Vec::new()),
-            tier: Mutex::new(default_tier()),
+            tier: Mutex::new(fallback_tier()),
+            license: Mutex::new(None),
+            license_error: Mutex::new(None),
+            machine_override: Mutex::new(None),
             ledger: Mutex::new(Ledger::new(vec![Box::new(crate::plan::FileSlot(data_dir_for_ledger.join("usage.dat")))])),
             summary: crate::summary::SummaryRuntime::new(data_dir_for_ledger.join("models")),
-        })
+        };
+        state.reload_license();
+        Ok(state)
     }
 
     fn store(&self) -> std::sync::MutexGuard<'_, Store> {
@@ -376,7 +402,103 @@ impl AppState {
     // ---------------- 無料版・有料版 ----------------
 
     pub fn ent(&self) -> Entitlements {
-        Entitlements::of(*self.tier.lock().unwrap_or_else(|p| p.into_inner()))
+        let mut e = Entitlements::of(*self.tier.lock().unwrap_or_else(|p| p.into_inner()));
+        // ライセンスに「要約」が含まれていなければ、要約は使えない(ライセンスが無い開発用の有料版は全部使える)
+        if let Some(info) = self.license.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+            e.summary = e.summary && crate::license::grants_summary(info);
+        }
+        e
+    }
+
+    // ---------------- ライセンス(オフラインで検証。通信しない) ----------------
+
+    fn license_path(&self) -> PathBuf {
+        self.app.root.join(LICENSE_FILE)
+    }
+
+    /// この端末の端末コード(テストでは差し替え可)
+    pub fn machine_code(&self) -> Option<String> {
+        self.machine_override.lock().unwrap_or_else(|p| p.into_inner()).clone().or_else(crate::license::machine_code)
+    }
+
+    pub fn set_machine_code_for_test(&self, code: Option<&str>) {
+        *self.machine_override.lock().unwrap_or_else(|p| p.into_inner()) = code.map(|s| s.to_string());
+        self.reload_license();
+    }
+
+    fn verify_license(&self, text: &str) -> Result<crate::license::LicenseInfo, crate::license::LicenseError> {
+        crate::license::verify(text, &crate::license::trusted_keys(), self.machine_code().as_deref(), crate::license::REVOKED_IDS)
+    }
+
+    /// 保存してあるキーを読み直して、版を決める(起動時と、取り込み・削除のあと)
+    fn reload_license(&self) {
+        let (info, error) = match std::fs::read_to_string(self.license_path()) {
+            Ok(text) => match self.verify_license(&text) {
+                Ok(i) => (Some(i), None),
+                Err(e) => (None, Some(e.to_string())),
+            },
+            Err(_) => (None, None),
+        };
+        self.set_tier(crate::plan::resolve_tier(info.is_some(), std::env::var("MINUTES_TIER").ok().as_deref(), cfg!(debug_assertions)));
+        *self.license.lock().unwrap_or_else(|p| p.into_inner()) = info;
+        *self.license_error.lock().unwrap_or_else(|p| p.into_inner()) = error;
+    }
+
+    pub fn license_status(&self) -> LicenseStatusDto {
+        let info = self.license.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        LicenseStatusDto {
+            valid: info.is_some(),
+            info,
+            error: self.license_error.lock().unwrap_or_else(|p| p.into_inner()).clone(),
+            machine_code: self.machine_code(),
+            tier: *self.tier.lock().unwrap_or_else(|p| p.into_inner()),
+            network_disabled: self.network_disabled(),
+        }
+    }
+
+    /// キー(または .license の中身)を取り込む。検証に通らなければ保存しない。
+    pub fn install_license(&self, text: &str) -> Result<LicenseStatusDto, String> {
+        let info = self.verify_license(text).map_err(err)?;
+        let _ = info;
+        std::fs::write(self.license_path(), text.trim().to_string() + "\n").map_err(|_| "ライセンスを保存できません".to_string())?;
+        self.reload_license();
+        Ok(self.license_status())
+    }
+
+    pub fn install_license_file(&self, path: &Path) -> Result<LicenseStatusDto, String> {
+        let meta = std::fs::metadata(path).map_err(|_| "ファイルを読めません".to_string())?;
+        if meta.len() > crate::license::MAX_LICENSE_BYTES {
+            return Err(crate::license::LicenseError::Format.to_string());
+        }
+        let bytes = std::fs::read(path).map_err(|_| "ファイルを読めません".to_string())?;
+        let text = String::from_utf8(bytes).map_err(|_| crate::license::LicenseError::Format.to_string())?;
+        self.install_license(&text)
+    }
+
+    pub fn remove_license(&self) -> Result<LicenseStatusDto, String> {
+        match std::fs::remove_file(self.license_path()) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("ライセンスを削除できません".into()),
+        }
+        self.reload_license();
+        Ok(self.license_status())
+    }
+
+    // ---------------- ネットワークを使わない設定 ----------------
+
+    /// オフライン版のライセンス、または設定「ネットワークを使わない」のとき true。true の間は、通信する機能をすべて止める。
+    pub fn network_disabled(&self) -> bool {
+        self.offline_forced() || flag(&self.app.load_settings(), "offline_mode", false)
+    }
+
+    /// オフライン版のライセンスで、設定にかかわらず常に通信しない
+    pub fn offline_forced(&self) -> bool {
+        self.license.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|i| i.offline).unwrap_or(false)
+    }
+
+    fn require_network(&self) -> Result<(), String> {
+        if self.network_disabled() { Err(OFFLINE_ONLY.into()) } else { Ok(()) }
     }
 
     pub fn set_tier(&self, t: Tier) {
@@ -437,6 +559,7 @@ impl AppState {
 
     /// モデルを取得する(利用者が設定画面で押したときだけ呼ぶ。通信一覧の「モデルの取得」)。終わるまで返らない。
     pub fn download_model(&self) -> Result<ModelDto, String> {
+        self.require_network()?;
         {
             let mut g = self.model_dl.lock().unwrap_or_else(|p| p.into_inner());
             if g.0 {
@@ -480,7 +603,14 @@ impl AppState {
     /// 要約のモデルを取得する(利用者が設定画面で押したときだけ。通信一覧の「モデルの取得」)。終わるまで返らない。
     pub fn download_summary_model(&self) -> Result<crate::summary::SummaryStatusDto, String> {
         self.require(self.ent().summary)?;
+        self.require_network()?;
         self.summary.download()
+    }
+
+    /// 要約のモデルを、利用者が用意したファイル(USB など)から取り込む。通信しない。SHA-256 が想定と違えば取り込まない。
+    pub fn import_summary_model(&self, src: &Path) -> Result<crate::summary::SummaryStatusDto, String> {
+        self.require(self.ent().summary)?;
+        self.summary.import(src)
     }
 
     pub fn cancel_summary_download(&self) {
@@ -975,7 +1105,12 @@ impl AppState {
             keep_audio: flag(&s, "keep_audio", true),
             denoise_default: flag(&s, "denoise_default", true),
             consent_shown: flag(&s, "consent_shown", false),
-            network: self.app.network_list(&network_entries(), UPDATE_PURPOSE),
+            network: {
+                let off = self.network_disabled();
+                self.app.network_list(&network_entries(), UPDATE_PURPOSE).into_iter().map(|mut e| { if off { e.enabled = false; } e }).collect()
+            },
+            offline_mode: self.network_disabled(),
+            offline_forced: self.offline_forced(),
             data_dir: self.app.root.to_string_lossy().into(),
             model: if self.ent().accurate_model {
                 self.model_path().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "none".into())
@@ -988,12 +1123,15 @@ impl AppState {
         }
     }
 
-    /// key: update_check | keep_audio | denoise_default | consent_shown
+    /// key: update_check | keep_audio | denoise_default | consent_shown | offline_mode
     pub fn set_flag(&self, key: &str, on: bool) -> Result<SettingsDto, String> {
+        if key == "offline_mode" && !on && self.offline_forced() {
+            return Err("オフライン版では、ネットワークを使わない設定を切り替えられません".into());
+        }
         let mut s = self.app.load_settings();
         match key {
             "update_check" => s.update_check = on,
-            "keep_audio" | "denoise_default" | "consent_shown" => {
+            "keep_audio" | "denoise_default" | "consent_shown" | "offline_mode" => {
                 s.extra.insert(key.into(), serde_json::Value::Bool(on));
             }
             _ => return Err("不明な設定です".into()),
@@ -1016,7 +1154,12 @@ impl AppState {
         if self.model_source().map(|(_, s)| s == "managed").unwrap_or(true) {
             *self.asr.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
+        // ライセンスは消さない(購入したものなので。消すのは「ライセンスを削除」だけ)
+        let lic = std::fs::read(self.license_path()).ok();
         let n = self.app.delete_all().map_err(err)?;
+        if let Some(b) = lic {
+            let _ = std::fs::write(self.license_path(), b);
+        }
         *store = Store::open(&self.db_path()).map_err(err)?;
         // 無料版の使った量は消さない(データフォルダの中の記録も書き戻す)
         self.ledger.lock().unwrap_or_else(|p| p.into_inner()).add(0, false);
@@ -1510,6 +1653,141 @@ mod tests {
         // 全削除をしても、書き換えた記録は直らない
         s.delete_all().unwrap();
         assert_eq!(s.plan().remaining_ms, Some(0));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    // ---------------- ライセンス・オフライン ----------------
+
+    fn dev_key(edition: &str, features: &[&str], machine: Option<&str>) -> String {
+        let p = crate::license::Payload {
+            v: 1,
+            id: crate::license::new_license_id(),
+            licensee: "テスト大学 山田研究室".into(),
+            edition: edition.into(),
+            issued: "2026-10-05".into(),
+            features: features.iter().map(|s| s.to_string()).collect(),
+            machine: machine.map(|s| s.to_string()),
+        };
+        crate::license::encode_key(&p, &crate::license::dev_signing_key())
+    }
+
+    #[test]
+    fn ライセンスを取り込むと有料版になり_消すと戻り_全データ削除でも残る() {
+        if !cfg!(debug_assertions) {
+            return; // 開発用の鍵はデバッグビルドだけが受け入れる
+        }
+        let d = tmp("lic");
+        let s = state(&d, None);
+        s.set_tier(Tier::Free);
+        let e = s.install_license("でたらめ").unwrap_err();
+        assert!(e.contains("形式が違います"), "{e}");
+        let mut bad = dev_key("pro", &["pro"], None);
+        bad.pop();
+        bad.push(if bad.ends_with('A') { 'B' } else { 'A' });
+        assert!(s.install_license(&bad).is_err());
+        assert!(!s.license_status().valid);
+
+        let st = s.install_license(&dev_key("pro", &["pro"], None)).unwrap();
+        assert!(st.valid && st.tier == Tier::Pro && st.info.as_ref().unwrap().licensee.contains("山田研究室"));
+        assert!(!st.network_disabled, "通常版は通信を止めない");
+        assert!(s.ent().diarize && !s.ent().summary, "要約が含まれないライセンスでは要約は使えない");
+
+        // 全データを削除しても、ライセンスは残る
+        s.delete_all().unwrap();
+        assert!(s.license_status().valid && d.join(LICENSE_FILE).exists());
+        // 再起動しても有効
+        let s2 = state(&d, None);
+        assert!(s2.license_status().valid && s2.ent().tier == Tier::Pro);
+
+        let st = s2.remove_license().unwrap();
+        assert!(!st.valid && !d.join(LICENSE_FILE).exists());
+        // ファイルからの取り込み
+        let f = d.join("x.license");
+        std::fs::write(&f, format!("# 説明\n{}\n", dev_key("pro", &["pro", "summary"], None))).unwrap();
+        assert!(s2.install_license_file(&f).unwrap().valid && s2.ent().summary);
+        assert!(s2.install_license_file(&d.join("無い.license")).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 端末に固定したライセンスは_別の端末では取り込めない() {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        let d = tmp("lic-machine");
+        let s = state(&d, None);
+        let here = crate::license::code_from_raw("this-machine");
+        let key = dev_key("pro", &["pro"], Some(&here));
+        s.set_machine_code_for_test(Some(&crate::license::code_from_raw("other-machine")));
+        let e = s.install_license(&key).unwrap_err();
+        assert!(e.contains("別の端末用"), "{e}");
+        s.set_machine_code_for_test(Some(&here));
+        let st = s.install_license(&key).unwrap();
+        assert!(st.valid && st.info.unwrap().machine_bound && st.machine_code.as_deref() == Some(here.as_str()));
+        // 保存済みのキーがある状態で端末が変わった(ディスクの移し替えなど): 無効になり、理由が出る
+        s.set_machine_code_for_test(Some(&crate::license::code_from_raw("third")));
+        let st = s.license_status();
+        assert!(!st.valid && st.error.unwrap().contains("別の端末用"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn オフライン版は通信する機能をすべて止める() {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        let d = tmp("lic-offline");
+        let s = state(&d, None);
+        assert!(!s.network_disabled());
+        // 設定で止める(通常版)
+        s.set_flag("offline_mode", true).unwrap();
+        assert_eq!(s.download_model().unwrap_err(), OFFLINE_ONLY);
+        s.set_tier(Tier::Pro);
+        assert_eq!(s.download_summary_model().unwrap_err(), OFFLINE_ONLY);
+        assert!(s.settings().network.iter().all(|e| !e.enabled));
+        s.set_flag("offline_mode", false).unwrap();
+        assert!(!s.network_disabled());
+        // オフライン版のライセンス: 常に止まり、切り替えられない
+        s.install_license(&dev_key("pro_offline", &["pro", "summary"], None)).unwrap();
+        let st = s.settings();
+        assert!(st.offline_mode && st.offline_forced && st.network.iter().all(|e| !e.enabled));
+        assert!(s.set_flag("offline_mode", false).unwrap_err().contains("オフライン版"));
+        assert_eq!(s.download_model().unwrap_err(), OFFLINE_ONLY);
+        assert_eq!(s.download_summary_model().unwrap_err(), OFFLINE_ONLY);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 要約のモデルをファイルから取り込み_ハッシュが違えば取り込まない() {
+        use sha2::{Digest, Sha256};
+        let d = tmp("import-summary");
+        let rt = crate::summary::SummaryRuntime::new(d.join("models"));
+        let body = vec![7u8; 3 * 1024 * 1024 + 5];
+        let sha: &'static str = Box::leak(format!("{:x}", Sha256::digest(&body)).into_boxed_str());
+        let spec = factory_core::model_manager::ModelSpec { name: "テスト", file_name: "t.gguf", url: "http://invalid.example/never", sha256: sha, size: body.len() as u64 };
+        std::fs::create_dir_all(&d).unwrap();
+        let good = d.join("good.gguf");
+        std::fs::write(&good, &body).unwrap();
+        // 同じ大きさで中身が違う
+        let mut other = body.clone();
+        other[100] ^= 1;
+        let bad = d.join("bad.gguf");
+        std::fs::write(&bad, &other).unwrap();
+        let e = rt.import_as(&bad, &spec).unwrap_err();
+        assert!(e.contains("一致しません"), "{e}");
+        assert!(!d.join("models/t.gguf").exists() && !d.join("models/t.gguf.part").exists());
+        // 大きさが違う
+        std::fs::write(d.join("short.gguf"), b"x").unwrap();
+        assert!(rt.import_as(&d.join("short.gguf"), &spec).unwrap_err().contains("大きさが違います"));
+        // 正しいファイル
+        rt.import_as(&good, &spec).unwrap();
+        let m = factory_core::model_manager::ModelManager::new(d.join("models"));
+        assert!(m.is_installed(&spec), "照合済みの印と大きさがそろう");
+        assert_eq!(std::fs::read(d.join("models/t.gguf")).unwrap(), body);
+        // アプリ側の入口は有料版だけ
+        let s = state(&d.join("app"), None);
+        s.set_tier(Tier::Free);
+        assert_eq!(s.import_summary_model(&good).unwrap_err(), PRO_ONLY);
         std::fs::remove_dir_all(&d).ok();
     }
 }

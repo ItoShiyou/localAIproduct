@@ -750,6 +750,68 @@ impl SummaryRuntime {
         Ok(self.status())
     }
 
+    /// 利用者が用意した GGUF ファイル(USB など)を取り込む。通信しない。
+    /// コピーしながら SHA-256 を求め、想定(`SUMMARY_MODEL.sha256`)と違えば捨てる。終わるまで返らない(進み具合は `status`、中断は `cancel_download`)。
+    pub fn import(&self, src: &Path) -> Result<SummaryStatusDto, String> {
+        self.import_as(src, &SUMMARY_MODEL)
+    }
+
+    pub fn import_as(&self, src: &Path, spec: &ModelSpec) -> Result<SummaryStatusDto, String> {
+        use sha2::{Digest, Sha256};
+        use std::io::{Read, Write};
+        let meta = std::fs::metadata(src).map_err(|_| "ファイルを読めません".to_string())?;
+        if !meta.is_file() {
+            return Err("ファイルを選んでください".into());
+        }
+        if meta.len() != spec.size {
+            return Err(format!("要約のモデルのファイルと大きさが違います(想定 {} バイト、選んだファイル {} バイト)。{} を選んでいるか確認してください", spec.size, meta.len(), spec.file_name));
+        }
+        {
+            let mut g = lock(&self.dl);
+            if g.0 {
+                return Err("取得中・取り込み中です".into());
+            }
+            *g = (true, 0, None);
+        }
+        self.dl_cancel.store(false, Ordering::SeqCst);
+        let res: Result<(), String> = (|| {
+            let dir = self.models.path(&spec).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            std::fs::create_dir_all(&dir).map_err(|_| "保存先を作れません".to_string())?;
+            let part = dir.join(format!("{}.part", spec.file_name));
+            let mut r = std::io::BufReader::with_capacity(1 << 20, std::fs::File::open(src).map_err(|_| "ファイルを読めません".to_string())?);
+            let mut w = std::fs::File::create(&part).map_err(|_| "保存先に書き込めません(空き容量を確認してください)".to_string())?;
+            let (mut h, mut buf, mut done) = (Sha256::new(), vec![0u8; 1 << 20], 0u64);
+            loop {
+                if self.dl_cancel.load(Ordering::SeqCst) {
+                    drop(w);
+                    let _ = std::fs::remove_file(&part);
+                    return Err("取り込みを中断しました".into());
+                }
+                let n = r.read(&mut buf).map_err(|_| "ファイルの読み込みが途中で失敗しました".to_string())?;
+                if n == 0 {
+                    break;
+                }
+                h.update(&buf[..n]);
+                w.write_all(&buf[..n]).map_err(|_| "保存先に書き込めません(空き容量を確認してください)".to_string())?;
+                done += n as u64;
+                lock(&self.dl).1 = done;
+            }
+            w.flush().map_err(|_| "保存先に書き込めません".to_string())?;
+            drop(w);
+            let got = format!("{:x}", h.finalize());
+            if got != spec.sha256 {
+                let _ = std::fs::remove_file(&part);
+                return Err("ファイルの内容が想定のモデルと一致しません(SHA-256 が違います)。壊れているか、別のファイルです。コピーし直すか、配布元から取得し直してください".into());
+            }
+            std::fs::rename(&part, self.models.path(&spec)).map_err(|_| "保存に失敗しました".to_string())?;
+            // 照合済みの印(core の ModelManager と同じ形式)
+            std::fs::write(dir.join(format!("{}.sha256", spec.file_name)), spec.sha256).map_err(|_| "保存に失敗しました".to_string())?;
+            Ok(())
+        })();
+        *lock(&self.dl) = (false, 0, res.as_ref().err().cloned());
+        res.map(|_| self.status())
+    }
+
     pub fn cancel_download(&self) {
         self.dl_cancel.store(true, Ordering::SeqCst);
     }

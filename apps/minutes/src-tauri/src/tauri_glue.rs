@@ -352,3 +352,54 @@ pub fn plan(state: State<'_, AppState>) -> PlanDto {
 pub async fn waveform(state: State<'_, AppState>, id: i64, buckets: usize) -> Result<Vec<f32>, String> {
     state.waveform(id, buckets)
 }
+
+// ---------------- ライセンス(オフライン検証。通信しない) ----------------
+
+#[tauri::command]
+pub fn license_status(state: State<'_, AppState>) -> LicenseStatusDto {
+    state.license_status()
+}
+
+/// キー(MNT1- から始まる文字列、または .license ファイルの中身)を取り込む。
+#[tauri::command]
+pub async fn install_license(state: State<'_, AppState>, text: String) -> Result<LicenseStatusDto, String> {
+    state.install_license(&text)
+}
+
+#[tauri::command]
+pub async fn install_license_file(state: State<'_, AppState>, path: String) -> Result<LicenseStatusDto, String> {
+    state.install_license_file(&PathBuf::from(path))
+}
+
+/// OS のダイアログで .license ファイルを選んで取り込む。取り消したら None。
+#[tauri::command]
+pub async fn pick_and_install_license(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<LicenseStatusDto>, String> {
+    let Some(f) = app.dialog().file().add_filter("ライセンスファイル", &["license", "txt", "key"]).blocking_pick_file() else { return Ok(None) };
+    let path = f.into_path().map_err(|_| "ファイルを選べません".to_string())?;
+    state.install_license_file(&path).map(Some)
+}
+
+#[tauri::command]
+pub async fn remove_license(state: State<'_, AppState>) -> Result<LicenseStatusDto, String> {
+    state.remove_license()
+}
+
+/// この端末の端末コード(購入先に伝えて、端末に固定したライセンスを発行してもらうときに使う)。取れなければ None。
+#[tauri::command]
+pub fn machine_code(state: State<'_, AppState>) -> Option<String> {
+    state.machine_code()
+}
+
+/// 要約のモデル(GGUF)をファイルから取り込む(通信しない。USB などで持ち込む用)。終わるまで返らない。進み具合は summary_status。
+#[tauri::command]
+pub async fn import_summary_model(state: State<'_, AppState>, path: String) -> Result<crate::summary::SummaryStatusDto, String> {
+    state.import_summary_model(&PathBuf::from(path))
+}
+
+/// OS のダイアログで GGUF ファイルを選んで取り込む。取り消したら None。
+#[tauri::command]
+pub async fn pick_and_import_summary_model(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<crate::summary::SummaryStatusDto>, String> {
+    let Some(f) = app.dialog().file().add_filter("要約のモデル(GGUF)", &["gguf"]).blocking_pick_file() else { return Ok(None) };
+    let path = f.into_path().map_err(|_| "ファイルを選べません".to_string())?;
+    state.import_summary_model(&path).map(Some)
+}

@@ -66,6 +66,21 @@ impl Entitlements {
     }
 }
 
+/// 版の決定。有効なライセンスがあれば有料版。無ければ、デバッグビルドだけ環境変数 `MINUTES_TIER`(pro / free)を見る
+/// (未指定なら有料版)。**配布用のビルドは環境変数を無視して無料版**(環境変数で有料版にできない)。
+pub fn resolve_tier(license_valid: bool, env: Option<&str>, debug_build: bool) -> Tier {
+    if license_valid {
+        return Tier::Pro;
+    }
+    if !debug_build {
+        return Tier::Free;
+    }
+    match env {
+        Some("free") => Tier::Free,
+        _ => Tier::Pro,
+    }
+}
+
 pub const PRO_ONLY: &str = "有料版の機能です。有料版にすると使えます";
 
 // ---------------- 使った量の記録 ----------------
@@ -274,6 +289,15 @@ mod tests {
         assert!(l2.usage().tampered);
         assert_eq!(l2.remaining(&Entitlements::of(Tier::Free)), Some(0));
         assert!(decode("v1|1|1|00").is_err() && decode("x").is_err() && decode("").unwrap().is_none());
+    }
+
+    #[test]
+    fn 配布用のビルドは環境変数で有料版にならず_ライセンスだけが有料版にする() {
+        assert_eq!(resolve_tier(false, Some("pro"), false), Tier::Free);
+        assert_eq!(resolve_tier(false, None, false), Tier::Free);
+        assert_eq!(resolve_tier(true, Some("free"), false), Tier::Pro);
+        assert_eq!(resolve_tier(false, None, true), Tier::Pro);
+        assert_eq!(resolve_tier(false, Some("free"), true), Tier::Free);
     }
 
     #[test]
