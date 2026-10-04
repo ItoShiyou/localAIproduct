@@ -1,6 +1,6 @@
 # 依存とモデルのライセンス(スパイク時点)
 
-調べた日: 2026-10-03。「確認元」は、このスパイクで実際に読めたもの。**Hugging Face(モデルカード)は実行環境から到達できず、モデルの重みのライセンスは一次情報を読めていない**(読めなかったものは「要確認」)。配布時の表記は、各 LICENSE 全文と著作権表示を同梱する前提で書いている。法的な最終判断ではない。
+調べた日: 2026-10-03(2026-10-04 に Mac(M2)から Hugging Face のモデルカード原文を読み、下の「2026-10-04 追記」を加えた)。「確認元」は、このスパイクで実際に読めたもの。**Hugging Face(モデルカード)は実行環境から到達できず、モデルの重みのライセンスは一次情報を読めていない**(読めなかったものは「要確認」)。配布時の表記は、各 LICENSE 全文と著作権表示を同梱する前提で書いている。法的な最終判断ではない。
 
 ## 採用候補(ノイズ除去)
 
@@ -29,6 +29,32 @@
 - コードのリポジトリは Apache-2.0(読めた)。モデル重みも Apache-2.0 と案内されているという二次情報はあるが、**モデルカード原文は読めていない**。
 - 学習データの ReazonSpeech コーパスは CDLA-Sharing-1.0 で、Hugging Face 上では「著作権法30条の4の範囲での利用」に同意するゲートが付いている、という報道・解説がある(二次情報。`docs/research/minutes.md` の出典)。**重みの配布・商用利用が、このデータ由来の条件を受けるか**は、利用条件の原文を読めておらず判断できない。
 - したがって、**ReazonSpeech 系と、それで学習した kotoba-whisper は、販売前に一次情報の確認と法務の確認が済むまで「製品に同梱する」候補にしない**。Whisper(MIT)は、この問題を避けられる。
+
+## 2026-10-04 追記(Mac M2 から一次情報を確認。製品の実装で採用したもの)
+
+### モデルカード原文(Hugging Face の README.md の YAML `license:` と本文)
+
+| モデル | モデルカードの記載(原文) | 学習データ | 判断 |
+|---|---|---|---|
+| `openai/whisper-large-v3-turbo` | `license: mit` | (OpenAI の学習データ。データ由来の追加条件の記載なし) | **採用**。製品の既定 |
+| `ggerganov/whisper.cpp`(ggml 形式への変換済みモデルの配布元。`ggml-large-v3-turbo-q5_0.bin` を取得、SHA-256 `394221709cd5ad1f…`、574MB) | `license: mit` | 同上 | **採用**(変換・量子化済みの配布物) |
+| `kotoba-tech/kotoba-whisper-v2.0` | `license: apache-2.0`。本文: "trained on the `all` subset of ReazonSpeech" | ReazonSpeech | 重みは Apache-2.0。**データ由来の条件は下記のとおりで、要確認のまま(同梱しない)** |
+| `reazon-research/reazonspeech-k2-v2` | `license: apache-2.0`、本文の License 節も "Apaceh Licence 2.0"(原文の綴りのまま) | ReazonSpeech v2.0 | 同上 |
+| データセット `reazon-research/reazonspeech` | メタデータ `license: other`(CDLA-Sharing-1.0)、ゲート付き。利用条件の原文: "TO USE THIS DATASET, YOU MUST AGREE THAT YOU WILL USE THE DATASET SOLELY FOR THE PURPOSE OF JAPANESE COPYRIGHT ACT ARTICLE 30-4." | — | モデルの重みに、この「30条の4の目的に限る」条件が及ぶかは、原文からは判断できない。**法務の確認が済むまで、ReazonSpeech 系と kotoba-whisper は製品に同梱しない**(方針は変えない) |
+
+### 製品(`src-tauri/`)の依存(`cargo metadata` で確認)
+
+| 名前 | 版 | ライセンス | 配布時に必要なこと / 注意 |
+|---|---|---|---|
+| whisper.cpp(whisper-rs-sys が同梱してビルド) | whisper-rs-sys 0.14.1 同梱版 | MIT | 著作権表示と許諾文 |
+| whisper-rs / whisper-rs-sys(Rust 束ね) | 0.15.1 / 0.14.1 | Unlicense | 表記不要(任意)。**注意: 0.15.1 の `set_abort_callback_safe` は不具合があり使っていない**(`asr.rs` のコメント) |
+| nnnoiseless(RNNoise の Rust 移植。重み内蔵) | 0.5.2 | BSD-3-Clause | 著作権表示と許諾文 |
+| symphonia(音声の読み込み: wav / mp3 / aac / mp4(m4a) / flac / ogg) | 0.5.5 | **MPL-2.0** | ファイル単位のコピーレフト。改変せずに使う限り、アプリ全体の公開は不要だが、**MPL のソースの入手方法の告知と許諾文の同梱が要る → 配布前に要確認**。ffmpeg(GPL ビルド)は使っていない |
+| tauri / tauri-plugin-dialog | 2.12 / 2.8 | Apache-2.0 OR MIT | 著作権表示と許諾文。依存の rfd は MIT、tao は Apache-2.0 |
+| rusqlite(SQLite 同梱) | 0.40 | MIT(SQLite はパブリックドメイン) | 同上 |
+| React / React DOM | 18.3 | MIT | 同上 |
+
+推移的な依存に GPL・AGPL は無い。`r-efi`(MIT OR Apache-2.0 OR LGPL-2.1-or-later の選択式)は MIT を選べる。`webpki-roots` は CDLA-Permissive-2.0(ライセンス認証の通信用、表記が必要)。
 
 ## テスト・開発のみで使うもの(配布物に含めない)
 

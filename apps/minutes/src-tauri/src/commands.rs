@@ -1,0 +1,426 @@
+//! 画面(`ui/src/api.ts`)から呼ばれるコマンドの中身。Tauri に依存しない純Rust。`tauri_glue.rs` が包む。
+//!
+//! - 取り込みは、ファイルの場所(OS のダイアログで選んだもの)を受け取り、アプリのデータフォルダにコピーする(元は変更しない)。
+//! - 処理(読み込み・ノイズ除去・文字起こし)は別の接続で開いた `Store` で行い、画面の操作を止めない。
+//! - 外部への通信は無い。ログに文字起こしの内容を書かない。
+
+use crate::asr::Asr;
+use crate::export::{render, Format};
+use crate::pipeline::{self, Options, JOB_KIND};
+use crate::store::{GlossaryEntry, Meeting, SearchHit, Segment, Store};
+use factory_core::jobs::Jobs;
+use factory_core::settings::{AppData, NetworkEntry, Settings};
+use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+pub const DB_FILE: &str = "minutes.sqlite3";
+pub const UPDATE_PURPOSE: &str = "更新の確認";
+/// 取り込める拡張子(動画は音声だけを使う)
+pub const AUDIO_EXTS: [&str; 9] = ["m4a", "mp3", "wav", "mp4", "aac", "flac", "ogg", "mov", "m4v"];
+const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressDto {
+    pub busy: bool,
+    pub pending: usize,
+    /// 処理中の議事録と、その区間の進み具合
+    pub meeting_id: Option<i64>,
+    pub done_chunks: i64,
+    pub total_chunks: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailDto {
+    pub meeting: Meeting,
+    pub segments: Vec<Segment>,
+    pub can_undo: bool,
+    pub speakers: Vec<String>,
+    pub low_confidence: f64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsDto {
+    pub update_check: bool,
+    pub keep_audio: bool,
+    pub denoise_default: bool,
+    pub consent_shown: bool,
+    pub network: Vec<NetworkEntry>,
+    pub data_dir: String,
+    /// 文字起こしのモデル名。"none" ならモデル未設定
+    pub model: String,
+}
+
+pub fn network_entries() -> Vec<NetworkEntry> {
+    let e = |p: &str, d: &str, c: &str, stoppable: bool| NetworkEntry { purpose: p.into(), destination: d.into(), content: c.into(), stoppable, enabled: true };
+    vec![
+        e("ライセンス認証・検証", "販売プラットフォームのAPI", "ライセンスキー、端末の識別名", false),
+        e(UPDATE_PURPOSE, "配布元", "アプリのバージョン", true),
+        e("モデルの取得(操作したときのみ)", "モデルの配布元", "モデル名", false),
+    ]
+}
+
+pub struct AppState {
+    pub store: Mutex<Store>,
+    pub asr: Box<dyn Asr>,
+    pub app: AppData,
+    pub cancel: Arc<AtomicBool>,
+    pub busy: AtomicBool,
+    pub current: Mutex<(Option<i64>, i64, i64)>,
+}
+
+fn err<E: std::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn flag(s: &Settings, key: &str, default: bool) -> bool {
+    s.extra.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+}
+
+impl AppState {
+    pub fn new(data_dir: PathBuf, asr: Box<dyn Asr>) -> Result<Self, String> {
+        let app = AppData::init(&data_dir).map_err(err)?;
+        let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
+        // 前回、処理の途中で終了していたら、続きの区間から再開できるようにする
+        Jobs::new(&store.db).recover().map_err(err)?;
+        store.db.conn.execute("UPDATE meetings SET state='queued' WHERE state='processing'", []).map_err(err)?;
+        Ok(Self { store: Mutex::new(store), asr, app, cancel: Arc::new(AtomicBool::new(false)), busy: AtomicBool::new(false), current: Mutex::new((None, 0, 0)) })
+    }
+
+    fn store(&self) -> std::sync::MutexGuard<'_, Store> {
+        self.store.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn db_path(&self) -> PathBuf {
+        self.app.root.join(DB_FILE)
+    }
+
+    // ---------------- 取り込みと処理 ----------------
+
+    /// 録音ファイルを取り込む(コピーし、処理の待ちに入れる)。議事録の id を返す。
+    pub fn import_audio(&self, path: &Path, denoise: bool) -> Result<i64, String> {
+        let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
+        if !AUDIO_EXTS.contains(&ext.as_str()) {
+            return Err("対応している形式は m4a / mp3 / wav / mp4 などです".into());
+        }
+        let meta = std::fs::metadata(path).map_err(|_| "ファイルを開けません".to_string())?;
+        if meta.len() == 0 {
+            return Err("空のファイルです".into());
+        }
+        if meta.len() > MAX_BYTES {
+            return Err("ファイルが大きすぎます(4GBまで)".into());
+        }
+        let dir = self.app.root.join("audio");
+        std::fs::create_dir_all(&dir).map_err(|_| "保存先を作れません".to_string())?;
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "録音".into());
+        let store = self.store();
+        let id = store.add_meeting(&stem, &name, "", denoise).map_err(err)?;
+        let dest = dir.join(format!("{id}.{ext}"));
+        if std::fs::copy(path, &dest).is_err() {
+            let _ = store.delete_meeting(id);
+            return Err("音声のコピーを保存できません(空き容量を確認してください)".into());
+        }
+        store.db.conn.execute("UPDATE meetings SET audio_path=?2 WHERE id=?1", (id, dest.to_string_lossy())).map_err(err)?;
+        pipeline::enqueue(&store, id)?;
+        Ok(id)
+    }
+
+    /// 待ちの処理をすべて実行する(呼び出し側の別スレッドで)。実行中なら何もしない。
+    pub fn run_jobs(&self) -> Result<usize, String> {
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return Ok(0);
+        }
+        self.cancel.store(false, Ordering::SeqCst);
+        let keep_audio = flag(&self.app.load_settings(), "keep_audio", true);
+        let res = Store::open(&self.db_path()).map_err(err).and_then(|worker| {
+            pipeline::run_jobs(&worker, self.asr.as_ref(), &self.app.root.join("work"), &Options { keep_audio }, &self.cancel, |mid, d, t| {
+                *self.current.lock().unwrap_or_else(|p| p.into_inner()) = (Some(mid), d, t);
+            })
+        });
+        *self.current.lock().unwrap_or_else(|p| p.into_inner()) = (None, 0, 0);
+        self.busy.store(false, Ordering::SeqCst);
+        res
+    }
+
+    /// 中断(処理中の区間が終わるか、文字起こしが途中で止まったところで止まる。続きは次回の再開で)。
+    pub fn cancel_jobs(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
+
+    /// 失敗した議事録をやり直す(待ちに戻す)。
+    pub fn retry(&self, meeting_id: i64) -> Result<(), String> {
+        let store = self.store();
+        store
+            .db
+            .conn
+            .execute("DELETE FROM jobs WHERE kind=?1 AND json_extract(payload_json, '$.meeting_id')=?2", (JOB_KIND, meeting_id))
+            .map_err(err)?;
+        store.set_state(meeting_id, "queued", None).map_err(err)?;
+        pipeline::enqueue(&store, meeting_id).map(|_| ())
+    }
+
+    pub fn progress(&self) -> Result<ProgressDto, String> {
+        let s = Jobs::new(&self.store().db).summary(Some(JOB_KIND)).map_err(err)?;
+        let (mid, d, t) = *self.current.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(ProgressDto { busy: self.busy.load(Ordering::SeqCst), pending: s.pending + s.running, meeting_id: mid, done_chunks: d, total_chunks: t })
+    }
+
+    // ---------------- 議事録 ----------------
+
+    pub fn meetings(&self) -> Result<Vec<Meeting>, String> {
+        self.store().meetings().map_err(err)
+    }
+
+    pub fn detail(&self, id: i64) -> Result<DetailDto, String> {
+        let store = self.store();
+        let meeting = store.meeting(id).map_err(err)?.ok_or("見つかりません")?;
+        let segments = store.segments(id).map_err(err)?;
+        let mut speakers: Vec<String> = Vec::new();
+        for s in &segments {
+            if !s.speaker.is_empty() && !speakers.contains(&s.speaker) {
+                speakers.push(s.speaker.clone());
+            }
+        }
+        Ok(DetailDto { can_undo: store.can_undo(id).map_err(err)?, meeting, segments, speakers, low_confidence: crate::store::LOW_CONFIDENCE })
+    }
+
+    /// 再生用の音声ファイルの場所(画面は asset プロトコルで読む)。残していなければ None。
+    pub fn audio_path(&self, id: i64) -> Result<Option<String>, String> {
+        Ok(self.store().paths(id).map_err(err)?.0)
+    }
+
+    pub fn update_meta(&self, id: i64, title: &str, held_on: Option<String>, participants: &str) -> Result<DetailDto, String> {
+        let held = held_on.filter(|s| !s.trim().is_empty());
+        self.store().update_meta(id, title, held.as_deref(), participants).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn edit_text(&self, segment_id: i64, text: &str) -> Result<DetailDto, String> {
+        let mid = self.store().edit_text(segment_id, text).map_err(err)?;
+        self.detail(mid)
+    }
+
+    pub fn set_speaker(&self, segment_id: i64, speaker: &str, following: bool) -> Result<DetailDto, String> {
+        let mid = self.store().set_speaker(segment_id, speaker, following).map_err(err)?;
+        self.detail(mid)
+    }
+
+    pub fn merge_next(&self, segment_id: i64) -> Result<DetailDto, String> {
+        let mid = self.store().merge_next(segment_id).map_err(err)?;
+        self.detail(mid)
+    }
+
+    pub fn split(&self, segment_id: i64, at: usize) -> Result<DetailDto, String> {
+        let mid = self.store().split(segment_id, at).map_err(err)?;
+        self.detail(mid)
+    }
+
+    pub fn revert_segment(&self, segment_id: i64) -> Result<DetailDto, String> {
+        let mid = self.store().revert_segment(segment_id).map_err(err)?;
+        self.detail(mid)
+    }
+
+    pub fn undo(&self, id: i64) -> Result<DetailDto, String> {
+        self.store().undo(id).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn reapply_glossary(&self, id: i64) -> Result<(usize, DetailDto), String> {
+        let n = self.store().reapply_glossary(id).map_err(err)?;
+        Ok((n, self.detail(id)?))
+    }
+
+    /// 確定する(利用者が確認画面で押したときだけ呼ぶ)。
+    pub fn confirm(&self, id: i64) -> Result<DetailDto, String> {
+        self.store().confirm(id).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn unconfirm(&self, id: i64) -> Result<DetailDto, String> {
+        self.store().unconfirm(id).map_err(err)?;
+        self.detail(id)
+    }
+
+    pub fn delete_meeting(&self, id: i64) -> Result<(), String> {
+        if self.current.lock().unwrap_or_else(|p| p.into_inner()).0 == Some(id) {
+            return Err("処理中です。中断してから消してください".into());
+        }
+        for p in self.store().delete_meeting(id).map_err(err)? {
+            let _ = std::fs::remove_file(p);
+        }
+        Ok(())
+    }
+
+    // ---------------- 書き出し ----------------
+
+    /// 確定した議事録だけを書き出す。
+    pub fn export(&self, id: i64, format: &str, dest: &Path) -> Result<(), String> {
+        let f = Format::parse(format).ok_or("対応していない形式です")?;
+        let store = self.store();
+        let m = store.meeting(id).map_err(err)?.ok_or("見つかりません")?;
+        if m.status != "confirmed" {
+            return Err("確定した議事録だけを書き出せます。確認画面で確定してください".into());
+        }
+        let body = render(f, &m, &store.segments(id).map_err(err)?);
+        std::fs::write(dest, body).map_err(|_| "書き出し先に保存できません".to_string())
+    }
+
+    pub fn export_name(&self, id: i64, format: &str) -> Result<String, String> {
+        let f = Format::parse(format).ok_or("対応していない形式です")?;
+        let m = self.store().meeting(id).map_err(err)?.ok_or("見つかりません")?;
+        let safe: String = m.title.chars().map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
+        Ok(format!("{}.{}", safe, f.ext()))
+    }
+
+    /// ノイズ除去後の音声(16kHz WAV)を書き出す。音声を残していない議事録はできない。
+    pub fn export_denoised(&self, id: i64, dest: &Path) -> Result<(), String> {
+        let (audio, _) = self.store().paths(id).map_err(err)?;
+        let audio = audio.ok_or("音声を残していないため書き出せません")?;
+        let tmp = self.app.root.join("work").join(format!("export-{id}.pcm"));
+        std::fs::create_dir_all(tmp.parent().unwrap()).map_err(err)?;
+        let ms = crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp)?;
+        let mut out = Vec::new();
+        // 長い録音でも一度に全部をメモリに載せないよう、5 分ずつ処理する
+        let step = 300_000u64;
+        let mut t = 0;
+        while t < ms {
+            let x = crate::audio::read_pcm16k(&tmp, t, (t + step).min(ms))?;
+            out.extend(crate::audio::denoise_16k(&x));
+            t += step;
+        }
+        let _ = std::fs::remove_file(&tmp);
+        crate::audio::write_wav16(dest, &out)
+    }
+
+    // ---------------- 検索・用語辞書 ----------------
+
+    pub fn search(&self, query: &str) -> Result<Vec<SearchHit>, String> {
+        self.store().search(query).map_err(err)
+    }
+
+    pub fn glossary(&self) -> Result<Vec<GlossaryEntry>, String> {
+        self.store().glossary().map_err(err)
+    }
+
+    pub fn add_glossary(&self, wrong: &str, right: &str) -> Result<Vec<GlossaryEntry>, String> {
+        self.store().add_glossary(wrong, right).map_err(err)?;
+        self.glossary()
+    }
+
+    pub fn delete_glossary(&self, id: i64) -> Result<Vec<GlossaryEntry>, String> {
+        self.store().delete_glossary(id).map_err(err)?;
+        self.glossary()
+    }
+
+    // ---------------- 設定 ----------------
+
+    pub fn settings(&self) -> SettingsDto {
+        let s = self.app.load_settings();
+        SettingsDto {
+            update_check: s.update_check,
+            keep_audio: flag(&s, "keep_audio", true),
+            denoise_default: flag(&s, "denoise_default", true),
+            consent_shown: flag(&s, "consent_shown", false),
+            network: self.app.network_list(&network_entries(), UPDATE_PURPOSE),
+            data_dir: self.app.root.to_string_lossy().into(),
+            model: self.asr.name(),
+        }
+    }
+
+    /// key: update_check | keep_audio | denoise_default | consent_shown
+    pub fn set_flag(&self, key: &str, on: bool) -> Result<SettingsDto, String> {
+        let mut s = self.app.load_settings();
+        match key {
+            "update_check" => s.update_check = on,
+            "keep_audio" | "denoise_default" | "consent_shown" => {
+                s.extra.insert(key.into(), serde_json::Value::Bool(on));
+            }
+            _ => return Err("不明な設定です".into()),
+        }
+        self.app.save_settings(&s).map_err(err)?;
+        Ok(self.settings())
+    }
+
+    /// 全データ(音声のコピー・議事録・用語辞書・設定)を消す。処理中は消さない。
+    pub fn delete_all(&self) -> Result<usize, String> {
+        if self.busy.load(Ordering::SeqCst) {
+            return Err("処理中です。中断してから消してください".into());
+        }
+        let mut store = self.store();
+        *store = Store::open_in_memory().map_err(err)?;
+        let n = self.app.delete_all().map_err(err)?;
+        *store = Store::open(&self.db_path()).map_err(err)?;
+        Ok(n)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::asr::FakeAsr;
+
+    fn tmp(n: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("min-cmd-{n}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn 取り込み_処理_修正_確定_書き出し_検索_全削除まで通る() {
+        let d = tmp("flow");
+        let s = AppState::new(d.clone(), Box::new(FakeAsr { text: "やまだ商事の件です".into() })).unwrap();
+        assert!(s.import_audio(Path::new("/nope/x.txt"), true).is_err());
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/t05_overlap.wav");
+        let id = s.import_audio(&src, false).unwrap();
+        assert!(src.exists());
+        assert_eq!(s.meetings().unwrap()[0].state, "queued");
+        s.add_glossary("やまだ商事", "山田商事").unwrap();
+        assert_eq!(s.run_jobs().unwrap(), 1);
+        let det = s.detail(id).unwrap();
+        assert_eq!(det.meeting.state, "done");
+        assert!(det.segments.iter().all(|x| x.text == "山田商事の件です"));
+        assert!(s.audio_path(id).unwrap().is_some()); // 既定は音声を残す
+
+        // 確定前は書き出せない
+        let out = d.join("out.md");
+        assert!(s.export(id, "md", &out).is_err());
+        let sid = det.segments[0].id;
+        s.set_speaker(sid, "佐藤", false).unwrap();
+        s.edit_text(sid, "山田商事の件です。").unwrap();
+        s.update_meta(id, "定例会議", Some("2026-10-01".into()), "佐藤、鈴木").unwrap();
+        s.confirm(id).unwrap();
+        s.export(id, "md", &out).unwrap();
+        let md = std::fs::read_to_string(&out).unwrap();
+        assert!(md.starts_with("# 定例会議") && md.contains("**佐藤**"));
+        assert_eq!(s.export_name(id, "srt").unwrap(), "定例会議.srt");
+        let wav = d.join("dn.wav");
+        s.export_denoised(id, &wav).unwrap();
+        assert!(std::fs::metadata(&wav).unwrap().len() > 1_000_000);
+        assert!(!s.search("山田商事").unwrap().is_empty());
+
+        std::fs::remove_file(&out).ok();
+        std::fs::remove_file(&wav).ok();
+        s.delete_all().unwrap();
+        assert!(s.meetings().unwrap().is_empty());
+        assert!(s.glossary().unwrap().is_empty());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn 設定のフラグを保存できる() {
+        let d = tmp("set");
+        let s = AppState::new(d.clone(), Box::new(FakeAsr { text: String::new() })).unwrap();
+        assert!(s.settings().keep_audio && !s.settings().consent_shown);
+        assert!(!s.set_flag("keep_audio", false).unwrap().keep_audio);
+        assert!(s.set_flag("consent_shown", true).unwrap().consent_shown);
+        let st = s.set_flag("update_check", false).unwrap();
+        assert!(st.network.iter().any(|e| e.stoppable && !e.enabled));
+        assert!(s.set_flag("x", true).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+}
