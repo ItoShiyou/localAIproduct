@@ -212,6 +212,7 @@ jobs:
   smoke:
     runs-on: windows-latest
     needs: bundle
+    if: ${{ !cancelled() && needs.bundle.result == 'success' }}
     timeout-minutes: 60
     defaults:
       run:
