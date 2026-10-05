@@ -132,11 +132,11 @@ export function SummaryPanel({ api, d, plan, onImport, onOpenSettings }: {
       <p className="note sum-note" data-testid="summary-note">{SUMMARY_NOTE}</p>
 
       {!pro && (
-        <p className="note" data-testid="summary-locked">要約は有料版の機能です。議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作ります。有料版にすると、設定から要約の追加機能(モデル)を取得できます。</p>
+        <p className="note" data-testid="summary-locked">要約は有料版の機能です。議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作ります。有料版にすると、設定から要約の追加機能(モデル)を入れられます。ライセンスキーをお持ちの方は、設定の「ライセンス」に入力してください。</p>
       )}
       {pro && st && !ready && (
         <div data-testid="summary-nomodel">
-          <p className="note">要約の追加機能(モデル)がまだ入っていません。設定の「要約(追加機能)」から取得すると使えます(取得するときだけ通信します。録音や文字は送りません)。</p>
+          <p className="note">要約の追加機能(モデル)がまだ入っていません。設定の「要約(追加機能)」から取得するか、ファイルから取り込むと使えます(取得するときだけ通信します。録音や文字は送りません)。</p>
           <button className="btn small" onClick={onOpenSettings}>設定を開く</button>
         </div>
       )}

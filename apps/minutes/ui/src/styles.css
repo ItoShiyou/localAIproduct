@@ -402,3 +402,16 @@ details.more .menu { position: absolute; right: 0; top: 34px; z-index: 6; backgr
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ライセンス(設定) */
+.lic-status { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-bottom: 14px; }
+.lic-tier { margin-left: 0; }
+.lic-info { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 13px; }
+.lic-info dt { color: var(--ink-2); font-size: 12px; letter-spacing: .04em; }
+.lic-info dd { margin: 0; }
+.lic-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ink-2); letter-spacing: .04em; }
+.lic-field textarea { width: 100%; resize: vertical; font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--ink); line-height: 1.6; }
+.lic-machine { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.lic-machine h3 { font-size: 13px; font-weight: 700; margin: 0 0 4px; letter-spacing: .03em; }
+.lic-code { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--paper); user-select: all; }
+.check.locked { cursor: not-allowed; color: var(--ink-2); }

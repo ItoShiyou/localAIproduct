@@ -184,7 +184,7 @@ const sm = page.getByTestId("summary-model");
 await sm.getByText("Apache-2.0").first().waitFor();
 await sm.getByRole("button", { name: "取得する" }).click();
 await sm.getByTestId("summary-model-progress").waitFor();
-await sm.getByText("取得済み").waitFor();
+await sm.getByText("入っています").waitFor();
 await shot("7-summary-settings");
 await page.getByRole("tab", { name: "議事録" }).click();
 await page.getByRole("tab", { name: /要約/ }).click();

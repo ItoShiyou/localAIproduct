@@ -2,7 +2,7 @@
  * バックエンド(Tauri の invoke)への薄い API 層。画面はこの `Api` だけに依存する。
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
-import type { Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, SummaryResult, SummaryStatus, Todo } from "./types";
+import type { LicenseInfo, LicenseStatus, Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, SummaryResult, SummaryStatus, Todo } from "./types";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -84,6 +84,15 @@ export interface Api {
   /** 要約の下書きを作る(保存しない。終わるまで返らない。進み具合は summaryStatus)。議事録に入れるのは、画面で確認したあと updateNotes で */
   summarize(id: number): Promise<SummaryResult>;
   cancelSummarize(): Promise<void>;
+  /** ライセンス(オフラインで検証する。通信しない)。失敗は日本語のエラー文で reject */
+  licenseStatus(): Promise<LicenseStatus>;
+  installLicense(text: string): Promise<LicenseStatus>;
+  /** OS のダイアログで .license ファイルを選んで登録する。取り消したら null */
+  pickAndInstallLicense(): Promise<LicenseStatus | null>;
+  removeLicense(): Promise<LicenseStatus>;
+  machineCode(): Promise<string | null>;
+  /** 要約のモデルをファイルから取り込む(取り消したら null)。終わるまで返らない。進み具合は summaryStatus */
+  pickAndImportSummaryModel(): Promise<SummaryStatus | null>;
 }
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -168,6 +177,12 @@ export function makeTauriApi(t: TauriGlobal): Api {
     deleteSummaryModel: () => invoke("delete_summary_model"),
     summarize: (id) => invoke("summarize", { id }),
     cancelSummarize: () => invoke("cancel_summarize"),
+    licenseStatus: () => invoke("license_status"),
+    installLicense: (text) => invoke("install_license", { text }),
+    pickAndInstallLicense: () => invoke("pick_and_install_license"),
+    removeLicense: () => invoke("remove_license"),
+    machineCode: () => invoke("machine_code"),
+    pickAndImportSummaryModel: () => invoke("pick_and_import_summary_model"),
   };
 }
 
@@ -189,13 +204,26 @@ export function makeMockApi(): Api {
   let usedMs = 0;
   let settings: SettingsInfo = {
     updateCheck: true, keepAudio: true, denoiseDefault: true, consentShown: false, dataDir: "(モック)", model: "mock",
-    diarizeAvailable: true, diarizeError: null,
-    network: [
-      { purpose: "ライセンス認証・検証", destination: "販売プラットフォームのAPI", content: "ライセンスキー、端末の識別名", stoppable: false, enabled: true },
-      { purpose: "更新の確認", destination: "配布元", content: "アプリのバージョン", stoppable: true, enabled: true },
-      { purpose: "モデルの取得(操作したときのみ)", destination: "モデルの配布元(文字起こし・要約のモデル)", content: "モデル名", stoppable: false, enabled: true },
-    ],
+    diarizeAvailable: true, diarizeError: null, offlineMode: false, offlineForced: false,
+    network: [],
   };
+  // 通信一覧は、ネットワークを使わない設定(またはオフライン版)のとき、すべて止めている表示になる
+  const netList = (): SettingsInfo["network"] => {
+    const off = settings.offlineMode || settings.offlineForced;
+    return [
+      { purpose: "更新の確認", destination: "配布元", content: "アプリのバージョン", stoppable: true, enabled: !off && settings.updateCheck },
+      { purpose: "モデルの取得(操作したときのみ)", destination: "モデルの配布元(文字起こし・要約のモデル)", content: "モデル名", stoppable: true, enabled: !off },
+    ];
+  };
+  const view = (): SettingsInfo => ({ ...settings, network: netList() });
+  // ライセンス(モック): MNT1-MOCK… は有効、MNT1-MOCK-OFFLINE… はオフライン版、MNT1-MOCK-OTHER… は別の端末用
+  let license: LicenseInfo | null = null;
+  const MACHINE = "ABCD-EFGH-IJKL-MNOP";
+  const licStatus = (): LicenseStatus => {
+    const tier = license || !isFree() ? "pro" : "free";
+    return { valid: !!license, info: license, error: null, machineCode: MACHINE, tier, networkDisabled: settings.offlineMode || !!license?.offline };
+  };
+  const applyLicense = (s: SettingsInfo) => { settings = { ...s, offlineForced: !!license?.offline, offlineMode: !!license?.offline || s.offlineMode }; };
   let model: ModelInfo = { name: "Whisper large-v3-turbo(q5_0)", installed: true, downloaded: 574041195, size: 574041195, downloading: false, source: "managed", error: null };
   const SUMMARY_SIZE = 2_497_281_120;
   let sumModel: SummaryStatus = {
@@ -204,7 +232,10 @@ export function makeMockApi(): Api {
     running: false, meetingId: null, step: 0, total: 0, phase: "", generated: 0,
   };
   let sumCancel = false;
+  let mockImportError: string | null = null;
+  (globalThis as { __mockImportError?: (m: string) => void }).__mockImportError = (m) => { mockImportError = m; };
   const isFree = () => typeof location !== "undefined" && location.search.includes("free");
+  const isPro = () => !!license || !isFree();
   let current: Progress = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
   const wait = (ms = 200) => new Promise<void>((r) => setTimeout(r, ms));
   const gl = (t: string) => glossary.reduce((s, g) => s.split(g.wrong).join(g.right), t);
@@ -334,7 +365,7 @@ export function makeMockApi(): Api {
     },
     async waveform(_id, n) { return Array.from({ length: n }, (_, i) => 0.25 + 0.6 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11))); },
     async plan() {
-      const free = typeof location !== "undefined" && location.search.includes("free");
+      const free = !license && typeof location !== "undefined" && location.search.includes("free");
       const used = free ? usedMs : 0;
       return free
         ? { tier: "free", accurateModel: false, diarize: false, denoise: false, glossary: false, summary: false, exports: ["txt"], totalLimitMs: 3_600_000, meetingLimitMs: 900_000, usage: { usedMs: used, count: 0, tampered: false }, remainingMs: Math.max(0, 3_600_000 - used) }
@@ -410,11 +441,12 @@ export function makeMockApi(): Api {
       glossary = [...glossary.filter((g) => g.wrong !== wrong), { id: nextId++, wrong, right }]; return glossary;
     },
     async deleteGlossary(id) { glossary = glossary.filter((g) => g.id !== id); return glossary; },
-    async settings() { return settings; },
+    async settings() { return view(); },
     async setFlag(key, on) {
-      const k = ({ update_check: "updateCheck", keep_audio: "keepAudio", denoise_default: "denoiseDefault", consent_shown: "consentShown" } as const)[key];
-      settings = { ...settings, [k]: on, network: key === "update_check" ? settings.network.map((e) => (e.stoppable ? { ...e, enabled: on } : e)) : settings.network };
-      return settings;
+      if (key === "offline_mode" && !on && settings.offlineForced) throw new Error("オフライン版のため、ネットワークを使わない設定は切り替えられません");
+      const k = ({ update_check: "updateCheck", keep_audio: "keepAudio", denoise_default: "denoiseDefault", consent_shown: "consentShown", offline_mode: "offlineMode" } as const)[key];
+      settings = { ...settings, [k]: on };
+      return view();
     },
     async deleteAll() { const n = meetings.length; meetings = []; segs.clear(); glossary = []; return n; },
     async modelStatus() { return model; },
@@ -429,16 +461,39 @@ export function makeMockApi(): Api {
     async thirdPartyNotices() { return "THIRD-PARTY SOFTWARE NOTICES(モック)\n\nWhisper large-v3-turbo — MIT\n..."; },
     async summaryStatus() { return sumModel; },
     async downloadSummaryModel() {
-      if (isFree()) throw new Error("有料版の機能です。有料版にすると使えます");
+      if (settings.offlineMode || settings.offlineForced) throw new Error("ネットワークを使わない設定のため、取得できません。ファイルから取り込んでください");
+      if (!isPro()) throw new Error("有料版の機能です。有料版にすると使えます");
       sumModel = { ...sumModel, downloading: true, downloaded: 0, installed: false, error: null };
       for (let i = 1; i <= 5; i++) { await wait(150); sumModel = { ...sumModel, downloaded: (sumModel.size * i) / 5 }; }
       sumModel = { ...sumModel, downloading: false, installed: true, source: "managed" };
       return sumModel;
     },
     async cancelSummaryDownload() {},
+    async pickAndImportSummaryModel() {
+      if (!isPro()) throw new Error("有料版の機能です。有料版にすると使えます");
+      if (mockImportError) { const e = mockImportError; mockImportError = null; throw new Error(e); }
+      sumModel = { ...sumModel, downloading: true, downloaded: 0, installed: false, error: null };
+      for (let i = 1; i <= 4; i++) { await wait(150); sumModel = { ...sumModel, downloaded: (sumModel.size * i) / 4 }; }
+      sumModel = { ...sumModel, downloading: false, installed: true, source: "managed" };
+      return sumModel;
+    },
+    async licenseStatus() { return licStatus(); },
+    async installLicense(text) {
+      const t = text.trim();
+      if (!t.startsWith("MNT1-")) throw new Error("ライセンスキーの形式が違います。メールなどに書かれたキー(MNT1- から始まる文字列)を、そのまま貼り付けてください");
+      if (t.startsWith("MNT1-MOCK-OTHER")) throw new Error(`このライセンスは別の端末用です(この端末の端末コード: ${MACHINE})。購入先に、この端末コードを伝えて再発行を依頼してください`);
+      if (!t.startsWith("MNT1-MOCK")) throw new Error("署名が合いません。キーが途中で欠けているか、書き換えられている可能性があります。もう一度コピーし直してください");
+      const off = t.startsWith("MNT1-MOCK-OFFLINE");
+      license = { id: "0000111122223333", licensee: off ? "架空病院 臨床研究部" : "架空大学 山田研究室", edition: off ? "pro_offline" : "pro", issued: "2026-10-05", features: ["pro", "summary"], machineBound: t.includes("BOUND"), offline: off, dev: false };
+      applyLicense(settings);
+      return licStatus();
+    },
+    async pickAndInstallLicense() { return this.installLicense("MNT1-MOCK-FILE"); },
+    async removeLicense() { license = null; settings = { ...settings, offlineForced: false }; return licStatus(); },
+    async machineCode() { return MACHINE; },
     async deleteSummaryModel() { sumModel = { ...sumModel, installed: false, downloaded: 0, source: "none" }; return sumModel; },
     async summarize(id) {
-      if (isFree()) throw new Error("有料版の機能です。有料版にすると使えます");
+      if (!isPro()) throw new Error("有料版の機能です。有料版にすると使えます");
       if (!sumModel.installed) throw new Error("要約のモデルがありません。設定の「要約(追加機能)」から取得してください");
       if (!(segs.get(id) ?? []).length) throw new Error("文字起こしがありません");
       sumCancel = false;

@@ -149,7 +149,7 @@ export function App({ api }: { api: Api }) {
           <div className="plan-strip" data-testid="plan-strip">
             <span className="pro">無料版</span>
             <span>残り {Math.floor((plan.remainingMs ?? 0) / 60000)} 分(累計 {Math.floor((plan.totalLimitMs ?? 0) / 60000)} 分・1件 {Math.floor((plan.meetingLimitMs ?? 0) / 60000)} 分まで)</span>
-            <button className="link" onClick={() => setTab("settings")}>有料版について</button>
+            <button className="link" onClick={() => setTab("settings")}>有料版・ライセンスの登録</button>
           </div>
         )}
         {recordOpts && (
@@ -235,7 +235,7 @@ export function App({ api }: { api: Api }) {
             ))}
           {tab === "search" && <SearchView api={api} onOpen={openAt} />}
           {tab === "glossary" && <GlossaryView api={api} plan={plan} />}
-          {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} />}
+          {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} onLicenseChanged={() => { refresh().catch(() => undefined); api.settings().then(setSettings).catch(() => undefined); }} />}
         </section>
       </main>
       <Toasts />

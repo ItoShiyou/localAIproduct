@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { Flag, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
+import type { Flag, LicenseStatus, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
 import { PRO_LABEL } from "./types";
 import { PageHead } from "./PageHead";
 
@@ -8,7 +8,7 @@ const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
 
 /** 文字起こしのモデルの取得・削除(取得は利用者が押したときだけ通信する) */
-function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => void; plan?: Plan | null }) {
+function ModelSection({ api, onChanged, plan, offline }: { api: Api; onChanged: () => void; plan?: Plan | null; offline: boolean }) {
   const [m, setM] = useState<ModelInfo | null>(null);
   const [delAsk, setDelAsk] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -41,7 +41,8 @@ function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => voi
       {!m.installed && !m.downloading && (
         <>
           <p className="note">まだ取得していません。取得には約 {mb(m.size)} の通信と空き容量が要ります。送るのはモデルの名前(取得先のアドレス)だけで、録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
-          <button className="btn primary" onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
+          {offline && <p className="note">ネットワークを使わない設定のため、取得できません。</p>}
+          <button className="btn primary" disabled={offline} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
         </>
       )}
       {m.downloading && (
@@ -64,7 +65,7 @@ function ModelSection({ api, onChanged, plan }: { api: Api; onChanged: () => voi
 }
 
 /** 要約(追加機能)のモデルの取得・削除。有料版のみ。取得は利用者が押したときだけ通信する */
-function SummarySection({ api, plan }: { api: Api; plan?: Plan | null }) {
+function SummarySection({ api, plan, offline }: { api: Api; plan?: Plan | null; offline: boolean }) {
   const [m, setM] = useState<SummaryStatus | null>(null);
   const [delAsk, setDelAsk] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -74,8 +75,20 @@ function SummarySection({ api, plan }: { api: Api; plan?: Plan | null }) {
     const t = setInterval(() => api.summaryStatus().then(setM).catch(() => undefined), 500);
     return () => clearInterval(t);
   }, [api, m?.downloading]);
+  const [importing, setImporting] = useState(false);
   if (!m) return null;
   const pro = plan?.summary ?? false;
+  const busy = m.downloading || importing;
+  // ファイルから取り込む(通信しない)。終わるまで返らない。進み具合は summaryStatus を見に行く
+  const importFile = async () => {
+    setMsg(null);
+    setImporting(true);
+    try {
+      const r = await api.pickAndImportSummaryModel();
+      if (r) { setM(r); if (r.installed) setMsg("取り込みました。議事録の「要約」タブから使えます"); }
+    } catch (e) { setMsg(String(e).replace(/^Error: /, "")); }
+    finally { setImporting(false); setM(await api.summaryStatus()); }
+  };
   const start = async () => {
     setMsg(null);
     setM({ ...m, downloading: true, error: null });
@@ -89,19 +102,24 @@ function SummarySection({ api, plan }: { api: Api; plan?: Plan | null }) {
       <p className="note">モデル: {m.name}・{gb(m.size)}・ライセンス {m.license}(全文は下の「ライセンスの全文を表示」で読めます)。16GB のメモリのパソコンで動きます。長い会議では数分かかります。</p>
       {!pro && <p className="note" data-testid="summary-model-locked">有料版の機能です。無料版では取得できません。</p>}
       {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
-      {m.installed && m.source === "managed" && <p className="msg">取得済み</p>}
+      {m.installed && m.source === "managed" && <p className="msg">入っています</p>}
       {!m.engine && <p className="note">このアプリには要約のエンジンが入っていません。</p>}
-      {!m.installed && !m.downloading && (
+      {!m.installed && !busy && (
         <>
-          <p className="note">まだ取得していません。取得には約 {gb(m.size)} の通信と空き容量が要ります。押したときだけ通信し、送るのはモデルの名前(取得先のアドレス)だけです。録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
-          <button className="btn primary" disabled={!pro} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
+          <p className="note">まだ入っていません。取得するには約 {gb(m.size)} の通信と空き容量が要ります。押したときだけ通信し、送るのはモデルの名前(取得先のアドレス)だけです。録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
+          {offline && <p className="note" data-testid="summary-model-offline">ネットワークを使わない設定のため、取得できません。ファイルから取り込んでください。</p>}
+          <div className="row">
+            <button className="btn primary" data-testid="summary-model-get" disabled={!pro || offline} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
+            <button className="btn" data-testid="summary-model-import" disabled={!pro} onClick={importFile}>ファイルから取り込む</button>
+          </div>
+          <p className="note">通信できないパソコンでは、別のパソコンで取得したモデルのファイル({m.name} の .gguf)を USB などで持ち込み、「ファイルから取り込む」で選べます。取り込むときにファイルの内容を確かめ、想定と違うものは入れません。</p>
         </>
       )}
-      {m.downloading && (
+      {busy && (
         <div className="progress" data-testid="summary-model-progress">
           <div className="bar"><span style={{ width: `${(m.downloaded / m.size) * 100}%` }} /></div>
-          <p className="note">取得中 {mb(m.downloaded)} / {mb(m.size)}</p>
-          <button className="btn small" onClick={() => api.cancelSummaryDownload()}>中断</button>
+          <p className="note">{importing ? "取り込み中" : "取得中"} {mb(m.downloaded)} / {mb(m.size)}</p>
+          {!importing && <button className="btn small" onClick={() => api.cancelSummaryDownload()}>中断</button>}
         </div>
       )}
       {m.error && <p className="msg err">{m.error}</p>}
@@ -116,7 +134,7 @@ function SummarySection({ api, plan }: { api: Api; plan?: Plan | null }) {
   );
 }
 
-/** 無料版と有料版の比較(有料版の購入・ライセンスの有効化は準備中) */
+/** 無料版と有料版の比較 */
 function PlanCard({ plan }: { plan: Plan }) {
   const min = (ms: number | null) => (ms == null ? "" : `${Math.floor(ms / 60000)} 分`);
   const rows: [string, string, string][] = [
@@ -140,13 +158,100 @@ function PlanCard({ plan }: { plan: Plan }) {
         <thead><tr><th></th><th>無料版</th><th>有料版(買い切り)</th></tr></thead>
         <tbody>{rows.map(([a, b, c]) => <tr key={a}><td>{a}</td><td>{b}</td><td>{c}</td></tr>)}</tbody>
       </table>
-      {plan.tier === "free" && <p className="note">有料版の購入とライセンスの有効化は準備中です。</p>}
+      {plan.tier === "free" && <p className="note">ライセンスキーをお持ちの方は、すぐ下の「ライセンス」に入力すると有料版になります。購入の方法は準備中です。</p>}
     </section>
   );
 }
 
-export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, onModelReady }: {
+/** ライセンス(オフラインで検証する。通信しない)。キーを貼る、またはファイルから登録する。端末コードは、端末に固定したライセンスを頼むときに伝える */
+function LicenseSection({ api, plan, onChanged }: { api: Api; plan?: Plan | null; onChanged: () => void }) {
+  const [st, setSt] = useState<LicenseStatus | null>(null);
+  const [text, setText] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [ask, setAsk] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.licenseStatus().then(setSt).catch((e) => setErr(String(e).replace(/^Error: /, ""))); }, [api]);
+  if (!st) return null;
+  const apply = (r: LicenseStatus) => { setSt(r); setText(""); setAsk(false); setOk(`${r.info?.licensee ?? ""} 様のライセンスを登録しました。有料版になりました`); onChanged(); };
+  const run = async (f: () => Promise<LicenseStatus | null>) => {
+    setErr(null); setOk(null); setBusy(true);
+    try { const r = await f(); if (r) apply(r); }
+    catch (e) { setErr(String(e).replace(/^Error: /, "")); }
+    finally { setBusy(false); }
+  };
+  const remove = async () => {
+    setErr(null); setOk(null); setAsk(false);
+    try { const r = await api.removeLicense(); setSt(r); setOk("ライセンスを外しました。無料版に戻りました"); onChanged(); }
+    catch (e) { setErr(String(e).replace(/^Error: /, "")); }
+  };
+  const copy = async () => {
+    if (!st.machineCode) return;
+    try { await navigator.clipboard.writeText(st.machineCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { setErr("コピーできませんでした。表示されている端末コードを、手で選んでコピーしてください"); }
+  };
+  const i = st.info;
+  const pro = (plan?.tier ?? st.tier) === "pro";
+  return (
+    <section className="card" data-testid="license">
+      <h2>ライセンス</h2>
+      <div className="lic-status" data-testid="license-status">
+        <span className="pro lic-tier">{!pro ? "無料版" : i?.offline ? "有料版・オフライン版" : "有料版"}</span>
+        {i ? (
+          <dl className="lic-info">
+            <dt>登録名</dt><dd data-testid="license-licensee">{i.licensee} 様</dd>
+            <dt>版</dt><dd>{i.offline ? "オフライン版(ネットワークを使う機能を止めています)" : "有料版"}</dd>
+            <dt>発行日</dt><dd>{i.issued}</dd>
+            <dt>この端末への固定</dt><dd>{i.machineBound ? "あり(この端末でだけ使えます)" : "なし(他のパソコンにも入れられます)"}</dd>
+            {i.dev && <><dt>種類</dt><dd>開発用のライセンス</dd></>}
+          </dl>
+        ) : pro ? (
+          <p className="note">ライセンスは登録されていません(開発用の設定で有料版にしています)。</p>
+        ) : (
+          <p className="note">ライセンスは登録されていません。キーをお持ちの方は、下に貼り付けて「登録」を押してください。購入の方法は準備中です。</p>
+        )}
+      </div>
+      {st.error && <p className="msg err" data-testid="license-saved-error">保存してあるライセンスが使えません: {st.error}</p>}
+
+      <label className="lic-field">ライセンスキー
+        <textarea rows={3} value={text} placeholder="MNT1- から始まる文字列を貼り付け" data-testid="license-input" spellCheck={false}
+          onChange={(e) => { setText(e.target.value); setErr(null); }} />
+      </label>
+      <div className="row">
+        <button className="btn primary" data-testid="license-install" disabled={busy || !text.trim()} onClick={() => run(() => api.installLicense(text))}>登録</button>
+        <button className="btn" data-testid="license-file" disabled={busy} onClick={() => run(() => api.pickAndInstallLicense())}>ファイルから登録</button>
+        {i && !ask && <button className="btn small ghost" data-testid="license-remove" onClick={() => setAsk(true)}>ライセンスを外す…</button>}
+        {i && ask && (
+          <span className="ask" data-testid="license-remove-confirm">
+            外すと無料版に戻ります(議事録などのデータは消えません)。キーがあれば、またここに入れて登録できます。
+            <button className="btn small danger" data-testid="license-remove-yes" onClick={remove}>外す</button>
+            <button className="btn small" onClick={() => setAsk(false)}>やめる</button>
+          </span>
+        )}
+      </div>
+      {err && <p className="msg err" role="alert" data-testid="license-error">{err}</p>}
+      {ok && <p className="msg" data-testid="license-ok">{ok}</p>}
+      <p className="note">ライセンスの確認は、このパソコンの中だけで行います。通信はしません。「全データを削除」を押しても、ライセンスは消えません。</p>
+
+      {st.machineCode && (
+        <div className="lic-machine">
+          <h3>端末コード</h3>
+          <p className="note">ライセンスを、この端末だけで使えるように発行してもらうときに、購入先へ伝えるコードです。このパソコンの識別子そのものではありません。</p>
+          <div className="row">
+            <code className="mono lic-code" data-testid="machine-code">{st.machineCode}</code>
+            <button className="btn small" data-testid="machine-copy" onClick={copy}>{copied ? "コピーしました" : "コピー"}</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, onModelReady, onLicenseChanged }: {
   api: Api; settings: SettingsInfo | null; plan?: Plan | null; onSettings: (s: SettingsInfo) => void; onDeleted: () => void; onModelReady: () => void;
+  /** ライセンスを登録・外したとき(プランと設定を読み直す) */
+  onLicenseChanged: () => void;
 }) {
   const [ask, setAsk] = useState(false);
   const [typed, setTyped] = useState("");
@@ -168,8 +273,18 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </div>
       )}
       {plan && <PlanCard plan={plan} />}
-      <ModelSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
-      <SummarySection api={api} plan={plan} />
+      <LicenseSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings).catch(() => undefined); onLicenseChanged(); }} />
+      <section className="card" data-testid="offline-mode">
+        <h2>ネットワークを使わない</h2>
+        <label className={"check" + (s.offlineForced ? " locked" : "")}>
+          <input type="checkbox" data-testid="offline-toggle" checked={s.offlineMode} disabled={s.offlineForced} onChange={(e) => set("offline_mode", e.target.checked)} /> ネットワークを使う機能をすべて止める
+        </label>
+        {s.offlineForced
+          ? <p className="note" data-testid="offline-forced">オフライン版のライセンスが登録されているため、常にオンです(切り替えられません)。</p>
+          : <p className="note">オンにすると、モデルの取得などの通信を止めます。モデルは、別のパソコンで取得したファイルを取り込んで使えます。通信できない場所や、機密の扱いが厳しい場所向けです。</p>}
+      </section>
+      <ModelSection key={`m-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
+      <SummarySection key={`s-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} />
       <section className="card">
         <h2>処理の設定</h2>
         <label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>
@@ -186,11 +301,11 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
           <tbody>
             {s.network.map((e) => (
               <tr key={e.purpose}><td>{e.purpose}</td><td>{e.destination}</td><td>{e.content}</td>
-                <td>{e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
+                <td>{s.offlineMode ? "止めています(ネットワークを使わない設定)" : e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
             ))}
           </tbody>
         </table>
-        <p className="note">ライセンスの有効化と更新の確認は、まだ接続していません(開発中)。</p>
+        <p className="note">ライセンスの確認は、このパソコンの中だけで行い、通信しません。更新の確認の通信は、まだ実装していません(開発中)。</p>
       </section>
 
       <section className="card">

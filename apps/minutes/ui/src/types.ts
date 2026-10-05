@@ -58,8 +58,12 @@ export interface SettingsInfo {
   updateCheck: boolean; keepAudio: boolean; denoiseDefault: boolean; consentShown: boolean;
   network: NetworkEntry[]; dataDir: string; model: string;
   diarizeAvailable: boolean; diarizeError: string | null;
+  /** 「ネットワークを使わない」(通信する機能を止めている) */
+  offlineMode: boolean;
+  /** オフライン版のライセンスのため、切り替えられない */
+  offlineForced: boolean;
 }
-export type Flag = "update_check" | "keep_audio" | "denoise_default" | "consent_shown";
+export type Flag = "update_check" | "keep_audio" | "denoise_default" | "consent_shown" | "offline_mode";
 export type ExportFormat = "md" | "txt" | "srt" | "docx";
 
 export const hms = (ms: number) => {
@@ -136,3 +140,13 @@ export interface SummaryResult {
   stats: { chunks: number; promptTokens: number; genTokens: number; prefillSeconds: number; genSeconds: number; seconds: number };
 }
 export const SUMMARY_NOTE = "要約は自動で作った下書きです。内容を確認してから使ってください。";
+
+/** オフラインのライセンス。src-tauri/src/license.rs・commands.rs の DTO と同じ形(docs/license.md) */
+export interface LicenseInfo {
+  id: string; licensee: string; edition: "pro" | "pro_offline"; issued: string;
+  features: string[]; machineBound: boolean; offline: boolean; dev: boolean;
+}
+export interface LicenseStatus {
+  valid: boolean; info: LicenseInfo | null; error: string | null; machineCode: string | null;
+  tier: "free" | "pro"; networkDisabled: boolean;
+}
