@@ -8,3 +8,4 @@ src-tauri/resources/onnxruntime/
 src-tauri/binaries/
 summarizer/target/
 *.gguf
+ui/.queue-test/

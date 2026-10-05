@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Api } from "./api";
 import type { ProcessOptions, RecordStatus } from "./types";
 import { hms } from "./types";
+import { recordingQueue } from "./recordingQueue";
 
 /** マイクの音を 16kHz モノラルで集めて、0.5 秒ごとに渡す AudioWorklet(インラインで読み込む) */
 const WORKLET = `
@@ -47,8 +48,10 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
   const [phase, setPhase] = useState<"starting" | "recording" | "stopping">("starting");
   const [err, setErr] = useState<string | null>(null);
   const [askDiscard, setAskDiscard] = useState(false);
+  const [writeFailed, setWriteFailed] = useState(false);
   const cleanup = useRef<() => void>(() => undefined);
-  const started = useRef(false);
+  const finish = useRef<() => Promise<void>>(async () => undefined);
+  const stopping = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -56,59 +59,102 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
   }, []);
 
   useEffect(() => {
-    // 開発時の二重実行(StrictMode)でも、録音は1回だけ始める
-    if (started.current) return;
-    started.current = true;
+    let cancelled = false;
     (async () => {
       let stream: MediaStream | null = null;
+      let ctx: AudioContext | null = null;
+      let url: string | null = null;
+      let didStart = false;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: true } });
-        const id = await api.recordStart(opts);
-        if (!mounted.current) { stream.getTracks().forEach((t) => t.stop()); api.recordDiscard().catch(() => undefined); return; }
-        onStarted(id);
-        const ctx = new AudioContext({ sampleRate: 16000 });
-        const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        ctx = new AudioContext({ sampleRate: 16000 });
+        url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
         await ctx.audioWorklet.addModule(url);
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); await ctx.close(); URL.revokeObjectURL(url); return; }
+        const id = await api.recordStart(opts);
+        didStart = true;
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); await ctx.close(); URL.revokeObjectURL(url); await api.recordDiscard(); return; }
+        onStarted(id);
+        const context = ctx;
         const src = ctx.createMediaStreamSource(stream);
         const node = new AudioWorkletNode(ctx, "tap");
-        let buf: Float32Array[] = [], len = 0, sending = Promise.resolve();
-        node.port.onmessage = (e: MessageEvent<Float32Array>) => {
-          buf.push(e.data); len += e.data.length;
-          if (len >= ctx.sampleRate / 2) {
+        let buf: Float32Array[] = [], len = 0;
+        const queue = recordingQueue<string>(async (pcm) => {
+          try {
+            const status = await api.recordPush(pcm);
+            if (mounted.current) setSt(status);
+          } catch (error) {
+            if (mounted.current) setErr(String(error));
+            throw error;
+          }
+        });
+        const flush = () => {
+          if (len) {
             const all = new Float32Array(len);
             let o = 0;
             for (const c of buf) { all.set(c, o); o += c.length; }
             buf = []; len = 0;
-            const pcm = toBase64Int16(resample(all, ctx.sampleRate, 16000));
-            // 順番を守って送る
-            sending = sending.then(() => api.recordPush(pcm).then(setSt).catch((x) => setErr(String(x))));
+            queue.push(toBase64Int16(resample(all, context.sampleRate, 16000)));
           }
         };
+        node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+          buf.push(e.data); len += e.data.length;
+          if (len >= context.sampleRate / 2) flush();
+        };
         src.connect(node);
-        setPhase("recording");
         const s = stream;
+        const moduleUrl = url;
         cleanup.current = () => {
           cleanup.current = () => undefined; // 2回目以降は何もしない(止めたあと、画面が消えるときにも呼ばれる)
           node.port.onmessage = null; src.disconnect(); node.disconnect(); s.getTracks().forEach((t) => t.stop());
-          ctx.close().catch(() => undefined); URL.revokeObjectURL(url);
+          context.close().catch(() => undefined); URL.revokeObjectURL(moduleUrl);
         };
+        finish.current = async () => {
+          cleanup.current();
+          flush();
+          await queue.finish();
+        };
+        await ctx.resume();
+        if (cancelled) {
+          await finish.current().catch(() => undefined);
+          await api.recordDiscard();
+          return;
+        }
+        setPhase("recording");
       } catch (e) {
+        cleanup.current();
         stream?.getTracks().forEach((t) => t.stop());
+        ctx?.close().catch(() => undefined);
+        if (url) URL.revokeObjectURL(url);
+        if (didStart) await api.recordDiscard().catch(() => undefined);
+        if (cancelled) return;
         setErr(e instanceof DOMException && e.name === "NotAllowedError"
           ? "マイクを使えません。システム設定 → プライバシーとセキュリティ → マイク で、このアプリを許可してください"
           : String(e));
       }
     })();
-  }, [api, opts, onStarted]);
+    return () => { cancelled = true; };
+    // Options belong to the recording at the time it starts.
+  }, [api]);
 
-  const stop = async () => {
+  const stop = async (savePartial = false) => {
+    if (stopping.current) return;
+    stopping.current = true;
     setPhase("stopping");
-    cleanup.current();
-    try { const d = await api.recordStop(); onStopped(d.meeting.id); }
-    catch (e) { setErr(String(e)); }
+    try {
+      if (!savePartial) {
+        try { await finish.current(); }
+        catch (error) { setWriteFailed(true); throw error; }
+      }
+      const d = await api.recordStop(); onStopped(d.meeting.id);
+    }
+    catch (e) { setErr(String(e)); stopping.current = false; }
   };
   const discard = async () => {
-    cleanup.current();
+    if (stopping.current) return;
+    stopping.current = true;
+    await finish.current().catch(() => undefined);
     try { await api.recordDiscard(); } catch { /* 始まっていない */ }
     onCancel();
   };
@@ -133,11 +179,12 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
       {(st?.pendingChunks ?? 0) > 2 && <p className="note">文字起こしが追いついていません(待ち {st?.pendingChunks})。録音は続いています。</p>}
       {err && <p className="msg err">{err}</p>}
       <div className="row">
-        <button className="btn primary" disabled={phase !== "recording"} onClick={stop}>止めて保存</button>
+        <button className="btn primary" disabled={phase !== "recording"} onClick={() => stop()}>止めて保存</button>
+        {writeFailed && <button className="btn" onClick={() => stop(true)}>保存できた音声だけを残す</button>}
         {!askDiscard
-          ? <button className="btn small ghost" disabled={phase === "stopping"} onClick={() => setAskDiscard(true)}>録音を捨てる</button>
+          ? <button className="btn small ghost" disabled={phase === "stopping" && !err} onClick={() => setAskDiscard(true)}>録音を捨てる</button>
           : <span className="ask">録音と文字を消します。<button className="btn small danger" onClick={discard}>捨てる</button><button className="btn small" onClick={() => setAskDiscard(false)}>やめる</button></span>}
-        {err && phase !== "recording" && <button className="btn small" onClick={onCancel}>閉じる</button>}
+        {err && phase === "starting" && <button className="btn small" onClick={onCancel}>閉じる</button>}
       </div>
     </div>
   );

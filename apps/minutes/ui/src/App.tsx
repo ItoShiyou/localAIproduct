@@ -95,8 +95,11 @@ export function App({ api }: { api: Api }) {
   optsRef.current = opts;
   useEffect(() => {
     let off: (() => void) | undefined;
-    api.onDrop((paths) => { if (paths.length) withConsent(() => { api.importPaths(paths, optsRef.current).then(afterImport).catch((e) => notify("err", `取り込めませんでした: ${e}`)); }); }).then((f) => { off = f; });
-    return () => off?.();
+    let disposed = false;
+    api.onDrop((paths) => { if (!disposed && paths.length) withConsent(() => { api.importPaths(paths, optsRef.current).then(afterImport).catch((e) => notify("err", `取り込めませんでした: ${e}`)); }); })
+      .then((f) => { if (disposed) f(); else off = f; })
+      .catch((e) => { if (!disposed) notify("err", `ファイル取り込みの準備に失敗しました: ${e}`); });
+    return () => { disposed = true; off?.(); };
   }, [api, withConsent, afterImport]);
 
   const openAt = (meetingId: number, ms: number) => {

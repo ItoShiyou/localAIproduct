@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test:recording": "tsc src/recordingQueue.ts --target ES2022 --module ES2022 --outDir .queue-test --skipLibCheck && node --test e2e/recordingQueue.test.mjs",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "node tools/tauri.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
