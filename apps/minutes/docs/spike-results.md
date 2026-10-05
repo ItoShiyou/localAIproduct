@@ -223,3 +223,23 @@
 - **MSI(`msiexec /i /qn`、`/x /qn`)**: インストール・アンインストールとも終了コード 0。インストール先は同じく `%LOCALAPPDATA%\minutes`、アンインストール後に minutes.exe は残らなかった。
 - **今回も未確認(実機が要る)**: SmartScreen の警告、マイク録音(getUserMedia と WebView2 の許可)、実機の速さ・メモリ、Windows での要約の実行、日本語ファイル名・OneDrive 配下のパスなど実環境の差。
 - **アプリの不具合は見つからなかった**(アプリ側のコードは変更していない)。確認のために `.github/scripts/win-launch-check.ps1` を追加した。
+
+### 12b. Windows の文字起こしが遅かった原因と修正(GitHub Actions の windows-latest、2026-10-05)
+
+上の「RTF 4.5」は、**whisper.cpp(ggml)が最適化なし(MSVC の /Od 相当)でビルドされていたため**だった。CPU の命令(AVX2 など)が無効だったわけではない。値はいずれも共有のホスト型ランナー(4 論理 CPU)での測定で、**実機(i5-12500 など)の速さではない**。
+
+- **切り分け**: (1) `whisper_print_system_info()` を `real_asr` テストに出させた結果は `AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1`(命令は有効)。(2) スレッド数 1・2・4 で処理時間がほぼ反比例した(1: 458〜868 秒、2: 253〜375 秒、4: 191〜295 秒。同じ構成で繰り返してもばらつきが大きい)ので、スレッドが使われていないわけではない。(3) whisper-rs-sys が生成した ggml-cpu の Visual Studio プロジェクトを見ると、Release の `<Optimization>` が空で、`CMakeCache.txt` の `CMAKE_C_FLAGS_RELEASE` が `-nologo -MD -Brepro -W0` だけ。cmake クレートがこの変数を上書きし、MSVC の既定(`/O2 /Ob2 /DNDEBUG`)が消えていた。cargo の profile は release(`cargo test --release`)で、Rust 側の最適化の問題ではない。
+- **修正**: 環境変数 `CMAKE_C_FLAGS_RELEASE` / `CMAKE_CXX_FLAGS_RELEASE` を `-O2 -Ob2 -DNDEBUG` にする(whisper-rs-sys と llama-cpp-sys-2 は `CMAKE_` で始まる環境変数をそのまま CMake に渡す)。`/O2` と書くと Git Bash(MSYS)がパスとして書き換えて壊れるので、ハイフンで書く。`.github/workflows/minutes-windows.yml` のワークフロー全体の env と、`tools/build_summarizer.sh`(Windows ターゲットのときだけ)に入れた。**Mac のビルドには影響しない**(Windows のターゲット・CI の env だけ)。ローカルの Windows で `cargo build` するときも同じ環境変数が要る。
+- **別の問題も見つけた(CPU 命令のビルド元依存)**: whisper.cpp は MSVC で `GGML_NATIVE` が既定で ON になり、**ビルドした機械の CPU を調べて命令を決める**。CI のランナーは日によって機種が違い(AMD EPYC 7763、Intel Xeon 6973P-C、Intel Xeon Platinum 8573C を確認)、後者の 2 つで `AVX512 = 1` のビルドができた。AVX-512 のある機種でビルドした配布物は、AVX-512 の無い CPU(Intel 第 12 世代の i5-12500 など)で不正な命令で落ちるおそれがある(落ちることまでは未確認)。そこで `.github/scripts/ggml-x64-baseline.cmake` を `CMAKE_PROJECT_INCLUDE` で読ませ、`GGML_NATIVE=OFF`、AVX2・FMA・F16C・BMI2 を ON、AVX-512 を OFF に固定した。
+- **CPU の基準(決定)**: **AVX2 + FMA + F16C + BMI2(Intel Haswell・2013 年以降、AMD Zen 以降)**。i5-12500(最低ライン機)は満たす。**これより古い CPU(2013 年より前の Intel、AVX2 の無い Celeron/Pentium の一部など)では起動はしても文字起こしで落ちる**ため、動作環境に「2013 年以降の CPU(AVX2 対応)」と書く必要がある(要確認: 起動時に AVX2 が無いことを検知して案内を出す実装は未)。ggml の実行時の命令選択(`GGML_CPU_ALL_VARIANTS`、`GGML_BACKEND_DL`)は、whisper-rs 0.15.1 の build.rs が対応しておらず(共有ライブラリ化が要る)、使っていない。
+- **測定(small = 同梱の ggml-small-q5_1、スレッド 4、t05_overlap 55.7 秒、ノイズ除去なし、release ビルド)**:
+
+| ランナーの CPU | 修正前(最適化なし) | 修正後 |
+|---|---|---|
+| AMD EPYC 7763(同じジョブ内で前後を測定) | 245.9 秒(RTF 4.41) | 21.2 秒(RTF 0.38) |
+| Intel Xeon 6973P-C(同じジョブ内で前後を測定) | 143.3 秒(RTF 2.57) | 19.5 秒(RTF 0.35) |
+| AMD EPYC 7763(別のジョブ。AVX2 を明示した版) | 251〜253 秒(RTF 4.5) | 29.8 秒(RTF 0.54)、21.2 秒(RTF 0.38) |
+
+- **turbo(Pro で使う ggml-large-v3-turbo-q5_0)**: 修正後のみ測定。Intel Xeon Platinum 8573C、スレッド 4 で 82.5 秒(RTF 1.48)と 86.9 秒(RTF 1.56)。**ランナーの 4 論理 CPU では実時間を超える**。Mac M2(6 スレッド)の 0.3 前後との差は CPU の違いが大きいと見られる。i5-12500(6 コア 12 スレッド)での値は**要実機確認**(同じ式でコア数だけから推測すると 1 未満になりうるが、測っていない)。なお t05(2 人の同時発話)の誤り率は small 0.30、turbo 0.11。
+- **配布物の確認**: bundle ジョブ(リリースのアプリと要約のサイドカーを作る)でも、`whisper-rs-sys` と `llama-cpp-sys-2` の CMakeCache が `CMAKE_C_FLAGS_RELEASE=-O2 -Ob2 -DNDEBUG`、`GGML_NATIVE=OFF`、`GGML_AVX2/FMA/F16C=ON`、`GGML_AVX512=OFF` で、Release の最適化が MaxSpeed になっていることをログで確認する手順を入れた(アプリ本体のビルドも、速度のテストと同じ whisper-rs-sys のビルド)。**要約のサイドカー(llama.cpp)は、修正前から `GGML_NATIVE=OFF`(llama-cpp-sys-2 が設定)で AVX2 は有効だったが、最適化なしだったかは修正前のビルドで確かめていない**(同じ cmake クレートを使うので同じ状態だったと推測)。要約の速さは Windows で未測定。
+- **未解決**: ① `cargo test --lib`(Windows)で 2 件が落ちる(`判別し直しの最中に文の編集…`、`無料版の録音は 1 件の上限と累計の残りのうち短いほうで止まる`)。今回の変更の前から落ちていた。Windows のランナーでの時間依存かどうかは未調査。② 実機での速さ。③ AVX2 の無い CPU の扱い。
