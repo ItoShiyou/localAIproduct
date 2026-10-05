@@ -15,6 +15,7 @@ type Tab = "meetings" | "search" | "glossary" | "settings";
 
 export function App({ api }: { api: Api }) {
   const [tab, setTab] = useState<Tab>("meetings");
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [cur, setCur] = useState<number | null>(null);
   const [seekTo, setSeekTo] = useState<{ ms: number; n: number } | null>(null);
@@ -81,12 +82,12 @@ export function App({ api }: { api: Api }) {
     setResults(rs);
     for (const r of rs) if (r.error) notify("err", `取り込めませんでした(${r.name || "ファイル"}): ${r.error}`);
     const first = rs.find((r) => r.id != null);
-    if (first?.id != null) setCur(first.id);
+    if (first?.id != null) { setCur(first.id); setTab("meetings"); setLibraryOpen(false); }
     refresh().then(startJobs);
   }, [refresh, startJobs]);
 
   const pick = () => {
-    if (!optionsValid(opts)) { setShowOpts(true); return; }
+    if (!optionsValid(opts)) { setShowOpts(true); setLibraryOpen(true); return; }
     withConsent(() => { api.pickAndImport(opts).then(afterImport).catch((e) => { setResults([{ name: "", id: null, error: String(e) }]); notify("err", `取り込めませんでした: ${e}`); }); });
   };
 
@@ -118,7 +119,21 @@ export function App({ api }: { api: Api }) {
   ];
 
   return (
-    <div className="app">
+    <div className={"app calm-app" + (libraryOpen ? " library-open" : "")}>
+      <header className="app-header">
+        <button className="btn" aria-expanded={libraryOpen} aria-controls="meeting-library" onClick={() => setLibraryOpen((v) => !v)}>一覧</button>
+        <span className="app-name">minutes</span>
+        <span className="local-note">この端末の中で処理</span>
+        <span className="grow" />
+        <button className="btn rec" disabled={!!recordOpts} onClick={startRecording}>録音</button>
+        <button className="btn primary" onClick={pick}>取り込む</button>
+        <details className="more app-menu"><summary className="btn">その他</summary><div className="menu">
+          <button className="btn" onClick={() => { setShowOpts(true); setLibraryOpen(true); }}>取り込みの設定</button>
+          {nav.filter(([t]) => t !== "meetings").map(([t, label]) => <button className="btn" key={t} onClick={() => { setTab(t); setLibraryOpen(false); }}>{label}</button>)}
+          {tab !== "meetings" && <button className="btn" onClick={() => setTab("meetings")}>開いている記録に戻る</button>}
+        </div></details>
+      </header>
+      {libraryOpen && <button className="library-backdrop" aria-label="一覧を閉じる" onClick={() => setLibraryOpen(false)} />}
       {askConsent && (
         <div className="modal" role="dialog" aria-label="録音の同意について">
           <div className="modal-body">
@@ -133,7 +148,7 @@ export function App({ api }: { api: Api }) {
         </div>
       )}
 
-      <aside className="side">
+      <aside id="meeting-library" className={"side" + (recordOpts ? " recording-active" : "")} aria-label="記録の一覧">
         <div className="brand">
           <img src={logo} alt="" />
           <div><div className="name">議事録</div><div className="sub">(仮称)・この端末の中で</div></div>
@@ -196,7 +211,7 @@ export function App({ api }: { api: Api }) {
         <ul className="items">
           {shown.map((m) => (
             <li key={m.id}>
-              <button className={m.id === cur && tab === "meetings" ? "current" : ""} onClick={() => { setTab("meetings"); setCur(m.id); }}>
+              <button className={m.id === cur && tab === "meetings" ? "current" : ""} onClick={() => { setTab("meetings"); setCur(m.id); setLibraryOpen(false); }}>
                 <span className="v">{m.title}</span>
                 <span className="d">{m.durationMs ? hms(m.durationMs) : "--:--"} ・ {m.heldOn ?? ago(m.createdAt)}</span>
                 <span className={`badge s-${m.state}`}>{m.recording ? "録音中" : STATE_LABEL[m.state]}</span>

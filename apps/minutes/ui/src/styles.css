@@ -9,7 +9,10 @@
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--paper); color: var(--ink); font-family: var(--font-ui); font-size: 14px; letter-spacing: .02em; -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
-::selection { background: var(--flame-soft); }
+/* 選択は再生中・検索一致の淡い強調と区別し、入力欄でも明確に見せる。 */
+:root { --text-selection-bg: #175cd3; --text-selection-ink: #ffffff; }
+::selection { background: var(--text-selection-bg); color: var(--text-selection-ink); text-shadow: none; }
+input::selection, textarea::selection { background: var(--text-selection-bg); color: var(--text-selection-ink); text-shadow: none; }
 :focus-visible { outline: 2px solid var(--flame); outline-offset: 2px; }
 
 .app { display: grid; grid-template-columns: 296px 1fr; height: 100%; }

@@ -8,7 +8,7 @@ import { LANGUAGE_LABEL, STATE_LABEL, hms, setSpeakerOrder, speakerColor } from 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 import { SummaryPanel } from "./SummaryPanel";
 
-type View = "read" | "edit" | "memo" | "summary";
+type View = "read" | "edit" | "memo" | "focus";
 
 interface RowActions {
   seek(ms: number, play?: boolean): void;
@@ -43,7 +43,7 @@ const Row = memo(function Row({ s, last, playing, hit, low, actions, readOnly }:
       onClick={(e) => {
         // 文のどこを押しても、その位置へ再生位置を移す(入力欄・ボタンを押したときは除く)
         const t = e.target as HTMLElement;
-        if (!t.closest("button, input, select")) actions.current.seek(s.startMs, false);
+        if (!t.closest("button, input, select, textarea")) actions.current.seek(s.startMs, false);
       }}>
       <div className="seg-left">
         <button className="time" onClick={() => actions.current.seek(s.startMs, true)} title="ここから再生">{hms(s.startMs)}</button>
@@ -246,7 +246,10 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   const expRef = useRef<HTMLDivElement>(null);
   const [printOpts, setPrintOpts] = useState<PrintOptions>({ notes: true, body: true, times: true, speakers: true });
   const [printAsk, setPrintAsk] = useState(false);
-  const [view, setView] = useState<View>("edit");
+  const [view, setView] = useState<View>("read");
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const [notesRevision, setNotesRevision] = useState(0);
+  const clipEnd = useRef<number | null>(null);
   const [peaks, setPeaks] = useState<number[]>([]);
   const [paused, setPaused] = useState(true);
   const player = useRef<HTMLAudioElement>(null);
@@ -335,6 +338,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   };
 
   const seek = useCallback((ms: number, play = true) => {
+    clipEnd.current = null;
     setNow(ms);
     const a = player.current;
     if (!a) return;
@@ -426,6 +430,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   const goTo = useCallback((sid: number, focus = false) => {
     const s = segs.find((x) => x.id === sid);
     if (!s) return;
+    setFocusId(sid);
     seek(s.startMs, false);
     const li = document.getElementById(`seg-${sid}`);
     li?.scrollIntoView({ block: "center" });
@@ -515,7 +520,19 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
     globe: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>,
     file: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14H6z" /></svg>,
   };
-  const views: [View, string, string?][] = [["read", "記録"], ["edit", "編集"], ["memo", "メモ", "議題・決定事項・ToDo"], ["summary", "要約"]];
+  const views: [View, string][] = [["read", "読む"], ["edit", "聞いて直す"], ["memo", "議事録を仕上げる"], ["focus", "一文ずつ直す"]];
+  const switchView = (next: View) => {
+    // 入力欄を外して保存を開始してから画面を切り替える。
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    if (next === "focus" && focusId == null && segs.length) setFocusId(segs[Math.max(0, playingIdx)].id);
+    setView(next);
+  };
+  const focusIndex = Math.max(0, focusId == null ? playingIdx : segs.findIndex((s) => s.id === focusId));
+  const focusSegment = segs[focusIndex];
+  const moveFocus = (direction: number) => {
+    const next = segs[Math.max(0, Math.min(segs.length - 1, focusIndex + direction))];
+    if (next) goTo(next.id);
+  };
   const busyHere = !!progress && progress.busy && progress.meetingId === id;
   const confirmWhy: string | null =
     m.recording ? "録音中です。録音を止めて、文字起こしが終わると確定できます"
@@ -551,7 +568,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   }
 
   return (
-    <div className="detail">
+    <div className={`detail workspace-${view}`}>
       <header className="d-head">
         <div className="d-top">
           <input className="d-title" aria-label="タイトル" value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} onBlur={saveMeta}
@@ -587,22 +604,22 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             <button className="btn small primary" onClick={stall.go}>{stall.action}</button>
           </div>
         )}
-        <div className="meta-row">
+        <details className="meeting-meta"><summary>記録の情報</summary><div className="meta-row">
           <span className="mi">{ic.clock}{durMs ? hms(durMs) : "--:--"}</span>
           <span className="mi">{ic.globe}{LANGUAGE_LABEL[m.language]}</span>
           <span className="mi">{ic.file}{m.sourceName}{m.denoise ? "・ノイズ除去" : ""}{m.rangeStartMs != null || m.rangeEndMs != null ? `・範囲 ${m.rangeStartMs != null ? hms(m.rangeStartMs) : "最初"}〜${m.rangeEndMs != null ? hms(m.rangeEndMs) : "最後"}` : ""}</span>
           <label>日付<input type="date" aria-label="日付" value={meta.heldOn} onChange={(e) => setMeta({ ...meta, heldOn: e.target.value })} onBlur={saveMeta} /></label>
           <label>参加者<input aria-label="参加者" value={meta.participants} placeholder="例: 佐藤、鈴木" onChange={(e) => setMeta({ ...meta, participants: e.target.value })} onBlur={saveMeta} /></label>
           <label>タグ<input aria-label="タグ" value={meta.tags} placeholder="例: 定例、案件A" onChange={(e) => setMeta({ ...meta, tags: e.target.value })} onBlur={saveMeta} /></label>
-        </div>
+        </div></details>
         <div className="views" role="tablist" aria-label="表示">
-          {views.map(([v, label, full]) => (
-            <button key={v} role="tab" aria-selected={view === v} aria-label={full ? `${label}(${full})` : label} onClick={() => setView(v)}>
-              {label}{v === "summary" && !plan?.summary && <span className="pro">有料版</span>}{v === "memo" && (m.agenda || m.decisions || m.todos.length) ? " ●" : ""}
+          {views.map(([v, label]) => (
+            <button key={v} role="tab" aria-selected={view === v} aria-controls={`workspace-${v}`} id={`tab-${v}`} onClick={() => switchView(v)}>
+              {label}
             </button>
           ))}
         </div>
-        {(view === "edit" || view === "read") && (
+        <details className="workspace-tools"><summary>検索・話者・その他の操作</summary>
           <div className="toolbar">
             {(counts.size > 0 || (done && m.diarize)) && (
               <div className="speakers" data-testid="speakers">
@@ -653,7 +670,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
               </div>
             </details>
           </div>
-        )}
+        </details>
       </header>
 
       {diarDlg && (
@@ -691,7 +708,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
         </div>
       )}
 
-      <div className="d-body">
+      <div className="d-body" role="tabpanel" id={`workspace-${view}`} aria-labelledby={`tab-${view}`}>
         <div className="d-inner">
           {readOnly && (
             <p className="banner" data-testid="provisional">
@@ -720,6 +737,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
 
           {view === "edit" && (
             <>
+              <p className="workspace-hint">音声を聞きながら、文字と話者を直します。変更は入力欄を離れると保存されます。</p>
               <ol className="segs">
                 {segs.map((s, i) => (
                   <Row key={`${s.id}-${s.text}-${s.speaker}`} s={s} last={i + 1 >= segs.length} playing={s.id === playing} hit={hitSet.has(s.id) && find.hits[find.i] === s.id}
@@ -733,7 +751,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
           {view === "read" && (
             <article className="reading" data-testid="reading">
               {paras.map((p) => (
-                <div key={p.id} className={"p" + (now >= p.t && now < p.end ? " playing" : "")} onClick={() => seek(p.t, false)}>
+                <div id={`seg-${p.id}`} key={p.id} className={"p" + (now >= p.t && now < p.end ? " playing" : "")} onClick={() => seek(p.t, false)}>
                   <div className="who"><span><i style={{ background: p.sp ? speakerColor(p.sp) : "var(--line-strong)" }} />{p.sp || "—"}</span><small>{hms(p.t)}</small></div>
                   <div>{p.tx}</div>
                 </div>
@@ -741,17 +759,39 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
               {!paras.length && <p className="empty">まだ文字がありません。</p>}
             </article>
           )}
-          {view === "memo" && <div className="card"><Notes d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} /></div>}
-          {/* 要約は、タブを切り替えても下書き(確認前)が消えないよう、表示を隠すだけにする */}
-          <div hidden={view !== "summary"}>
+          {view === "focus" && <section className="sentence-review" data-testid="sentence-review">
+            <h2>一文ずつ、文字を直す</h2>
+            {focusSegment ? <>
+              <p className="note">{focusIndex + 1} / {segs.length} 文{focusSegment.confidence < d.lowConfidence ? " ・要確認" : ""}</p>
+              <ol className="segs"><Row key={`${focusSegment.id}-${focusSegment.text}-${focusSegment.speaker}`} s={focusSegment} last={focusIndex + 1 >= segs.length} playing={focusSegment.id === playing} hit={hitSet.has(focusSegment.id)} low={focusSegment.confidence < d.lowConfidence} actions={actions} readOnly={readOnly} /></ol>
+              <button className="btn sentence-listen" disabled={!audio} onClick={() => { seek(focusSegment.startMs); clipEnd.current = focusSegment.endMs; }}>▶ この部分を聞く</button>
+              <nav className="sentence-navigation" aria-label="文の移動">
+                <button className="btn" disabled={focusIndex === 0} onClick={() => moveFocus(-1)}>前の文</button>
+                <button className="link" onClick={() => switchView("edit")}>全文を見る</button>
+                <button className="btn primary" disabled={focusIndex + 1 >= segs.length} onClick={() => moveFocus(1)}>次の文</button>
+              </nav>
+            </> : <p className="empty">文字起こしの結果はここに表示されます。</p>}
+          </section>}
+          {/* 下書きは画面の切り替えで破棄せず、議事録画面内にまとめる。 */}
+          <div className="minutes-workspace" hidden={view !== "memo"}>
+            <section className="minutes-document">
+              <h2>議事録を仕上げる</h2>
+              <Notes key={`${id}-${notesRevision}`} d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} />
+              <details className="summary-disclosure"><summary>要約から下書きを作る</summary>
             <SummaryPanel api={api} d={d} plan={plan} onOpenSettings={() => onOpenSettings?.()}
-              onImport={async (n, count) => { await flush(); const x = await run(() => api.updateNotes(id, n.agenda, n.decisions, n.todos), `${count} 件をメモに追加しました(「メモ」で確認・修正できます)`); if (!x) throw new Error("メモに追加できませんでした"); }} />
+              onImport={async (n, count) => { await flush(); const x = await run(() => api.updateNotes(id, n.agenda, n.decisions, n.todos), `${count} 件を議事録に追加しました`); if (!x) throw new Error("議事録に追加できませんでした"); setNotesRevision((v) => v + 1); }} />
+              </details>
+            </section>
+            <aside className="source-transcript" aria-label="元の発言"><h3>元の発言</h3>
+              {segs.map((s) => <div key={s.id}><button className="listen" disabled={!audio} onClick={() => seek(s.startMs)}>{hms(s.startMs)} {s.speaker || "話者未設定"} ▶ 聞く</button><p>{s.text}</p></div>)}
+              {!segs.length && <p className="note">まだ発言がありません。</p>}
+            </aside>
           </div>
         </div>
       </div>
 
       <div className="player-bar" data-testid="player">
-        {audio && <audio ref={player} src={audio} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} onPlay={() => setPaused(false)} onPause={() => setPaused(true)} />}
+        {audio && <audio ref={player} src={audio} onTimeUpdate={(e) => { const a = e.currentTarget; if (clipEnd.current != null && a.currentTime * 1000 >= clipEnd.current) { a.pause(); a.currentTime = clipEnd.current / 1000; clipEnd.current = null; } setNow(a.currentTime * 1000); }} onPlay={() => setPaused(false)} onPause={() => setPaused(true)} />}
         <div className="transport">
           <button disabled={!audio} aria-label="前の文" onClick={() => { const i = Math.max(0, (playingIdx >= 0 ? playingIdx : 0) - 1); if (segs[i]) goTo(segs[i].id); }}>
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z" /></svg></button>
