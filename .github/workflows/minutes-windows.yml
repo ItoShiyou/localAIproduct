@@ -96,10 +96,13 @@ jobs:
           echo "--- whisper-rs-sys のビルドの出力から、最適化とコンパイルの指定を抜き出す ---"
           for f in target/release/build/whisper-rs-sys-*/output; do
             grep -E 'CMAKE_(C|CXX)_FLAGS|CMAKE_BUILD_TYPE|GGML_(NATIVE|AVX|AVX2|FMA|F16C|OPENMP)|OPT_LEVEL' "$f" | cut -c1-300 | sort -u | head -40
-            echo "- cl.exe の指定(ggml-cpu の 1 ファイル):"
-            grep -E 'cl\.exe.*(quants|ggml-cpu)\.c' "$f" | head -2 | cut -c1-700 || true
           done
-          for t in 4 2 1; do
+          echo "--- vcxproj(ggml-cpu)の最適化の指定 ---"
+          for v in $(find target/release/build/whisper-rs-sys-*/out -name 'ggml-cpu.vcxproj' | head -1); do
+            grep -nE 'Optimization|InlineFunctionExpansion|EnableEnhancedInstructionSet|AdditionalOptions|PreprocessorDefinitions|FloatingPointModel|IntrinsicFunctions|WholeProgram|BasicRuntimeChecks|RuntimeLibrary' "$v" | cut -c1-400 | head -30
+          done
+          grep -hE '^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE|^CMAKE_GENERATOR:' target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt | sort -u
+          for t in 4; do
             MINUTES_THREADS=$t cargo test --release --test real_asr -- --nocapture 2>&1 | grep -E 'system_info|"rtf"|whisper_print_timings|total time'
           done
 
