@@ -21,6 +21,8 @@ env:
   # (whisper.cpp / llama.cpp が再生時間の 4〜5 倍かかった原因。spike-results §12)。whisper-rs-sys と llama-cpp-sys-2 は CMAKE_ で始まる環境変数を CMake に渡すので、ここで戻す(値を /O2 と書くと MSYS がパスと見なして書き換えるので、ハイフンで書く)
   CMAKE_C_FLAGS_RELEASE: "-O2 -Ob2 -DNDEBUG"
   CMAKE_CXX_FLAGS_RELEASE: "-O2 -Ob2 -DNDEBUG"
+  # ggml の CPU 命令を、ビルドした機械でなく固定の基準(AVX2・FMA・F16C・BMI2)にする。ランナーの機種で配布物が変わるのを防ぐ
+  CMAKE_PROJECT_INCLUDE: ${{ github.workspace }}/.github/scripts/ggml-x64-baseline.cmake
 
 jobs:
   test:
@@ -105,7 +107,8 @@ jobs:
           for v in $(find target/release/build/whisper-rs-sys-*/out -name 'ggml-cpu.vcxproj' | head -1); do
             grep -nE 'Optimization|InlineFunctionExpansion|EnableEnhancedInstructionSet|AdditionalOptions|PreprocessorDefinitions|FloatingPointModel|IntrinsicFunctions|WholeProgram|BasicRuntimeChecks|RuntimeLibrary' "$v" | cut -c1-400 | head -30
           done
-          grep -hE '^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE|^CMAKE_GENERATOR:' target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt | sort -u
+          grep -hE '^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE|^CMAKE_GENERATOR:|^GGML_(NATIVE|AVX|AVX2|AVX512|FMA|F16C):' target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt | sort -u
+          if grep -rl 'GGML_AVX512' target/release/build/whisper-rs-sys-*/out/build --include=*.vcxproj; then echo "AVX-512 が有効になっている" ; exit 1; fi
           for t in 4; do
             MINUTES_THREADS=$t cargo test --release --test real_asr -- --nocapture 2>&1 | grep -E 'system_info|"rtf"|whisper_print_timings|total time'
           done
