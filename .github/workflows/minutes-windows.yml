@@ -18,9 +18,9 @@ defaults:
 env:
   CARGO_TERM_COLOR: always
   # cmake クレートは CMAKE_C_FLAGS_RELEASE を「-nologo -MD -Brepro -W0」で上書きし、MSVC の既定の /O2 が消えて最適化なし(/Od)になる
-  # (whisper.cpp / llama.cpp が再生時間の 4〜5 倍かかった原因。spike-results §12)。whisper-rs-sys と llama-cpp-sys-2 は CMAKE_ で始まる環境変数を CMake に渡すので、ここで戻す
-  CMAKE_C_FLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
-  CMAKE_CXX_FLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
+  # (whisper.cpp / llama.cpp が再生時間の 4〜5 倍かかった原因。spike-results §12)。whisper-rs-sys と llama-cpp-sys-2 は CMAKE_ で始まる環境変数を CMake に渡すので、ここで戻す(値を /O2 と書くと MSYS がパスと見なして書き換えるので、ハイフンで書く)
+  CMAKE_C_FLAGS_RELEASE: "-O2 -Ob2 -DNDEBUG"
+  CMAKE_CXX_FLAGS_RELEASE: "-O2 -Ob2 -DNDEBUG"
 
 jobs:
   test:

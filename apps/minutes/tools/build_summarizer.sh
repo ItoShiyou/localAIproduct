@@ -15,8 +15,8 @@ export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"
 export GGML_METAL=OFF
 # Windows(MSVC): cmake クレートが CMAKE_C_FLAGS_RELEASE を上書きして /O2 が消え、最適化なしになる。CMake に渡る環境変数で戻す(CI は workflow の env でも指定)
 if [[ "$TARGET" == *windows-msvc ]]; then
-  export CMAKE_C_FLAGS_RELEASE="${CMAKE_C_FLAGS_RELEASE:-/O2 /Ob2 /DNDEBUG}"
-  export CMAKE_CXX_FLAGS_RELEASE="${CMAKE_CXX_FLAGS_RELEASE:-/O2 /Ob2 /DNDEBUG}"
+  export CMAKE_C_FLAGS_RELEASE="${CMAKE_C_FLAGS_RELEASE:--O2 -Ob2 -DNDEBUG}"
+  export CMAKE_CXX_FLAGS_RELEASE="${CMAKE_CXX_FLAGS_RELEASE:--O2 -Ob2 -DNDEBUG}"
 fi
 cd "$APP/summarizer"
 cargo build --release --target "$TARGET"
