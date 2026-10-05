@@ -17,6 +17,10 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
+  # cmake クレートは CMAKE_C_FLAGS_RELEASE を「-nologo -MD -Brepro -W0」で上書きし、MSVC の既定の /O2 が消えて最適化なし(/Od)になる
+  # (whisper.cpp / llama.cpp が再生時間の 4〜5 倍かかった原因。spike-results §12)。whisper-rs-sys と llama-cpp-sys-2 は CMAKE_ で始まる環境変数を CMake に渡すので、ここで戻す
+  CMAKE_C_FLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
+  CMAKE_CXX_FLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
 
 jobs:
   test:
@@ -105,6 +109,30 @@ jobs:
           for t in 4; do
             MINUTES_THREADS=$t cargo test --release --test real_asr -- --nocapture 2>&1 | grep -E 'system_info|"rtf"|whisper_print_timings|total time'
           done
+
+  # 要約のサイドカー(llama.cpp)の Windows ビルドが最適化・AVX2 つきかを確かめる
+  sidecar-check:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/minutes/summarizer
+          key: sidecar-check
+      - name: サイドカーをビルド
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../tools/build_summarizer.sh
+      - name: ggml-cpu の最適化・命令の指定
+        run: |
+          cd ../summarizer
+          for v in $(find target -name 'ggml-cpu.vcxproj' | head -1); do
+            echo "$v"
+            awk '/Release\|x64/ {r=1} r' "$v" | grep -E 'Optimization|InlineFunctionExpansion|EnableEnhancedInstructionSet|PreprocessorDefinitions' | cut -c1-300 | head -6
+          done
+          grep -hE '^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE|^GGML_(NATIVE|AVX2?|FMA|F16C|OPENMP):' $(find target -name CMakeCache.txt | head -1) | sort -u
 
   bundle:
     runs-on: windows-latest
