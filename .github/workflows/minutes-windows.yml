@@ -145,6 +145,8 @@ jobs:
   bundle:
     runs-on: windows-latest
     needs: test
+    # test が(環境依存の一部のテストで)落ちていても、配布物のビルドと確認は進める。test の失敗は test のジョブに赤で残る
+    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -179,6 +181,15 @@ jobs:
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
         run: ../ui/node_modules/.bin/tauri build --bundles msi
+      - name: 配布物のビルドの最適化・CPU 命令の指定(速度の確認。リリースのアプリと要約のサイドカー)
+        run: |
+          for d in target/release/build/whisper-rs-sys-*/out/build ../summarizer/target/x86_64-pc-windows-msvc/release/build/llama-cpp-sys-2-*/out/build; do
+            echo "== $d"
+            grep -hE '^CMAKE_(C|CXX)_FLAGS_RELEASE:|^GGML_(NATIVE|AVX|AVX2|AVX512|FMA|F16C):' "$d/CMakeCache.txt" | sort -u
+            grep -rl 'GGML_AVX512' "$d" --include=*.vcxproj && { echo "AVX-512 が有効になっている"; exit 1; }
+            v=$(find "$d" -name ggml-cpu.vcxproj | head -1)
+            grep -E 'Optimization>|EnableEnhancedInstructionSet' "$v" | sort | uniq -c
+          done
       - name: 成果物の大きさ
         run: ls -la target/release/bundle/*/ || true
       - uses: actions/upload-artifact@v5
