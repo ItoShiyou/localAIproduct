@@ -1,6 +1,6 @@
 //! 実モデル(whisper.cpp)で、テストセットを アプリと同じ処理(pipeline)に通し、文字誤り率(CER)と時間を出す。
-//! MINUTES_WHISPER_MODEL(ggml 形式のモデルの場所)が無ければ何もせずに通る。任意で MINUTES_THREADS、MINUTES_FILES(カンマ区切り)。
-//! 実行例: MINUTES_WHISPER_MODEL=.../ggml-large-v3-turbo-q5_0.bin cargo test --release --test real_asr -- --nocapture
+//! 明示実行時は MINUTES_WHISPER_MODEL(ggml 形式のモデルの場所)が必須。不足時は失敗。任意で MINUTES_THREADS、MINUTES_FILES(カンマ区切り)。
+//! 実行例: MINUTES_WHISPER_MODEL=.../ggml-large-v3-turbo-q5_0.bin cargo test --release --test real_asr -- --ignored --nocapture
 #![cfg(feature = "whisper")]
 
 use minutes::asr::WhisperAsr;

@@ -1,5 +1,5 @@
 //! 実モデル(whisper.cpp + WeSpeaker)で、架空の4人の会議(spike/make_diarize_testset.py で生成)を処理し、
-//! 話者の判別がどれだけ合っているかを出す。モデルや音声が無ければ何もせずに通る。
+//! 話者の判別がどれだけ合っているかを出す。通常はignored。明示実行時はモデルや音声の不足を失敗とする。
 //! 必要: MINUTES_WHISPER_MODEL、MINUTES_ORT_LIB、MINUTES_SPK_MODEL、testset/generated/diarize4.{wav,json}
 #![cfg(all(feature = "whisper", feature = "diarize"))]
 

@@ -25,9 +25,12 @@ fn 因果の検査は応援の必要性を誤って拒否しない() {
 #[test]
 #[ignore = "requires real speech/summary models and summarizer executable"]
 fn 実物で文字起こしから要約の下書きまで通す() {
-    let (Ok(whisper), Ok(_), Ok(_)) = (std::env::var("MINUTES_WHISPER_MODEL"), std::env::var("MINUTES_SUMMARY_MODEL"), std::env::var("MINUTES_SUMMARIZER_BIN")) else {
+    let (Ok(whisper), Ok(summary), Ok(engine)) = (std::env::var("MINUTES_WHISPER_MODEL"), std::env::var("MINUTES_SUMMARY_MODEL"), std::env::var("MINUTES_SUMMARIZER_BIN")) else {
         panic!("set MINUTES_WHISPER_MODEL, MINUTES_SUMMARY_MODEL and MINUTES_SUMMARIZER_BIN");
     };
+    for path in [&whisper, &summary, &engine] {
+        assert!(Path::new(path).is_file(), "必要なファイルがありません: {path}");
+    }
     let file = std::env::var("MINUTES_FILES").unwrap_or_else(|_| "t01_clean".into());
     let d = std::env::temp_dir().join(format!("min-real-summary-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);

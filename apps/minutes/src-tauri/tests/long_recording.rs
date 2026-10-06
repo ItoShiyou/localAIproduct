@@ -1,6 +1,6 @@
 //! 長い録音(1時間前後)を、アプリと同じ処理で、途中で中断 → 再開して最後まで通す。時間とメモリの確認用。
-//! MINUTES_LONG_AUDIO(録音の場所)と MINUTES_WHISPER_MODEL が無ければ何もせずに通る。
-//! 実行例: /usr/bin/time -l cargo test --release --test long_recording -- --nocapture
+//! 明示実行時は MINUTES_LONG_AUDIO(録音の場所)と MINUTES_WHISPER_MODEL が必須。不足時は失敗。
+//! 実行例: /usr/bin/time -l cargo test --release --test long_recording -- --ignored --nocapture
 #![cfg(feature = "whisper")]
 
 use minutes::asr::WhisperAsr;

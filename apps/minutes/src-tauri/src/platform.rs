@@ -1,4 +1,12 @@
 //! Match the packaged Windows ggml x64 CPU baseline before entering inference.
+/// Keep speech inference within the machine's usable logical CPU budget.
+/// In particular, the historical fixed six threads oversubscribed four-core
+/// Windows runners. Invalid developer overrides must not reach native code.
+pub fn speech_threads(requested: Option<i32>, available: usize) -> i32 {
+    requested.filter(|threads| *threads > 0).unwrap_or(6)
+        .min(available.clamp(1, 32) as i32)
+}
+
 /// Never mark a working directory as disposable application data when the OS
 /// cannot resolve the dedicated location. The app's delete-all action relies on
 /// this boundary, so path resolution must fail closed.
@@ -27,6 +35,17 @@ pub fn check_inference_support() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::checked_app_data_dir;
+    #[test]
+    fn 音声処理のスレッドは正の数で利用可能なコア数を超えない() {
+        use super::speech_threads;
+        assert_eq!(speech_threads(None, 4), 4);
+        assert_eq!(speech_threads(None, 8), 6);
+        assert_eq!(speech_threads(Some(2), 8), 2);
+        assert_eq!(speech_threads(Some(0), 4), 4);
+        assert_eq!(speech_threads(Some(-1), 4), 4);
+        assert_eq!(speech_threads(Some(i32::MAX), 4), 4);
+        assert_eq!(speech_threads(None, 0), 1);
+    }
     #[test]
     fn 専用の絶対パスだけを保存場所として受け入れる() {
         let path = std::env::temp_dir().join("dev.localaiproduct.minutes");

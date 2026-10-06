@@ -15,13 +15,15 @@ pub mod summary;
 #[cfg(feature = "tauri")]
 pub mod tauri_glue;
 
-/// モデルの場所から文字起こしエンジンを作る(whisper.cpp)。`MINUTES_THREADS` でスレッド数(既定 6)。
+/// モデルの場所から文字起こしエンジンを作る(whisper.cpp)。`MINUTES_THREADS` でスレッド数(既定6、利用可能なコア数以内)。
 pub fn whisper_loader() -> commands::AsrLoader {
     Box::new(|path: &std::path::Path| -> Result<Box<dyn asr::Asr>, String> {
         platform::check_inference_support()?;
         #[cfg(feature = "whisper")]
         {
-            let threads = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+            let requested = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok());
+            let available = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+            let threads = platform::speech_threads(requested, available);
             Ok(Box::new(asr::WhisperAsr::new(path, threads)?))
         }
         #[cfg(not(feature = "whisper"))]
