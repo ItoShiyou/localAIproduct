@@ -22,7 +22,7 @@ export function OptionsForm({ value, onChange, diarizeAvailable = true, plan }: 
   return (
     <div className="opts" data-testid="options">
       <label className={"check" + (canDenoise ? "" : " locked")}><input type="checkbox" checked={value.denoise && canDenoise} disabled={!canDenoise} onChange={(e) => set({ denoise: e.target.checked })} /> ノイズ除去{!canDenoise && <span className="pro">有料版</span>}</label>
-      <label className={"check" + (canDiarize ? "" : " locked")} title={diarizeAvailable ? "" : "話者の判別のモデルが見つかりません"}>
+      <label className={"check" + (canDiarize ? "" : " locked")} title={diarizeAvailable ? "" : "話した人を判別するためのデータが見つかりません"}>
         <input type="checkbox" checked={value.diarize && canDiarize} disabled={!canDiarize} onChange={(e) => set({ diarize: e.target.checked })} /> 話者を判別{!(plan?.diarize ?? true) && <span className="pro">有料版</span>}
       </label>
       {value.diarize && canDiarize && (

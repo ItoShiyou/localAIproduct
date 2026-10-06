@@ -201,12 +201,7 @@ impl AppState {
         let store = Store::open(&data_dir.join(DB_FILE)).map_err(err)?;
         // 前回、処理の途中で終了していたら、続きの区間から再開できるようにする
         Jobs::new(&store.db).recover().map_err(err)?;
-        // 録音中にアプリが終わった議事録は、そこまでの文字を残して「失敗」にする(音声は作業用のまま残らない)
-        store
-            .db
-            .conn
-            .execute("UPDATE meetings SET state='failed', recording=0, error='録音中にアプリが終了しました(そこまでの文字は残っています)' WHERE recording=1", [])
-            .map_err(err)?;
+        crate::recorder::recover_interrupted(&store, &app.root.join("work"), &app.root.join("audio"))?;
         store.db.conn.execute("UPDATE meetings SET state='queued' WHERE state='processing'", []).map_err(err)?;
         let state = Self {
             store: Mutex::new(store),
@@ -1180,7 +1175,10 @@ mod tests {
 
     fn state(d: &Path, asr: Option<Box<dyn Asr>>) -> AppState {
         let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
-        AppState::new(d.to_path_buf(), asr, loader, vec![]).unwrap()
+        let state = AppState::new(d.to_path_buf(), asr, loader, vec![]).unwrap();
+        // Functional tests select their tier explicitly; release defaults to Free.
+        state.set_tier(Tier::Pro);
+        state
     }
 
     /// 決まった要約を返す偽のエンジン
@@ -1324,6 +1322,7 @@ mod tests {
         let bundled = res.join(WHISPER_MODEL.file_name);
         let loader: AsrLoader = Box::new(|p: &Path| Ok(Box::new(FakeAsr { text: format!("loaded {}", p.display()) }) as Box<dyn Asr>));
         let s = AppState::new(d.join("data"), None, loader, vec![(d.join("none.bin"), "env"), (bundled.clone(), "bundled")]).unwrap();
+        s.set_tier(Tier::Pro);
         assert_eq!(s.model_status().source, "none");
         std::fs::write(&bundled, b"x").unwrap();
         let st = s.model_status();
@@ -1506,7 +1505,15 @@ mod tests {
                     }
                     s.undo(id).unwrap();
                     // 確定は、判別が終わるまで断られる
-                    assert!(s.confirm(id).unwrap_err().contains("途中"));
+                    // The background task may finish between the loop check
+                    // and confirm, especially on slower Windows CI runners.
+                    match s.confirm(id) {
+                        Err(error) => assert!(error.contains("途中")),
+                        Ok(detail) => {
+                            assert!(s.rediarize_status().is_none());
+                            assert_eq!(detail.meeting.status, "confirmed");
+                        }
+                    }
                     ops += 1;
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }

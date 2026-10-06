@@ -8,6 +8,7 @@ pub mod export;
 pub mod license;
 pub mod pipeline;
 pub mod plan;
+pub mod platform;
 pub mod recorder;
 pub mod store;
 pub mod summary;
@@ -17,6 +18,7 @@ pub mod tauri_glue;
 /// モデルの場所から文字起こしエンジンを作る(whisper.cpp)。`MINUTES_THREADS` でスレッド数(既定 6)。
 pub fn whisper_loader() -> commands::AsrLoader {
     Box::new(|path: &std::path::Path| -> Result<Box<dyn asr::Asr>, String> {
+        platform::check_inference_support()?;
         #[cfg(feature = "whisper")]
         {
             let threads = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);

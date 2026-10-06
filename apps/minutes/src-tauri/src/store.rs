@@ -457,7 +457,10 @@ impl Store {
     /// 1区間の結果を保存し、処理済みにする(途中で止まっても、区間の単位で続きから)。
     pub fn save_chunk(&self, id: i64, idx: i64, chunk_start_ms: i64, chunk_end_ms: i64, segs: &[crate::asr::AsrSegment]) -> Result<(), CoreError> {
         let glossary = self.glossary()?;
-        let tx = self.db.conn.unchecked_transaction().map_err(e)?;
+        // Acquire the write lock before the DELETE/SELECT statements. A deferred
+        // transaction can deadlock while upgrading a read lock against the
+        // recording connection and fail immediately despite busy_timeout.
+        let tx = rusqlite::Transaction::new_unchecked(&self.db.conn, rusqlite::TransactionBehavior::Immediate).map_err(e)?;
         tx.execute("DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE meeting_id=?1 AND chunk_idx=?2)", (id, idx)).map_err(e)?;
         tx.execute("DELETE FROM segments WHERE meeting_id=?1 AND chunk_idx=?2", (id, idx)).map_err(e)?;
         // 録音中の仮の文字(chunk_idx が負)は、正確な文字起こしの区間と重なる分から置き換える

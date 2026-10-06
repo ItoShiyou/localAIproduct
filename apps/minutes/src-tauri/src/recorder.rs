@@ -24,6 +24,70 @@ const MIN_CHUNK_MS: u64 = 4_000;
 const MAX_CHUNK_MS: u64 = 25_000;
 const CUT_SILENCE_MS: u64 = 600;
 
+/// Recover only known interrupted meetings. Keep the raw recording until the
+/// finalized WAV and its database reference are both saved successfully.
+pub fn recover_interrupted(store: &Store, work: &Path, audio_dir: &Path) -> Result<(), String> {
+    let ids: Vec<i64> = {
+        let mut statement = store.db.conn.prepare("SELECT id FROM meetings WHERE recording=1 OR (state='failed' AND error LIKE '録音が中断されました。音声の復元を完了できませんでした:%')").map_err(|e| e.to_string())?;
+        let rows = statement.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+    };
+    for id in ids {
+        let pcm = work.join(format!("meeting-{id}.pcm"));
+        let recovered = (|| -> Result<(), String> {
+            let bytes = std::fs::metadata(&pcm).map_err(|e| e.to_string())?.len() / 2 * 2;
+            if bytes == 0 { return Err("保存済みの音声がありません".into()); }
+            let data_len = u32::try_from(bytes).ok().filter(|n| *n <= u32::MAX - 36)
+                .ok_or_else(|| "録音がWAV形式の容量上限を超えています".to_string())?;
+            std::fs::create_dir_all(audio_dir).map_err(|e| e.to_string())?;
+            let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+            let wav = audio_dir.join(format!("{id}-recovered-{stamp}.wav"));
+            let temp = wav.with_extension("partial");
+            // Use a new destination on each retry; never overwrite saved audio.
+            let mut out = File::create(&temp).map_err(|e| e.to_string())?;
+            let mut header = Vec::with_capacity(44);
+            header.extend_from_slice(b"RIFF");
+            header.extend_from_slice(&(36 + data_len).to_le_bytes());
+            header.extend_from_slice(b"WAVEfmt ");
+            header.extend_from_slice(&16u32.to_le_bytes());
+            header.extend_from_slice(&1u16.to_le_bytes());
+            header.extend_from_slice(&1u16.to_le_bytes());
+            header.extend_from_slice(&RATE.to_le_bytes());
+            header.extend_from_slice(&(RATE * 2).to_le_bytes());
+            header.extend_from_slice(&2u16.to_le_bytes());
+            header.extend_from_slice(&16u16.to_le_bytes());
+            header.extend_from_slice(b"data");
+            header.extend_from_slice(&data_len.to_le_bytes());
+            out.write_all(&header).map_err(|e| e.to_string())?;
+            let input = File::open(&pcm).map_err(|e| e.to_string())?;
+            let mut input = std::io::Read::take(input, bytes);
+            let copied = std::io::copy(&mut input, &mut out).map_err(|e| e.to_string())?;
+            if copied != bytes { return Err("録音ファイルの読み込みが途中で止まりました".into()); }
+            out.sync_all().map_err(|e| e.to_string())?;
+            drop(out);
+            // Do not overwrite a completed recovery on a retry (Windows also
+            // refuses renaming onto an existing destination).
+            if wav.exists() {
+                return Err("復元済みの音声が存在します。元の録音も保持しています".into());
+            }
+            std::fs::rename(&temp, &wav).map_err(|e| e.to_string())?;
+            store.db.conn.execute(
+                "UPDATE meetings SET audio_path=?2, pcm_path=NULL, duration_ms=?3, state='failed', recording=0, error='録音中にアプリが終了しました。保存済みの音声を復元しました。聞き直すか、文字起こしをやり直してください' WHERE id=?1",
+                (id, wav.to_string_lossy().as_ref(), (bytes / 2 * 1000 / RATE as u64) as i64),
+            ).map_err(|e| e.to_string())?;
+            let _ = std::fs::remove_file(&pcm);
+            Ok(())
+        })();
+        if let Err(reason) = recovered {
+            // The error marker allows a subsequent startup to retry, but the
+            // UI must not show an interrupted recording as still running.
+            store.set_recording(id, false).map_err(|e| e.to_string())?;
+            store.set_state(id, "failed", Some(&format!("録音が中断されました。音声の復元を完了できませんでした: {reason}"))).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 struct Job {
     idx: i64,
     start_ms: u64,
@@ -137,19 +201,11 @@ impl LiveRecorder {
         let pending = Arc::new(AtomicUsize::new(0));
         let cancel = Arc::new(AtomicBool::new(false));
         let (db, pcm, p2, c2) = (db_path.to_path_buf(), pcm_path.clone(), pending.clone(), cancel.clone());
+        // Open the worker connection before recording writes begin. Otherwise
+        // opening/migrating races with chunk inserts on fast producers.
+        let worker_store = Store::open(&db).map_err(|e| e.to_string())?;
         let worker = std::thread::spawn(move || -> Result<(), String> {
-            // 開く瞬間は busy_timeout がまだ効かず、録音を始めた側の接続と重なると失敗することがある(Windows の CI で確認)ので数回やり直す
-            let mut tries = 0;
-            let store = loop {
-                match Store::open(&db) {
-                    Ok(s) => break s,
-                    Err(e) if tries >= 50 => return Err(e.to_string()),
-                    Err(_) => {
-                        tries += 1;
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                }
-            };
+            let store = worker_store;
             for job in rx {
                 let segs = if job.silent || c2.load(Ordering::SeqCst) {
                     vec![]
@@ -158,7 +214,7 @@ impl LiveRecorder {
                     if denoise {
                         x = audio::denoise_16k(&x);
                     }
-                    asr.transcribe(&x, &hint, &language, &c2).unwrap_or_default()
+                    asr.transcribe(&x, &hint, &language, &c2)?
                 };
                 store.save_chunk(meeting_id, job.idx, job.start_ms as i64, job.end_ms as i64, &segs).map_err(|e| e.to_string())?;
                 p2.fetch_sub(1, Ordering::SeqCst);
@@ -174,7 +230,11 @@ impl LiveRecorder {
         store.add_chunk(self.meeting_id, idx, s as i64, e as i64, silent).map_err(|e| e.to_string())?;
         self.pending.fetch_add(1, Ordering::SeqCst);
         if let Some(tx) = &self.tx {
-            tx.send(Job { idx, start_ms: s, end_ms: e, silent }).map_err(|_| "文字起こしが止まっています".to_string())?;
+            if tx.send(Job { idx, start_ms: s, end_ms: e, silent }).is_err() {
+                let reason = self.worker.take().and_then(|worker| worker.join().ok()).and_then(Result::err)
+                    .unwrap_or_else(|| "文字起こしが止まっています".to_string());
+                return Err(reason);
+            }
         }
         self.idx += 1;
         Ok(())
@@ -185,6 +245,9 @@ impl LiveRecorder {
         for v in x {
             self.file.write_all(&((v.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).map_err(|_| "録音を保存できません(空き容量を確認してください)".to_string())?;
         }
+        // Flush every incoming audio block, not only at recognition boundaries.
+        // An application crash must not lose the last buffered short utterance.
+        self.file.flush().map_err(|_| "録音を保存できません(空き容量を確認してください)".to_string())?;
         for c in self.seg.push(x) {
             self.send(store, c)?;
         }
@@ -197,13 +260,15 @@ impl LiveRecorder {
 
     /// 止める: 残りの仮の文字を出し(終わるまで待つ)、WAV に書き出し、正確な文字起こしを待ちに入れる。
     pub fn stop(mut self, store: &Store, audio_dir: &Path) -> Result<(), String> {
-        if let Some(c) = self.seg.finish() {
-            self.send(store, c)?;
-        }
+        let mut worker_error = self.seg.finish().and_then(|c| self.send(store, c).err());
         self.file.flush().map_err(|e| e.to_string())?;
+        // Windows cannot remove an open recording file. Close the writer before
+        // conversion/cleanup; the worker only opens independent read handles.
+        drop(self.file);
         drop(self.tx.take());
         if let Some(w) = self.worker.take() {
-            w.join().map_err(|_| "文字起こしが途中で止まりました".to_string())??;
+            let result = w.join().unwrap_or_else(|_| Err("文字起こしが途中で止まりました".to_string()));
+            if let Err(error) = result { worker_error = Some(error); }
         }
         let id = self.meeting_id;
         let ms = self.seg.elapsed_ms();
@@ -212,9 +277,14 @@ impl LiveRecorder {
         let all = audio::read_pcm16k(&self.pcm_path, 0, ms)?;
         audio::write_wav16(&wav, &all)?;
         drop(all);
-        let _ = std::fs::remove_file(&self.pcm_path);
         store.set_audio_path(id, &wav.to_string_lossy()).map_err(|e| e.to_string())?;
         store.set_pcm(id, None, Some(ms as i64)).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&self.pcm_path);
+        if let Some(error) = worker_error {
+            store.set_recording(id, false).map_err(|e| e.to_string())?;
+            store.set_state(id, "failed", Some(&error)).map_err(|e| e.to_string())?;
+            return Err(error);
+        }
         store.reset_for_final(id).map_err(|e| e.to_string())?;
         pipeline::enqueue(store, id).map(|_| ())
     }
@@ -226,6 +296,7 @@ impl LiveRecorder {
         if let Some(w) = self.worker.take() {
             let _ = w.join();
         }
+        drop(self.file);
         let _ = std::fs::remove_file(&self.pcm_path);
         for p in store.delete_meeting(self.meeting_id).map_err(|e| e.to_string())? {
             let _ = std::fs::remove_file(p);
@@ -241,6 +312,94 @@ mod tests {
 
     fn tone(ms: u64, amp: f32) -> Vec<f32> {
         (0..(ms * 16) as usize).map(|i| (i as f32 * 0.07).sin() * amp).collect()
+    }
+
+    #[test]
+    fn 中断録音を復元し端数と再起動を安全に扱う() {
+        let d = std::env::temp_dir().join(format!("min-recover-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("work")).unwrap();
+        let st = Store::open(&d.join("db.sqlite3")).unwrap();
+        let id = st.add_meeting("interrupted", "mic", "", false).unwrap();
+        st.set_recording(id, true).unwrap();
+        let raw = d.join("work").join(format!("meeting-{id}.pcm"));
+        let mut bytes = vec![0u8; 32_000];
+        bytes.push(1); // An incomplete i16 sample must not invalidate the WAV.
+        std::fs::write(&raw, &bytes).unwrap();
+        recover_interrupted(&st, &d.join("work"), &d.join("audio")).unwrap();
+        let meeting = st.meeting(id).unwrap().unwrap();
+        assert!(!meeting.recording);
+        assert_eq!(meeting.state, "failed");
+        assert_eq!(meeting.duration_ms, Some(1_000));
+        let wav = st.paths(id).unwrap().0.unwrap();
+        assert_eq!(std::fs::metadata(&wav).unwrap().len(), 32_044);
+        assert!(!raw.exists());
+        recover_interrupted(&st, &d.join("work"), &d.join("audio")).unwrap();
+        assert_eq!(st.paths(id).unwrap().0.unwrap(), wav);
+        drop(st);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn 復元失敗でも元音声を残し次回起動で再試行する() {
+        let d = std::env::temp_dir().join(format!("min-recover-retry-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("work")).unwrap();
+        let st = Store::open(&d.join("db.sqlite3")).unwrap();
+        let id = st.add_meeting("interrupted", "mic", "", false).unwrap();
+        st.set_recording(id, true).unwrap();
+        let raw = d.join("work").join(format!("meeting-{id}.pcm"));
+        std::fs::write(&raw, vec![0u8; 32_000]).unwrap();
+        std::fs::write(d.join("audio"), "blocked").unwrap();
+        recover_interrupted(&st, &d.join("work"), &d.join("audio")).unwrap();
+        assert!(raw.exists());
+        assert!(!st.meeting(id).unwrap().unwrap().recording);
+        std::fs::remove_file(d.join("audio")).unwrap();
+        recover_interrupted(&st, &d.join("work"), &d.join("audio")).unwrap();
+        assert!(Path::new(&st.paths(id).unwrap().0.unwrap()).exists());
+        assert!(!raw.exists());
+        drop(st);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn 短い録音も認識区間の前にディスクへ保存される() {
+        let d = std::env::temp_dir().join(format!("min-short-flush-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let db = d.join("db.sqlite3");
+        let st = Store::open(&db).unwrap();
+        let id = st.add_meeting("short", "mic", "", false).unwrap();
+        let mut recorder = LiveRecorder::start(&db, &d.join("work"), id, Arc::new(FakeAsr { text: "test".into() }), String::new(), "ja".into(), false).unwrap();
+        recorder.push(&st, &tone(100, 0.3)).unwrap();
+        assert_eq!(std::fs::metadata(&recorder.pcm_path).unwrap().len(), 3_200);
+        recorder.discard(&st).unwrap();
+        drop(st);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn 認識に失敗しても録音音声を保存し理由を返す() {
+        struct FailedAsr;
+        impl Asr for FailedAsr {
+            fn name(&self) -> String { "failed-test".into() }
+            fn transcribe(&self, _: &[f32], _: &str, _: &str, _: &Arc<AtomicBool>) -> Result<Vec<crate::asr::AsrSegment>, String> {
+                Err("recognition failed".into())
+            }
+        }
+        let d = std::env::temp_dir().join(format!("min-rec-failure-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let db = d.join("db.sqlite3");
+        let st = Store::open(&db).unwrap();
+        let id = st.add_meeting("test", "mic", "", false).unwrap();
+        st.set_recording(id, true).unwrap();
+        let mut recorder = LiveRecorder::start(&db, &d.join("work"), id, Arc::new(FailedAsr), String::new(), "ja".into(), false).unwrap();
+        recorder.push(&st, &tone(5_000, 0.3)).unwrap();
+        assert!(recorder.stop(&st, &d.join("audio")).unwrap_err().contains("recognition failed"));
+        let meeting = st.meeting(id).unwrap().unwrap();
+        assert_eq!(meeting.state, "failed");
+        assert!(!meeting.recording);
+        let audio = st.paths(id).unwrap().0.unwrap();
+        let pcm = d.join("check.pcm");
+        assert_eq!(audio::decode_to_pcm16k(Path::new(&audio), &pcm).unwrap(), 5_000);
+        std::fs::remove_dir_all(&d).ok();
     }
 
     #[test]

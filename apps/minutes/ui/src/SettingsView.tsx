@@ -27,20 +27,19 @@ function ModelSection({ api, onChanged, plan, offline }: { api: Api; onChanged: 
   };
   return (
     <section className="card" data-testid="model">
-      <h2>文字起こしのモデル</h2>
+      <h2>文字起こしの準備</h2>
       {plan?.tier === "free" && (
         <p className="note" data-testid="model-tier">
-          いまは<b>標準モデル(Whisper small)</b>で文字起こししています。下の高精度モデルは有料版で使えます。
+          いまは<b>標準の文字起こし</b>を使っています。より精度の高い文字起こしは有料版で使えます。
         </p>
       )}
-      <p className="note">高精度モデル: {m.name}・{mb(m.size)}。文字起こしはこのパソコンの中で行います。</p>
-      {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
+      <p className="note">高精度の文字起こしに必要な容量は約 {mb(m.size)} です。音声はこのパソコンの中で処理します。</p>
       {m.source === "bundled" && <p className="msg">アプリに同梱済み(追加の取得は不要です)</p>}
       {m.source === "managed" && <p className="msg">取得済み</p>}
-      {m.source === "none" && <p className="note">アプリに同梱したモデルが見つかりません。インストールし直すか、ここから取得してください。</p>}
+      {m.source === "none" && <p className="note">文字起こしに必要なデータが見つかりません。アプリを入れ直すか、ここからダウンロードしてください。</p>}
       {!m.installed && !m.downloading && (
         <>
-          <p className="note">まだ取得していません。取得には約 {mb(m.size)} の通信と空き容量が要ります。送るのはモデルの名前(取得先のアドレス)だけで、録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
+          <p className="note">まだ取得していません。取得には約 {mb(m.size)} の通信と空き容量が要ります。ダウンロード先と通信しますが、録音や会話の内容は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
           {offline && <p className="note">ネットワークを使わない設定のため、取得できません。</p>}
           <button className="btn primary" disabled={offline} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
         </>
@@ -55,7 +54,7 @@ function ModelSection({ api, onChanged, plan, offline }: { api: Api; onChanged: 
       {m.error && <p className="msg err">{m.error}</p>}
       {msg && <p className="msg">{msg}</p>}
       {m.installed && m.source === "managed" && (!delAsk
-        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>モデルを削除…</button>
+        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>追加データを削除…</button>
         : <span className="ask">削除すると、文字起こしには再取得が必要です。
             <button className="btn small danger" onClick={async () => { try { setM(await api.deleteModel()); } catch (e) { setMsg(String(e)); } setDelAsk(false); }}>削除する</button>
             <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
@@ -98,21 +97,21 @@ function SummarySection({ api, plan, offline }: { api: Api; plan?: Plan | null; 
   return (
     <section className="card" data-testid="summary-model">
       <h2>要約(追加機能){!pro && <span className="pro">{PRO_LABEL}</span>}</h2>
-      <p className="note">議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作る機能です。必要なモデルは、アプリとは別に、あとから取得します。</p>
-      <p className="note">モデル: {m.name}・{gb(m.size)}・ライセンス {m.license}(全文は下の「ライセンスの全文を表示」で読めます)。16GB のメモリのパソコンで動きます。長い会議では数分かかります。</p>
+      <p className="note">会話から要点・決定事項・やることの下書きを作ります。初めて使うときは、必要なデータを追加ダウンロードしてください。</p>
+      <p className="note">必要な空き容量は約 {gb(m.size)} です。メモリ16GBのパソコンで動作確認しています。長い会議では数分かかることがあります。</p>
       {!pro && <p className="note" data-testid="summary-model-locked">有料版の機能です。無料版では取得できません。</p>}
-      {m.source === "env" && <p className="note">開発用の設定(環境変数)で指定されたモデルを使っています。</p>}
       {m.installed && m.source === "managed" && <p className="msg">入っています</p>}
-      {!m.engine && <p className="note">このアプリには要約のエンジンが入っていません。</p>}
+      {!m.engine && <p className="note">この版では要約を利用できません。</p>}
       {!m.installed && !busy && (
         <>
-          <p className="note">まだ入っていません。取得するには約 {gb(m.size)} の通信と空き容量が要ります。押したときだけ通信し、送るのはモデルの名前(取得先のアドレス)だけです。録音や文字は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
+          <p className="note">まだ入っていません。取得するには約 {gb(m.size)} の通信と空き容量が要ります。ダウンロード時だけ通信します。録音や会話の内容は送りません。{m.downloaded > 0 && ` 途中まで取得済み(${mb(m.downloaded)})なので、続きから再開します。`}</p>
           {offline && <p className="note" data-testid="summary-model-offline">ネットワークを使わない設定のため、取得できません。ファイルから取り込んでください。</p>}
           <div className="row">
             <button className="btn primary" data-testid="summary-model-get" disabled={!pro || offline} onClick={start}>{m.downloaded > 0 ? "続きから取得する" : "取得する"}</button>
             <button className="btn" data-testid="summary-model-import" disabled={!pro} onClick={importFile}>ファイルから取り込む</button>
           </div>
-          <p className="note">通信できないパソコンでは、別のパソコンで取得したモデルのファイル({m.name} の .gguf)を USB などで持ち込み、「ファイルから取り込む」で選べます。取り込むときにファイルの内容を確かめ、想定と違うものは入れません。</p>
+          <p className="note">インターネットにつながらないパソコンでは、必要なファイルをUSBなどで持ち込み、「ファイルから取り込む」で選べます。</p>
+          <a href="#third-party-licenses">対応ファイルとライセンスを確認する</a>
         </>
       )}
       {busy && (
@@ -125,7 +124,7 @@ function SummarySection({ api, plan, offline }: { api: Api; plan?: Plan | null; 
       {m.error && <p className="msg err">{m.error}</p>}
       {msg && <p className="msg">{msg}</p>}
       {m.installed && m.source === "managed" && (!delAsk
-        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>モデルを削除…</button>
+        ? <button className="btn small ghost" onClick={() => setDelAsk(true)}>追加データを削除…</button>
         : <span className="ask">削除すると、要約には再取得が必要です。
             <button className="btn small danger" onClick={async () => { try { setM(await api.deleteSummaryModel()); } catch (e) { setMsg(String(e)); } setDelAsk(false); }}>削除する</button>
             <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
@@ -138,7 +137,7 @@ function SummarySection({ api, plan, offline }: { api: Api; plan?: Plan | null; 
 function PlanCard({ plan }: { plan: Plan }) {
   const min = (ms: number | null) => (ms == null ? "" : `${Math.floor(ms / 60000)} 分`);
   const rows: [string, string, string][] = [
-    ["文字起こしの精度", "標準(小さなモデル)", "高精度(大きなモデル)"],
+    ["文字起こしの精度", "標準", "高精度"],
     ["文字起こしできる時間", `累計 ${min(plan.totalLimitMs ?? 3_600_000)}・1件 ${min(plan.meetingLimitMs ?? 900_000)}まで`, "制限なし"],
     ["マイク録音・取り込み・確認と修正・検索", "○", "○"],
     ["書き出し", "テキストのみ(末尾に無料版の表示)", "Word・PDF・Markdown・テキスト・字幕・音声"],
@@ -262,7 +261,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
 
   return (
     <div className="pane">
-      <PageHead label="Settings" title="設定">プラン・モデル・処理の既定・データの扱いをまとめています。録音や文字の内容は、このパソコンの外に送りません。</PageHead>
+      <PageHead label="Settings" title="設定">プラン、文字起こしや要約の準備、データの扱いを確認できます。</PageHead>
       {notices != null && (
         <div className="modal" role="dialog" aria-label="ライセンスの全文">
           <div className="modal-body wide">
@@ -281,7 +280,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </label>
         {s.offlineForced
           ? <p className="note" data-testid="offline-forced">オフライン版のライセンスが登録されているため、常にオンです(切り替えられません)。</p>
-          : <p className="note">オンにすると、モデルの取得などの通信を止めます。モデルは、別のパソコンで取得したファイルを取り込んで使えます。通信できない場所や、機密の扱いが厳しい場所向けです。</p>}
+          : <p className="note">オンにすると、追加ダウンロードなどの通信を止めます。要約に必要なファイルはUSBなどから取り込めます。通信できない場所や、機密の扱いが厳しい場所向けです。</p>}
       </section>
       <ModelSection key={`m-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       <SummarySection key={`s-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} />
@@ -305,7 +304,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
             ))}
           </tbody>
         </table>
-        <p className="note">ライセンスの確認は、このパソコンの中だけで行い、通信しません。更新の確認の通信は、まだ実装していません(開発中)。</p>
+        <p className="note">購入キーの確認にはインターネットを使いません。この版はアプリの更新を自動確認しません。</p>
       </section>
 
       <section className="card">
@@ -319,13 +318,16 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         <p className="note">音声のコピー・議事録・用語辞書・設定はこのフォルダに保存します。アプリ内では暗号化していません。パソコンのディスク暗号化(macOS は FileVault、Windows は BitLocker)を有効にしておくことをおすすめします。</p>
       </section>
 
-      <section className="card">
-        <h2>使っているソフトウェアとモデル</h2>
+      <section className="card" id="third-party-licenses">
+        <h2>第三者ライセンス・技術情報</h2>
+        <p className="note">通常の利用に、この一覧を覚える必要はありません。使用しているモデル、提供元、利用条件をまとめています。</p>
         <table className="table">
           <thead><tr><th>名前</th><th>用途</th><th>ライセンス</th></tr></thead>
           <tbody>
             {[
-              ["Whisper large-v3-turbo(OpenAI)/ whisper.cpp 形式", "文字起こしのモデル", "MIT"],
+              ["Whisper small / large-v3-turbo（OpenAI）", "標準 / 高精度の文字起こし", "MIT"],
+              ["WeSpeaker ResNet34-LM（WeSpeaker project）", "話者の判別・改変なし", "CC BY 4.0"],
+              ["ONNX Runtime（Microsoft）", "話者判別の実行", "MIT"],
               ["whisper.cpp", "文字起こしの実行", "MIT"],
               ["Qwen3-4B-Instruct-2507(Alibaba Cloud)/ GGUF 量子化は Unsloth", "要約のモデル(追加機能・取得したときのみ)", "Apache-2.0"],
               ["llama.cpp / llama-cpp-2", "要約の実行(別の実行ファイル)", "MIT / MIT または Apache-2.0"],
@@ -338,13 +340,14 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
             ].map(([n, u, l]) => <tr key={n}><td>{n}</td><td>{u}</td><td>{l}</td></tr>)}
           </tbody>
         </table>
+        <p className="note">オフラインで要約を準備する場合の対応ファイル: Qwen3-4B-Instruct-2507 の GGUF（Q4_K_M）。提供元・利用条件・著作権表示は下の全文に記載しています。</p>
         <p className="note">ここに挙げたもののほか、多数のオープンソースのライブラリを使っています。すべての著作権表示とライセンスの全文は、次のボタンから読めます(アプリにも同梱しています)。</p>
         <button className="btn small" onClick={async () => { try { setNotices(await api.thirdPartyNotices()); } catch (e) { setMsg(String(e)); } }}>ライセンスの全文を表示</button>
       </section>
 
       <section className="card danger-zone">
         <h2>全データを削除</h2>
-        <p className="note">音声のコピー・議事録・用語辞書・設定と、取得した文字起こしのモデルをすべて消します。元に戻せません。取り込み元の録音ファイルは消えません。</p>
+        <p className="note">音声のコピー・議事録・用語辞書・設定と、ダウンロードした文字起こし用データをすべて消します。元に戻せません。取り込み元の録音ファイルは消えません。</p>
         {!ask ? <button className="btn danger" onClick={() => setAsk(true)}>全データを削除…</button> : (
           <div className="row">
             <input placeholder="「削除」と入力" value={typed} onChange={(e) => setTyped(e.target.value)} />

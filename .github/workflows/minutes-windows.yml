@@ -1,5 +1,8 @@
 name: minutes-windows
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   push:
@@ -42,15 +45,16 @@ jobs:
       - name: UI を用意(tauri の build.rs が frontendDist を見るため)
         run: cd ../ui && npm ci && npm run build
       - name: テスト(ロジックのみ)
-        run: cargo test --lib --no-default-features
+        run: cargo test --release --lib --no-default-features -- --test-threads=1
       - name: 同梱物の仮置き(tauri_build が存在だけを確認するため。テストでは使わない)
         run: |
-          mkdir -p resources/models resources/onnxruntime
+          mkdir -p resources/models resources/onnxruntime binaries
           for f in THIRD_PARTY_NOTICES.txt models/ggml-large-v3-turbo-q5_0.bin models/ggml-small-q5_1.bin models/voxceleb_resnet34_LM.onnx onnxruntime/onnxruntime.dll; do : > "resources/$f"; done
+          : > binaries/minutes-summarizer-x86_64-pc-windows-msvc.exe
       - name: テスト(既定の機能)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
-        run: cargo test --lib
+        run: cargo test --lib -- --test-threads=1
 
   # 文字起こしの速度だけを測る(ホスト型ランナー上。実機の値ではない)。small と turbo(Pro が使う)。whisper.cpp の CPU 命令の有効・無効を system_info で確認する
   asr-perf:
@@ -144,9 +148,9 @@ jobs:
 
   bundle:
     runs-on: windows-latest
-    needs: test
-    # test が(環境依存の一部のテストで)落ちていても、配布物のビルドと確認は進める。test の失敗は test のジョブに赤で残る
-    if: ${{ !cancelled() }}
+    needs: [test, sidecar-check]
+    # A distributable candidate is only produced after required tests pass.
+    if: ${{ success() }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -175,15 +179,15 @@ jobs:
       - name: インストーラ(NSIS)
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
-        run: ../ui/node_modules/.bin/tauri build --bundles nsis
+        run: ../ui/node_modules/.bin/tauri build --target x86_64-pc-windows-msvc --bundles nsis
       - name: インストーラ(MSI)
         continue-on-error: true
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
-        run: ../ui/node_modules/.bin/tauri build --bundles msi
+        run: ../ui/node_modules/.bin/tauri build --target x86_64-pc-windows-msvc --bundles msi
       - name: 配布物のビルドの最適化・CPU 命令の指定(速度の確認。リリースのアプリと要約のサイドカー)
         run: |
-          for d in target/release/build/whisper-rs-sys-*/out/build ../summarizer/target/x86_64-pc-windows-msvc/release/build/llama-cpp-sys-2-*/out/build; do
+          for d in target/x86_64-pc-windows-msvc/release/build/whisper-rs-sys-*/out/build ../summarizer/target/x86_64-pc-windows-msvc/release/build/llama-cpp-sys-2-*/out/build; do
             echo "== $d"
             grep -hE '^CMAKE_(C|CXX)_FLAGS_RELEASE:|^GGML_(NATIVE|AVX|AVX2|AVX512|FMA|F16C):' "$d/CMakeCache.txt" | sort -u
             grep -rl 'GGML_AVX512' "$d" --include=*.vcxproj && { echo "AVX-512 が有効になっている"; exit 1; }
@@ -191,18 +195,18 @@ jobs:
             grep -E 'Optimization>|EnableEnhancedInstructionSet' "$v" | sort | uniq -c
           done
       - name: 成果物の大きさ
-        run: ls -la target/release/bundle/*/ || true
+        run: ls -la target/x86_64-pc-windows-msvc/release/bundle/*/ || true
       - uses: actions/upload-artifact@v5
         with:
           name: minutes-windows-nsis
-          path: apps/minutes/src-tauri/target/release/bundle/nsis/*.exe
+          path: apps/minutes/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           retention-days: 7
           compression-level: 0
       - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: minutes-windows-msi
-          path: apps/minutes/src-tauri/target/release/bundle/msi/*.msi
+          path: apps/minutes/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
           retention-days: 7
           compression-level: 0
           if-no-files-found: warn
@@ -268,10 +272,11 @@ jobs:
       - name: 起動して 30 秒待ち、ウィンドウ・クラッシュ・データフォルダを確認(既定の版)
         run: ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag free -Shot "$PWD/shot-free.png"
 
-      - name: 起動の確認(MINUTES_TIER=pro)
+      - name: 配布版の環境変数上書きでも起動することを確認（Pro解放の試験ではない）
         run: |
           $env:MINUTES_TIER = 'pro'
-          ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag pro -Shot "$PWD/shot-pro.png"
+          ./.github/scripts/win-launch-check.ps1 -Instdir $env:INSTDIR -AppId $env:APPID -Tag env-override -Shot "$PWD/shot-env-override.png"
+          Remove-Item Env:MINUTES_TIER
 
       - uses: actions/upload-artifact@v5
         if: always()

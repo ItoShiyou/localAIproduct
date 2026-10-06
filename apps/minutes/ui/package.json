@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test:recording": "tsc src/recordingQueue.ts --target ES2022 --module ES2022 --outDir .queue-test --skipLibCheck && node --test e2e/recordingQueue.test.mjs",
+    "test:review": "tsc src/transcriptSearch.ts --target ES2022 --module ES2022 --outDir .queue-test --skipLibCheck && node --test e2e/transcriptSearch.test.mjs",
     "preview": "vite preview",
     "tauri": "node tools/tauri.mjs"
   },

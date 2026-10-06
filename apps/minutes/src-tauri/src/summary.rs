@@ -612,6 +612,7 @@ pub fn default_threads() -> usize {
 /// 本番の推論エンジンを作る関数。
 pub fn sidecar_factory(dirs: Vec<PathBuf>) -> SummarizerFactory {
     Box::new(move |model: &Path| -> Result<Arc<dyn Summarizer>, String> {
+        crate::platform::check_inference_support()?;
         let bin = find_sidecar(&dirs).ok_or("要約のエンジン(minutes-summarizer)が見つかりません")?;
         Ok(Arc::new(SidecarSummarizer::spawn(&bin, model, default_threads())?))
     })

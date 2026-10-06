@@ -175,7 +175,7 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
         <span className="meter" aria-label="音の大きさ"><span style={{ width: `${lvl * 100}%` }} /></span>
       </div>
       {limitMs != null && <p className="note">無料版は{limitMs < 900_000 ? `累計の残りの ${Math.max(0, Math.floor(limitMs / 60000))} 分` : `1件 ${Math.floor(limitMs / 60000)} 分`}までで、自動的に止まります。</p>}
-      <p className="note">文字は 10〜20 秒ほど遅れて、仮の文字(精度は低め)として出ます。止めると、正確なモデルで最初から文字起こしし直します。</p>
+      <p className="note">文字は 10〜20 秒ほど遅れて、仮の文字(精度は低め)として出ます。止めると、録音を最初から読み直して文字を整えます。</p>
       {(st?.pendingChunks ?? 0) > 2 && <p className="note">文字起こしが追いついていません(待ち {st?.pendingChunks})。録音は続いています。</p>}
       {err && <p className="msg err">{err}</p>}
       <div className="row">

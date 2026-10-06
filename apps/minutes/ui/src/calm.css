@@ -65,6 +65,8 @@ html, body, #root { overflow: hidden; }
 .workspace-read .player-opts .toggle, .workspace-read .lownav,
 .workspace-memo .player-opts .toggle, .workspace-memo .lownav { display: none; }
 .minutes-workspace { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 32px; }
+.source-search { display: grid; gap: 6px; font-size: 12px; }
+.source-search input { width: 100%; min-width: 0; }
 .minutes-document h2, .sentence-review h2 { font-size: 20px; margin: 0 0 24px; }
 .source-transcript { border-left: 1px solid var(--line); padding-left: 24px; }
 .source-transcript h3 { margin-top: 0; font-size: 14px; }

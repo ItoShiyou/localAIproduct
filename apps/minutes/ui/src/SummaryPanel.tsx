@@ -49,7 +49,7 @@ const rows = <T,>(xs: T[]): Row<T>[] => xs.map((v) => ({ v, on: true }));
 /** 「要約」タブ。下書きを作る → 確認・修正(チェック)→ 確認のあとで議題・決定事項・ToDo に取り込む。自動では保存しない */
 export function SummaryPanel({ api, d, plan, onImport, onOpenSettings }: {
   api: Api; d: Detail; plan: Plan | null;
-  onImport: (m: { agenda: string; decisions: string; todos: Todo[] }, count: number) => Promise<void>;
+  onImport: (picked: Picked, count: number) => Promise<void>;
   onOpenSettings: () => void;
 }) {
   const m = d.meeting;
@@ -100,7 +100,7 @@ export function SummaryPanel({ api, d, plan, onImport, onOpenSettings }: {
   const doImport = async () => {
     if (!picked) return;
     setAsk(false);
-    try { await onImport(mergeIntoNotes(m, picked), count); setDraft(null); setStats(null); }
+    try { await onImport(picked, count); setDraft(null); setStats(null); }
     catch (e) { setErr(String(e).replace(/^Error: /, "")); }
   };
 
@@ -132,11 +132,11 @@ export function SummaryPanel({ api, d, plan, onImport, onOpenSettings }: {
       <p className="note sum-note" data-testid="summary-note">{SUMMARY_NOTE}</p>
 
       {!pro && (
-        <p className="note" data-testid="summary-locked">要約は有料版の機能です。議事録の要点・決定事項・ToDo の下書きを、このパソコンの中で作ります。有料版にすると、設定から要約の追加機能(モデル)を入れられます。ライセンスキーをお持ちの方は、設定の「ライセンス」に入力してください。</p>
+        <p className="note" data-testid="summary-locked">要約は有料版の機能です。会話から要点・決定事項・やることの下書きを作ります。有料版にすると、設定から要約を追加できます。購入キーをお持ちの方は、設定の「ライセンス」に入力してください。</p>
       )}
       {pro && st && !ready && (
         <div data-testid="summary-nomodel">
-          <p className="note">要約の追加機能(モデル)がまだ入っていません。設定の「要約(追加機能)」から取得するか、ファイルから取り込むと使えます(取得するときだけ通信します。録音や文字は送りません)。</p>
+          <p className="note">要約を使うための準備がまだ済んでいません。設定の「要約(追加機能)」から取得するか、ファイルから取り込むと使えます(取得するときだけ通信します。録音や文字は送りません)。</p>
           <button className="btn small" onClick={onOpenSettings}>設定を開く</button>
         </div>
       )}
@@ -192,4 +192,3 @@ export function SummaryPanel({ api, d, plan, onImport, onOpenSettings }: {
     </div>
   );
 }
-

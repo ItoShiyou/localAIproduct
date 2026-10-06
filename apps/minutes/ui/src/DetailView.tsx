@@ -6,7 +6,8 @@ import type { Detail, ExportFormat, Plan, ProcessOptions, Progress, Segment, Set
 import { LANGUAGE_LABEL, STATE_LABEL, hms, setSpeakerOrder, speakerColor } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-import { SummaryPanel } from "./SummaryPanel";
+import { SummaryPanel, mergeIntoNotes } from "./SummaryPanel";
+import { TranscriptReference } from "./TranscriptReference";
 
 type View = "read" | "edit" | "memo" | "focus";
 
@@ -94,22 +95,30 @@ function Wave({ peaks, durationMs, nowMs, segs, onSeek }: { peaks: number[]; dur
 }
 
 /** 議題・決定事項・ToDo(手で書く定型欄) */
-function Notes({ d, onSave }: { d: Detail; onSave: (agenda: string, decisions: string, todos: Todo[]) => void }) {
+function Notes({ d, onSave }: { d: Detail; onSave: (agenda: string, decisions: string, todos: Todo[]) => Promise<boolean> }) {
   const m = d.meeting;
   const [agenda, setAgenda] = useState(m.agenda);
   const [decisions, setDecisions] = useState(m.decisions);
   const [todos, setTodos] = useState<Todo[]>(m.todos);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  const saveVersion = useRef(0);
   // 入力中の内容を、保存の応答(古いことがある)で上書きしないよう、画面側の値を正とする(議事録を切り替えると作り直される)
   const saved = useRef({ agenda: m.agenda, decisions: m.decisions, todos: JSON.stringify(m.todos) });
   const save = (t = todos) => {
     const now = { agenda, decisions, todos: JSON.stringify(t) };
     if (now.agenda === saved.current.agenda && now.decisions === saved.current.decisions && now.todos === saved.current.todos) return;
-    saved.current = now;
-    onSave(agenda, decisions, t);
+    const version = ++saveVersion.current;
+    setSaveState("saving");
+    onSave(agenda, decisions, t).then(ok => {
+      if (ok) saved.current = now;
+      if (version === saveVersion.current) setSaveState(ok ? "saved" : "failed");
+    }).catch(() => { if (version === saveVersion.current) setSaveState("failed"); });
   };
   const setTodo = (i: number, p: Partial<Todo>) => setTodos(todos.map((t, j) => (j === i ? { ...t, ...p } : t)));
   return (
     <div className="notes" data-testid="notes">
+      <p className="note" role="status">{saveState === "saving" ? "保存しています…" : saveState === "saved" ? "保存しました" : saveState === "failed" ? "保存できませんでした。入力内容はこの画面に残っています。画面を閉じずに再試行してください。" : "入力欄を離れると保存します。"}</p>
+      {saveState === "failed" && <button className="btn small" onClick={() => save()}>メモの保存を再試行</button>}
       <label>議題<textarea value={agenda} rows={2} placeholder="1行に1つ" onChange={(e) => setAgenda(e.target.value)} onBlur={() => save()} /></label>
       <label>決定事項<textarea value={decisions} rows={2} placeholder="1行に1つ" onChange={(e) => setDecisions(e.target.value)} onBlur={() => save()} /></label>
       <div className="todos">
@@ -540,7 +549,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
     : m.state === "processing" ? `文字起こし中のため、終わるまで確定できません${busyHere && progress!.totalChunks ? `(${progress!.doneChunks}/${progress!.totalChunks} 区間)` : ""}`
     : m.state === "queued" ? (progress?.busy ? "ほかの議事録を文字起こし中です。順番が来ると始まります。終わるまで確定できません" : "待ちの状態です。左の「再開」で文字起こしを始めてください")
     : diar ? "話者を判別している間は確定できません。終わるまでお待ちください(中断もできます)"
-    : d.provisional ? "正確なモデルで文字起こし中です(仮の文字が残っています)。置き換わるまで確定できません"
+    : d.provisional ? "録音を読み直して文字を整えています。完了するまで確定できません"
     : null;
   // 処理が止まっているとき: 理由と次にすることを、スクロールしても見える所(ヘッダー)に出す
   const limitHit = /有料版/.test(m.error ?? "");
@@ -548,7 +557,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
     m.state === "failed"
       ? {
         kind: "err",
-        text: `文字起こしが止まりました: ${m.error ?? "理由は不明です"}。${limitHit ? "有料版にすると、続きから文字起こしできます。" : /モデル/.test(m.error ?? "") ? "設定でモデルを用意してから、やり直してください。" : "音声は残っています。やり直すと、最初から文字起こしします。"}`,
+        text: `文字起こしが止まりました: ${m.error ?? "理由は不明です"}。${limitHit ? "有料版にすると、続きから文字起こしできます。" : /モデル/.test(m.error ?? "") ? "設定で文字起こしの準備を済ませてから、やり直してください。" : "音声は残っています。やり直すと、最初から文字起こしします。"}`,
         action: limitHit ? "続きから文字起こし" : "やり直す", go: onRetry, settings: /モデル/.test(m.error ?? ""),
       }
       : m.state === "queued" && !m.recording && !jobsActive && progress && !progress.busy && progress.pending > 0
@@ -712,12 +721,12 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
         <div className="d-inner">
           {readOnly && (
             <p className="banner" data-testid="provisional">
-              {m.recording ? "録音中です。" : "正確なモデルで文字起こししています。"}
+              {m.recording ? "録音中です。" : "録音を読み直して文字を整えています。"}
               いま表示しているのは録音中の仮の文字(精度は低め)で、正確な文字起こしができた所から順に置き換わります。置き換わるまで編集できません。
             </p>
           )}
           {m.status !== "confirmed" && done && !d.provisional && view === "edit" && <p className="note">内容を確認して「確定」すると書き出せます。</p>}
-          {plan?.tier === "free" && done && <p className="note">無料版は小さなモデルで文字起こししています。有料版では、より正確なモデルで文字起こしし直せます。</p>}
+          {plan?.tier === "free" && done && <p className="note">無料版は標準の文字起こしです。有料版では、より精度の高い文字起こしでやり直せます。</p>}
 
           {find.open && (
             <div className="findbar card" data-testid="findbar">
@@ -776,16 +785,24 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
           <div className="minutes-workspace" hidden={view !== "memo"}>
             <section className="minutes-document">
               <h2>議事録を仕上げる</h2>
-              <Notes key={`${id}-${notesRevision}`} d={d} onSave={(a, dc, t) => run(() => api.updateNotes(id, a, dc, t))} />
+              <Notes key={`${id}-${notesRevision}`} d={d} onSave={async (a, dc, t) => !!await run(() => api.updateNotes(id, a, dc, t))} />
               <details className="summary-disclosure"><summary>要約から下書きを作る</summary>
             <SummaryPanel api={api} d={d} plan={plan} onOpenSettings={() => onOpenSettings?.()}
-              onImport={async (n, count) => { await flush(); const x = await run(() => api.updateNotes(id, n.agenda, n.decisions, n.todos), `${count} 件を議事録に追加しました`); if (!x) throw new Error("議事録に追加できませんでした"); setNotesRevision((v) => v + 1); }} />
+              onImport={async (picked, count) => {
+                await flush();
+                const x = await run(async () => {
+                  const latest = await api.detail(id);
+                  const n = mergeIntoNotes(latest.meeting, picked);
+                  return api.updateNotes(id, n.agenda, n.decisions, n.todos);
+                }, `${count} 件を議事録に追加しました`);
+                if (!x) throw new Error("議事録に追加できませんでした");
+                setNotesRevision((v) => v + 1);
+              }} />
               </details>
             </section>
-            <aside className="source-transcript" aria-label="元の発言"><h3>元の発言</h3>
-              {segs.map((s) => <div key={s.id}><button className="listen" disabled={!audio} onClick={() => seek(s.startMs)}>{hms(s.startMs)} {s.speaker || "話者未設定"} ▶ 聞く</button><p>{s.text}</p></div>)}
-              {!segs.length && <p className="note">まだ発言がありません。</p>}
-            </aside>
+            <TranscriptReference segments={segs} audio={!!audio}
+              onListen={s => { seek(s.startMs); clipEnd.current = s.endMs; }}
+              onEdit={s => { switchView("focus"); setFocusId(s.id); seek(s.startMs, false); }} />
           </div>
         </div>
       </div>

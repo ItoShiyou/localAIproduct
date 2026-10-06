@@ -31,6 +31,16 @@ try {
   await switchTo("読む");
   await switchTo("議事録を仕上げる");
   assert.equal(await page.getByRole("textbox", { name: "議題", exact: true }).inputValue(), "次回の予定");
+  const source = page.getByRole("complementary", { name: "元の発言", exact: true });
+  await source.getByRole("searchbox").fill("見積もり");
+  await source.getByRole("status").getByText("1 / 6 文", { exact: true }).waitFor();
+  await source.getByRole("button", { name: "0:08 の文を修正する", exact: true }).click();
+  await review.getByRole("textbox", { name: "0:08 の文", exact: true }).waitFor();
+  await switchTo("議事録を仕上げる");
+  await source.getByRole("searchbox").fill("存在しない単語");
+  await source.getByText("一致する発言がありません。別の言葉で検索してください。", { exact: true }).waitFor();
+  await source.getByRole("button", { name: "検索を解除して前後を見る", exact: true }).click();
+  await source.getByRole("status").getByText("6 文", { exact: true }).waitFor();
   await page.getByRole("button", { name: "確定", exact: true }).click();
   await page.getByRole("button", { name: "書き出し", exact: true }).click();
   await page.getByRole("menu", { name: "書き出す形式" }).waitFor();
