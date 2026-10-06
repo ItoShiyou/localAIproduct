@@ -1,7 +1,7 @@
 //! 実物で通す確認: テストセットの録音 → 実モデル(whisper.cpp)で文字起こし → 実モデル(Qwen3)+サイドカーで要約の下書き。
-//! 必要な環境変数(どれかが無ければ何もせずに通る): MINUTES_WHISPER_MODEL(ggml の場所)、MINUTES_SUMMARY_MODEL(GGUF の場所)、
+//! 明示実行時に必要な環境変数(不足時は失敗): MINUTES_WHISPER_MODEL(ggml の場所)、MINUTES_SUMMARY_MODEL(GGUF の場所)、
 //! MINUTES_SUMMARIZER_BIN(サイドカーの実行ファイル)。任意で MINUTES_FILES(既定 t01_clean)。
-//! 実行例: MINUTES_WHISPER_MODEL=… MINUTES_SUMMARY_MODEL=… MINUTES_SUMMARIZER_BIN=… cargo test --release --test real_summary -- --nocapture
+//! 実行例: MINUTES_WHISPER_MODEL=… MINUTES_SUMMARY_MODEL=… MINUTES_SUMMARIZER_BIN=… cargo test --release --test real_summary -- --include-ignored --nocapture
 #![cfg(feature = "whisper")]
 
 use minutes::commands::AppState;
@@ -31,7 +31,7 @@ fn 実物で文字起こしから要約の下書きまで通す() {
     let file = std::env::var("MINUTES_FILES").unwrap_or_else(|_| "t01_clean".into());
     let d = std::env::temp_dir().join(format!("min-real-summary-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    let s = AppState::new(d.clone(), None, minutes::whisper_loader(), vec![(PathBuf::from(whisper), "env")]).unwrap();
+    let s = std::sync::Arc::new(AppState::new(d.clone(), None, minutes::whisper_loader(), vec![(PathBuf::from(whisper), "env")]).unwrap());
     s.set_tier(Tier::Pro);
     s.summary.set_sidecar_dirs(vec![]);
     s.summary.set_factory(minutes::summary::sidecar_factory(vec![]));
@@ -39,7 +39,29 @@ fn 実物で文字起こしから要約の下書きまで通す() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../testset/{file}.wav"));
     let id = s.import_audio(&src, &ProcessOptions { denoise: false, diarize: false, ..Default::default() }).unwrap();
     let t0 = std::time::Instant::now();
-    s.run_jobs().unwrap();
+    println!("--- 認識開始: threads={:?}, system_info={}", std::env::var("MINUTES_THREADS"), whisper_rs::print_system_info());
+    // A stalled native inference must be visible in CI rather than consume the
+    // whole installer job timeout. This deadline applies to this fixture only.
+    let (finished, receiver) = std::sync::mpsc::channel();
+    let monitor_state = s.clone();
+    let monitor = std::thread::spawn(move || {
+        loop {
+            match receiver.recv_timeout(std::time::Duration::from_secs(30)) {
+                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return false,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            println!("認識進捗: {:?}, 経過={:.0}秒", monitor_state.progress(), t0.elapsed().as_secs_f64());
+            if t0.elapsed() > std::time::Duration::from_secs(600) {
+                monitor_state.cancel_jobs();
+                return true;
+            }
+        }
+    });
+    let result = s.run_jobs();
+    let _ = finished.send(());
+    let timed_out = monitor.join().unwrap();
+    assert!(!timed_out, "165秒の認識素材が10分以内に完了しませんでした");
+    result.unwrap();
     let asr_secs = t0.elapsed().as_secs_f64();
     let det = s.detail(id).unwrap();
     assert_eq!(det.meeting.state, "done", "{:?}", det.meeting.error);

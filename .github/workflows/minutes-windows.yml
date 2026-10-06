@@ -342,6 +342,7 @@ jobs:
           $env:MINUTES_SUMMARY_MODEL = "$env:RUNNER_TEMP/minutes-summary-model/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
           $env:MINUTES_SUMMARIZER_BIN = $engine.FullName
           $env:MINUTES_FILES = 't01_clean'
+          $env:MINUTES_THREADS = '4'
           cd apps/minutes/src-tauri
           cargo test --release --test real_summary -- --include-ignored --nocapture
           if ($LASTEXITCODE -ne 0) { throw "配布エンジンによる実要約の検証が失敗" }
