@@ -45,7 +45,7 @@ jobs:
       - name: UI を用意(tauri の build.rs が frontendDist を見るため)
         run: cd ../ui && npm ci && npm run build
       - name: テスト(ロジックのみ)
-        run: cargo test --release --lib --no-default-features -- --test-threads=1
+        run: cargo test --release --lib --test recording_lifecycle --no-default-features -- --test-threads=1
       - name: 同梱物の仮置き(tauri_build が存在だけを確認するため。テストでは使わない)
         run: |
           mkdir -p resources/models resources/onnxruntime binaries
@@ -114,13 +114,13 @@ jobs:
           grep -hE '^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE|^CMAKE_GENERATOR:|^GGML_(NATIVE|AVX|AVX2|AVX512|FMA|F16C):' target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt | sort -u
           if grep -rl 'GGML_AVX512' target/release/build/whisper-rs-sys-*/out/build --include=*.vcxproj; then echo "AVX-512 が有効になっている" ; exit 1; fi
           for t in 4; do
-            MINUTES_THREADS=$t cargo test --release --test real_asr -- --nocapture 2>&1 | grep -E 'system_info|"rtf"'
+            MINUTES_THREADS=$t cargo test --release --test real_asr -- --ignored --nocapture 2>&1 | grep -E 'system_info|"rtf"'
           done
           if [ "${{ matrix.model }}" = small ]; then
             echo "=== 比較用: 修正を外した(最適化なし)ビルドを、同じランナーで測る ==="
             export CARGO_TARGET_DIR="$PWD/target-before"
             unset CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE CMAKE_PROJECT_INCLUDE
-            MINUTES_THREADS=4 cargo test --release --test real_asr -- --nocapture 2>&1 | grep -E 'system_info|"rtf"'
+            MINUTES_THREADS=4 cargo test --release --test real_asr -- --ignored --nocapture 2>&1 | grep -E 'system_info|"rtf"'
           fi
 
   sidecar-check:
@@ -320,7 +320,7 @@ jobs:
           Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
           Get-CimInstance Win32_ComputerSystem | ForEach-Object { 'RAM bytes: ' + $_.TotalPhysicalMemory }
           cd apps/minutes/src-tauri
-          cargo test --release --test real_asr -- --nocapture
+          cargo test --release --test real_asr -- --ignored --nocapture
           if ($LASTEXITCODE -ne 0) { throw "cargo test が失敗" }
 
       - name: NSIS を静かにアンインストールして、消えたか確認

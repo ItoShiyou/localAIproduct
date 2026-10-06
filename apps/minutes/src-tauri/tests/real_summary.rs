@@ -10,10 +10,10 @@ use minutes::store::ProcessOptions;
 use std::path::{Path, PathBuf};
 
 #[test]
+#[ignore = "requires real speech/summary models and summarizer executable"]
 fn 実物で文字起こしから要約の下書きまで通す() {
     let (Ok(whisper), Ok(_), Ok(_)) = (std::env::var("MINUTES_WHISPER_MODEL"), std::env::var("MINUTES_SUMMARY_MODEL"), std::env::var("MINUTES_SUMMARIZER_BIN")) else {
-        eprintln!("MINUTES_WHISPER_MODEL / MINUTES_SUMMARY_MODEL / MINUTES_SUMMARIZER_BIN のどれかが無いため省略");
-        return;
+        panic!("set MINUTES_WHISPER_MODEL, MINUTES_SUMMARY_MODEL and MINUTES_SUMMARIZER_BIN");
     };
     let file = std::env::var("MINUTES_FILES").unwrap_or_else(|_| "t01_clean".into());
     let d = std::env::temp_dir().join(format!("min-real-summary-{}", std::process::id()));

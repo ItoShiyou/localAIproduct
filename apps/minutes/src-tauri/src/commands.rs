@@ -706,7 +706,8 @@ impl AppState {
     pub fn record_push(&self, pcm_b64: &str) -> Result<crate::recorder::RecordStatus, String> {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD.decode(pcm_b64).map_err(|_| "音のデータが不正です".to_string())?;
-        let x: Vec<f32> = bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        if bytes.len() % 2 != 0 { return Err("音のデータが不正です（音声サンプルが途中で切れています）".into()); }
+        let mut x: Vec<f32> = bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
         let mut rec = self.recorder.lock().unwrap_or_else(|p| p.into_inner());
         let r = rec.as_mut().ok_or("録音していません")?;
         // 無料版: 1件の上限と、累計の残りのうち短いほうまで(残りを超えて録音しても、その先は文字にならないため)
@@ -719,6 +720,8 @@ impl AppState {
             if remaining.is_some_and(|rem| elapsed >= rem) {
                 return Err("無料版の文字起こしの残り時間まで録音しました。「止めて保存」を押してください(有料版は制限なし)".into());
             }
+            let allowed_ms = remaining.unwrap_or(lim).min(lim).saturating_sub(elapsed);
+            x.truncate((allowed_ms * crate::audio::RATE as u64 / 1000) as usize);
         }
         r.push(&self.store(), &x)
     }
@@ -1601,6 +1604,21 @@ mod tests {
     fn silence_b64(ms: usize) -> String {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD.encode(vec![0u8; ms * 16 * 2])
+    }
+
+    #[test]
+    fn 無料録音の最後のブロックは残り時間に切り詰める() {
+        let (d, s) = free_state("free-rec-boundary");
+        s.ledger.lock().unwrap().add(crate::plan::FREE_TOTAL_MS - 1_250, true);
+        let id = s.record_start(&ProcessOptions::default()).unwrap();
+        s.record_push(&silence_b64(1_000)).unwrap();
+        assert_eq!(s.record_push(&silence_b64(1_000)).unwrap().elapsed_ms, 1_250);
+        assert!(s.record_push(&silence_b64(1_000)).is_err());
+        let detail = s.record_stop().unwrap();
+        assert_eq!(detail.meeting.duration_ms, Some(1_250));
+        assert_eq!(s.detail(id).unwrap().meeting.duration_ms, Some(1_250));
+        drop(s);
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

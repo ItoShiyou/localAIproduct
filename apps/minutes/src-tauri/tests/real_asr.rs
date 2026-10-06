@@ -27,11 +27,9 @@ fn cer(r: &[char], h: &[char]) -> f64 {
 }
 
 #[test]
+#[ignore = "requires a real speech model; missing prerequisites are failures"]
 fn 実モデルでテストセットを文字起こしする() {
-    let Ok(model) = std::env::var("MINUTES_WHISPER_MODEL") else {
-        eprintln!("MINUTES_WHISPER_MODEL が無いため省略");
-        return;
-    };
+    let model = std::env::var("MINUTES_WHISPER_MODEL").expect("set MINUTES_WHISPER_MODEL");
     let threads: i32 = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let files = std::env::var("MINUTES_FILES").unwrap_or_else(|_| "t01_clean,t02_aircon,t03_keyboard,t04_farmic,t05_overlap".into());
     // CPU 命令(AVX2・FMA・F16C など)が有効なビルドかを残す(Windows の速度の確認用)

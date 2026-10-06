@@ -3,6 +3,11 @@ src-tauri/gen/
 src-tauri/resources/models/
 src-tauri/resources/THIRD_PARTY_NOTICES.txt
 testset/generated/
+testset/models/
+testset/public/*.zip
+testset/public/*.mp3
+testset/public/*.wav
+testset/public/results/*-*/
 src-tauri/resources/onnxruntime/
 # 要約のサイドカー(tools/build_summarizer.sh で作る)と、後から取得するモデル
 src-tauri/binaries/

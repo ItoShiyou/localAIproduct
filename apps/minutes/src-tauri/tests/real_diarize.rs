@@ -32,15 +32,14 @@ fn score(st: &Store, mid: i64, truth: &serde_json::Value) -> (f64, usize) {
 }
 
 #[test]
+#[ignore = "requires speech/speaker models, ONNX Runtime and generated recording"]
 fn 実モデルで4人の会議の話者を判別する() {
     let (Ok(w), Ok(lib), Ok(spk)) = (std::env::var("MINUTES_WHISPER_MODEL"), std::env::var("MINUTES_ORT_LIB"), std::env::var("MINUTES_SPK_MODEL")) else {
-        eprintln!("モデルが無いため省略");
-        return;
+        panic!("set MINUTES_WHISPER_MODEL, MINUTES_ORT_LIB and MINUTES_SPK_MODEL");
     };
     let ts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/generated");
     if !ts.join("diarize4.wav").exists() {
-        eprintln!("testset/generated/diarize4.wav が無いため省略(spike/make_diarize_testset.py で生成)");
-        return;
+        panic!("prepare testset/generated/diarize4.wav");
     }
     let truth: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ts.join("diarize4.json")).unwrap()).unwrap();
     let asr = WhisperAsr::new(Path::new(&w), 6).unwrap();

@@ -10,12 +10,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[test]
+#[ignore = "requires real speech model and generated recording"]
 fn 実際の速さで録音しても文字起こしが追いつく() {
-    let Ok(w) = std::env::var("MINUTES_WHISPER_MODEL") else { return };
+    let w = std::env::var("MINUTES_WHISPER_MODEL").expect("set MINUTES_WHISPER_MODEL");
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../testset/generated/diarize4.wav");
-    if !src.exists() {
-        return;
-    }
+    assert!(src.exists(), "prepare testset/generated/diarize4.wav");
     let d = std::env::temp_dir().join(format!("min-live-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     let pcm = d.join("src.pcm");

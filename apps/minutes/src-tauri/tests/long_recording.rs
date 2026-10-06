@@ -11,10 +11,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[test]
+#[ignore = "requires long audio and a real speech model"]
 fn 長い録音を中断して再開し_最後まで処理する() {
     let (Ok(audio), Ok(model)) = (std::env::var("MINUTES_LONG_AUDIO"), std::env::var("MINUTES_WHISPER_MODEL")) else {
-        eprintln!("MINUTES_LONG_AUDIO / MINUTES_WHISPER_MODEL が無いため省略");
-        return;
+        panic!("set MINUTES_LONG_AUDIO and MINUTES_WHISPER_MODEL");
     };
     let threads: i32 = std::env::var("MINUTES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let asr = WhisperAsr::new(Path::new(&model), threads).unwrap();
