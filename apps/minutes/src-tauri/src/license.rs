@@ -11,7 +11,7 @@
 //!   `Grant` を返す別の入口を `resolve` に足す(この型を共通の出口にする)。
 //! - 秘密鍵はこのリポジトリに置かない。置くのは公開鍵と、開発用の鍵(デバッグビルドでだけ受け入れる)だけ。
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -199,7 +199,7 @@ pub fn trusted_keys() -> Vec<(VerifyingKey, bool)> {
 }
 
 fn production_key() -> Option<VerifyingKey> {
-    parse_hex32(PRODUCTION_PUBLIC_KEY_HEX).and_then(|b| VerifyingKey::from_bytes(&b).ok())
+    parse_hex32(PRODUCTION_PUBLIC_KEY_HEX).and_then(|b| VerifyingKey::from_bytes(&b).ok()).filter(|key| !key.is_weak())
 }
 
 pub fn dev_signing_key() -> SigningKey {
@@ -233,7 +233,7 @@ pub fn verify(text: &str, keys: &[(VerifyingKey, bool)], machine: Option<&str>, 
     let sig = Signature::from_slice(sig_bytes).map_err(|_| LicenseError::Format)?;
     let dev = keys
         .iter()
-        .find(|(k, _)| k.verify(json, &sig).is_ok())
+        .find(|(k, _)| k.verify_strict(json, &sig).is_ok())
         .map(|(_, dev)| *dev)
         .ok_or(LicenseError::Signature)?;
     let p: Payload = serde_json::from_slice(json).map_err(|_| LicenseError::Format)?;
@@ -274,7 +274,7 @@ pub fn inspect(text: &str, vk: &VerifyingKey) -> Result<Payload, LicenseError> {
     let raw = parse_raw(text)?;
     let (sig_bytes, json) = raw.split_at(64);
     let sig = Signature::from_slice(sig_bytes).map_err(|_| LicenseError::Format)?;
-    vk.verify(json, &sig).map_err(|_| LicenseError::Signature)?;
+    vk.verify_strict(json, &sig).map_err(|_| LicenseError::Signature)?;
     serde_json::from_slice(json).map_err(|_| LicenseError::Format)
 }
 
@@ -401,6 +401,20 @@ mod tests {
     fn 別の鍵で署名したキーは無効() {
         let key = encode_key(&payload(None), &sk(2));
         assert_eq!(verify(&key, &keys(1), None, &[]).unwrap_err(), LicenseError::Signature);
+    }
+
+    #[test]
+    fn 弱い公開鍵による署名なしのキーを拒否する() {
+        let mut identity = [0u8; 32];
+        identity[0] = 1;
+        let key = VerifyingKey::from_bytes(&identity).unwrap();
+        assert!(key.is_weak());
+        let mut raw = vec![0u8; 64];
+        raw[0] = 1;
+        raw.extend(serde_json::to_vec(&payload(None)).unwrap());
+        let forged = format!("MNT1-{}", b32_encode(&raw));
+        assert_eq!(verify(&forged, &[(key, false)], None, &[]).unwrap_err(), LicenseError::Signature);
+        assert_eq!(inspect(&forged, &key).unwrap_err(), LicenseError::Signature);
     }
 
     #[test]

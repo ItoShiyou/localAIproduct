@@ -62,6 +62,8 @@
     "copyright": "© 2026 (権利者名は販売前に記入)",
     "shortDescription": "録音を端末の中で文字にする議事録アプリ",
     "macOS": {
+      "entitlements": "Entitlements.plist",
+      "hardenedRuntime": true,
       "minimumSystemVersion": "12.0"
     }
   }
