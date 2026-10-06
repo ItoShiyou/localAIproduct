@@ -3,6 +3,7 @@ import type { Api } from "./api";
 import type { ProcessOptions, RecordStatus } from "./types";
 import { hms } from "./types";
 import { recordingQueue } from "./recordingQueue";
+import { finalizeRecording } from "./finalizeRecording";
 
 /** マイクの音を 16kHz モノラルで集めて、0.5 秒ごとに渡す AudioWorklet(インラインで読み込む) */
 const WORKLET = `
@@ -52,6 +53,7 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
   const cleanup = useRef<() => void>(() => undefined);
   const finish = useRef<() => Promise<void>>(async () => undefined);
   const stopping = useRef(false);
+  const activeMeetingId = useRef<number | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -73,6 +75,7 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
         await ctx.audioWorklet.addModule(url);
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); await ctx.close(); URL.revokeObjectURL(url); return; }
         const id = await api.recordStart(opts);
+        activeMeetingId.current = id;
         didStart = true;
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); await ctx.close(); URL.revokeObjectURL(url); await api.recordDiscard(); return; }
         onStarted(id);
@@ -85,7 +88,12 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
             const status = await api.recordPush(pcm);
             if (mounted.current) setSt(status);
           } catch (error) {
-            if (mounted.current) setErr(String(error));
+            cleanup.current();
+            if (mounted.current) {
+              setErr(`${String(error)}。録音を止めました。「保存できた音声だけを残す」で確認してください。`);
+              setWriteFailed(true);
+              setPhase("stopping");
+            }
             throw error;
           }
         });
@@ -147,7 +155,11 @@ export function Recorder({ api, opts, limitMs, onStarted, onStopped, onCancel }:
         try { await finish.current(); }
         catch (error) { setWriteFailed(true); throw error; }
       }
-      const d = await api.recordStop(); onStopped(d.meeting.id);
+      const d = await finalizeRecording(() => api.recordStop(), () => {
+        if (activeMeetingId.current == null) return Promise.reject(new Error("録音の情報がありません"));
+        return api.detail(activeMeetingId.current);
+      });
+      onStopped(d.meeting.id);
     }
     catch (e) { setErr(String(e)); stopping.current = false; }
   };
