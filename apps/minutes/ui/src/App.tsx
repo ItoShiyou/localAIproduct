@@ -151,7 +151,7 @@ export function App({ api }: { api: Api }) {
       <aside id="meeting-library" className={"side" + (recordOpts ? " recording-active" : "")} aria-label="記録の一覧">
         <div className="brand">
           <img src={logo} alt="" />
-          <div><div className="name">議事録</div><div className="sub">(仮称)・この端末の中で</div></div>
+          <div><div className="name">minutes</div><div className="sub">会話を、手元で記録に。</div></div>
           {api.kind === "mock" && <span className="mock" title="画面確認用のモック(実際の文字起こしは行っていません)">モック</span>}
         </div>
         <div className="side-actions">

@@ -9,6 +9,19 @@ use minutes::plan::Tier;
 use minutes::store::ProcessOptions;
 use std::path::{Path, PathBuf};
 
+fn reverses_staffing_cause(line: &str) -> bool {
+    line.split_once("ため").is_some_and(|(cause, result)| {
+        cause.contains("遅れ") && result.contains("人手不足")
+    }) || (line.contains("遅れが原因") && line.contains("人手不足"))
+}
+
+#[test]
+fn 因果の検査は応援の必要性を誤って拒否しない() {
+    assert!(reverses_staffing_cause("検査工程が遅れているため人手不足で別の部署からの応援が必要"));
+    assert!(!reverses_staffing_cause("検査工程が遅れているため、別の部署からの人手応援が必要"));
+    assert!(!reverses_staffing_cause("人手不足のため、検査工程が遅れている"));
+}
+
 #[test]
 #[ignore = "requires real speech/summary models and summarizer executable"]
 fn 実物で文字起こしから要約の下書きまで通す() {
@@ -39,6 +52,11 @@ fn 実物で文字起こしから要約の下書きまで通す() {
     println!("{}", serde_json::to_string_pretty(&r.draft).unwrap());
     println!("{}", serde_json::to_string(&r.stats).unwrap());
     assert!(!r.draft.summary.is_empty());
+    if file == "t01_clean" {
+        assert!(r.draft.todos.iter().any(|todo| todo.text.contains("見積") && todo.due.contains("月曜日")), "期限付きの見積書作成・共有を落としている");
+        assert!(!r.draft.todos.iter().any(|todo| todo.text.contains("保存場所") || todo.text.contains("維持する")), "現状維持を新しいToDoにしている");
+        assert!(!r.draft.summary.iter().any(|line| reverses_staffing_cause(line)), "検査工程の遅れを人手不足の原因へ逆転している");
+    }
     // 下書きを返しただけで、議事録は変わっていない
     let m = s.detail(id).unwrap().meeting;
     assert!(m.agenda.is_empty() && m.decisions.is_empty() && m.todos.is_empty());

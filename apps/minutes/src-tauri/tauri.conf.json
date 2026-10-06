@@ -20,7 +20,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "議事録(仮称)",
+        "title": "minutes",
         "width": 1200,
         "height": 800,
         "dragDropEnabled": true

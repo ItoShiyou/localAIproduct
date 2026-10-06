@@ -46,6 +46,8 @@ jobs:
         run: cd ../ui && npm ci && npm run build
       - name: テスト(ロジックのみ)
         run: cargo test --release --lib --test recording_lifecycle --no-default-features -- --test-threads=1
+      - name: 販売前チェックの自己テスト
+        run: python -m unittest discover -s ../spike -p test_release_preflight.py
       - name: 同梱物の仮置き(tauri_build が存在だけを確認するため。テストでは使わない)
         run: |
           mkdir -p resources/models resources/onnxruntime binaries

@@ -1607,6 +1607,17 @@ mod tests {
     }
 
     #[test]
+    fn 欠けた音声サンプルは保存前に拒否する() {
+        let (d, s) = free_state("free-rec-incomplete");
+        s.record_start(&ProcessOptions::default()).unwrap();
+        assert!(s.record_push("AA==").unwrap_err().contains("途中で切れています"));
+        assert_eq!(s.record_status().unwrap().elapsed_ms, 0);
+        s.record_discard().unwrap();
+        drop(s);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn 無料録音の最後のブロックは残り時間に切り詰める() {
         let (d, s) = free_state("free-rec-boundary");
         s.ledger.lock().unwrap().add(crate::plan::FREE_TOTAL_MS - 1_250, true);
