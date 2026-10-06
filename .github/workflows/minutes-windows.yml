@@ -325,6 +325,27 @@ jobs:
           cargo test --release --test real_asr -- --ignored --nocapture
           if ($LASTEXITCODE -ne 0) { throw "cargo test が失敗" }
 
+      - name: 実要約のモデルを取得・ハッシュ照合（録音は送信しない）
+        run: |
+          cd apps/minutes/src-tauri
+          cargo run --release --no-default-features --example fetch_summary_model -- "$env:RUNNER_TEMP/minutes-summary-model"
+          if ($LASTEXITCODE -ne 0) { throw "要約モデルの取得・照合が失敗" }
+
+      - name: 配布したエンジンで実文字起こしから要約まで確認
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: |
+          $speech = Get-ChildItem $env:INSTDIR -Recurse -Filter ggml-large-v3-turbo-q5_0.bin | Select-Object -First 1
+          $engine = Get-ChildItem $env:INSTDIR -Recurse -Filter minutes-summarizer.exe | Select-Object -First 1
+          if (-not $speech -or -not $engine) { throw "同梱エンジンまたはモデルがありません" }
+          $env:MINUTES_WHISPER_MODEL = $speech.FullName
+          $env:MINUTES_SUMMARY_MODEL = "$env:RUNNER_TEMP/minutes-summary-model/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+          $env:MINUTES_SUMMARIZER_BIN = $engine.FullName
+          $env:MINUTES_FILES = 't01_clean'
+          cd apps/minutes/src-tauri
+          cargo test --release --test real_summary -- --include-ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "配布エンジンによる実要約の検証が失敗" }
+
       - name: NSIS を静かにアンインストールして、消えたか確認
         if: always()
         run: |
