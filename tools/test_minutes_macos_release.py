@@ -56,6 +56,7 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             release.execute(self.app,self.app/'output','Developer ID Application: Test','test-profile',self.simulate)
         self.assertFalse((self.app/'output').exists())
+        self.assertFalse(self.calls)
     def test_source_text_is_read_as_utf8_on_every_platform(self):
         original_read = Path.read_text
         def utf8_only(path, *arguments, **keywords):
@@ -63,7 +64,7 @@ class ReleaseTests(unittest.TestCase):
             return original_read(path, *arguments, **keywords)
         with patch.object(Path, 'read_text', utf8_only), patch.object(release, 'checks', return_value={'test-only':True}):
             release.execute(self.app,self.output,'Developer ID Application: Test','test-profile',self.simulate)
-        self.assertFalse(self.calls)
+        self.assertTrue(self.calls)
 
 if __name__ == '__main__':
     unittest.main()
