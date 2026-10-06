@@ -34,9 +34,12 @@ jobs:
           set -eu
           mkdir _site
           python3 web/minutes/check_site.py
+          node --test web/minutes/bird-motion.test.mjs
           mkdir -p _site/minutes _site/assets
           cp web/minutes/index.html web/minutes/minutes.css web/minutes/brand.css web/minutes/bird.css web/minutes/beta.css web/minutes/screens.js web/minutes/motion.js web/minutes/bird.js _site/minutes/
+          cp web/minutes/koyori.css web/minutes/koyori.js web/minutes/bird-motion.mjs _site/minutes/
           cp -R web/minutes/guide web/minutes/privacy web/minutes/beta-privacy web/minutes/licenses _site/minutes/
+          cp -R web/minutes/character _site/minutes/
           cp web/assets/minutes-bird.png web/assets/minutes-bird-blink.png web/assets/minutes-bird-tilt.png web/assets/minutes-bird-wave.png web/assets/minutes-calm-reading.jpg web/assets/minutes-calm-edit.jpg web/assets/minutes-calm-minutes.jpg web/assets/minutes-calm-focus.jpg _site/assets/
           cp web/minutes-entry.html _site/index.html
           touch _site/.nojekyll

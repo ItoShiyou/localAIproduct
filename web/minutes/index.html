@@ -7,8 +7,9 @@
   <meta name="theme-color" content="#faf9f5">
   <link rel="icon" href="data:,"><link rel="stylesheet" href="minutes.css"><link rel="stylesheet" href="brand.css">
   <link rel="stylesheet" href="bird.css">
+  <link rel="stylesheet" href="koyori.css">
   <link rel="stylesheet" href="beta.css">
-  <script src="screens.js" defer></script><script src="motion.js" defer></script><script src="bird.js" defer></script>
+  <script src="screens.js" defer></script><script src="motion.js" defer></script><script src="koyori.js" type="module"></script>
 </head>
 <body>
 <a class="skip" href="#main">本文へ</a>
@@ -17,7 +18,7 @@
 <main id="main">
   <section class="hero wrap">
     <div class="hero-copy"><p class="eyebrow">医療の打ち合わせにも。研究のインタビューにも。</p><h1>外に出せない会話を、<br><span>手元で、記録に。</span></h1><p class="lead">患者さんのこと。まだ発表していない研究のこと。<br class="desktop-break">大切な会話を、クラウドに送らず文字にする。<br class="desktop-break">minutesは、あなたのMacの中で働きます。</p><div class="actions"><a class="button" href="#screens">使い心地を見る <span aria-hidden="true">↓</span></a><a href="#privacy">音声はどこへ行く？ →</a></div><div class="hero-tags"><span>音声のクラウド送信なし</span><span>初回準備後はオフライン</span><span>Mac対応</span></div></div>
-    <div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="paper-note note-one">大切な話。</span><span class="paper-note note-two">ちゃんと、手元に。</span><div class="bird-float"><img class="mascot" src="../assets/minutes-bird.png" alt="" width="1024" height="1024"></div><div class="voice-line"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div class="hero-art"><div class="orbit orbit-one" aria-hidden="true"></div><div class="orbit orbit-two" aria-hidden="true"></div><span class="paper-note note-one">大切な話。</span><span class="paper-note note-two">ちゃんと、手元に。</span><div class="bird-float" data-koyori><img class="mascot" src="../assets/minutes-bird.png" alt="ノートを抱える小鳥のこより" width="1245" height="1263"></div><a class="koyori-signature" href="character/">小鳥のこより →</a><div class="voice-line" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
   </section>
   <section class="preview-stage wrap" aria-label="minutesの作業画面"><div class="preview-top"><span class="eyebrow">録る。読む。聞き直す。仕上げる。</span><span class="small">画面の会話はサンプルです。</span></div><div class="app-preview" data-parallax><img src="../assets/minutes-calm-reading.jpg" alt="文字起こしを段落で読み、音声を聞き直せるminutesの画面" width="1280" height="720" fetchpriority="high"></div><div class="preview-bottom"><span>音声 → 文字起こし → 議事録</span><span>ぜんぶ、このMacで。</span></div></section>
   <section id="privacy" class="privacy"><div class="wrap privacy-layout"><div class="reveal"><p class="eyebrow">会話の行き先を、変える。</p><h2>残したい。<br>でも、外には出せない。</h2><p class="lead">その会話にも、文字起こしという選択肢を。</p><p>文字起こしも要約も、あなたのパソコンの中で。録音を外に送らず、読み返せる記録に整えます。</p><a href="privacy/">データの扱いを詳しく →</a></div><div class="local-scene reveal" aria-label="録音、文字起こし、議事録をひとつのMacの中で処理"><div class="computer-frame"><div class="computer-bar"><i></i><i></i><i></i><span>あなたのMac</span></div><div class="local-flow"><span>会話</span><b aria-hidden="true">↓</b><span>文字</span><b aria-hidden="true">↓</b><span>記録</span></div><div class="local-caption">この中で、できあがる。</div></div><div class="computer-foot"></div><img class="scene-bird" src="../assets/minutes-bird.png" alt="" width="1024" height="1024" loading="lazy"></div></div><div class="wrap privacy-footnote"><p>初回の準備や追加機能のダウンロードには、インターネット接続が必要です。準備が終われば、音声の処理にインターネットは使いません。端末・バックアップ・共有先の管理は、ご自身や所属先のルールに沿って行ってください。</p></div></section>
@@ -29,5 +30,5 @@
   <section class="wrap faq"><p class="eyebrow">気になること。</p><h2>使いはじめる前に。</h2><details><summary>医療の現場でも使えますか？</summary><p>音声を端末内で文字起こしする用途に利用できます。録音の同意、端末の保護、情報の保存・共有は所属先のルールを確認してください。医療上の判断や診療記録の自動確定を行う製品ではありません。</p></details><details><summary>インターネットなしでも使えますか？</summary><p>初回の準備を済ませると、文字起こしと要約をインターネットなしで使えます。追加機能のダウンロード時には接続が必要です。</p></details><details><summary>オンライン会議の相手の声も録れますか？</summary><p>現在の録音入力はマイクです。ヘッドホンから聞こえる相手の声を直接録る機能には対応していません。保存した会議音声ファイルは取り込めます。</p></details><details><summary>専門用語も正しく認識できますか？</summary><p>日本語に対応し、Proでは用語集が使えます。人名・専門用語・数字などは音質や会話によって誤るため、原音を聞いて確認してください。</p></details><details><summary>どのMacで使えますか？</summary><p>Apple Silicon搭載Mac向けです。MacBook Air M2で動作確認しています。アプリは約824MiB、要約を追加する場合は別途約2.5GB。録音保存や処理のための空き容量も必要です。正式な対応OSと推奨メモリは配布時にご案内します。</p></details></section>
   <section class="wrap closing reveal"><img src="../assets/minutes-bird.png" alt="ノートを抱えるminutesの小鳥" width="1024" height="1024" loading="lazy"><div><p class="eyebrow">大切な会話の、そばに。</p><h2>言葉を残そう。<br>安心できる場所に。</h2><a class="button" href="#screens">minutesの画面を見る ↑</a></div></section>
 </main>
-<footer class="wrap"><a class="brand" href="./">minutes</a><a href="guide/">使い方</a><a href="privacy/">データの扱い</a><a href="licenses/">ライセンス</a><small>大切な会話の、そばに。</small><button class="motion-toggle" type="button" aria-pressed="false" hidden>動きを止める</button></footer>
+<footer class="wrap"><a class="brand" href="./">minutes</a><a href="guide/">使い方</a><a href="privacy/">データの扱い</a><a href="licenses/">ライセンス</a><a href="character/">こよりについて</a><small>大切な会話の、そばに。</small><button class="motion-toggle" type="button" aria-pressed="false" hidden>動きを止める</button></footer>
 </body></html>
