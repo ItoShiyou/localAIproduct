@@ -7,6 +7,25 @@ pub fn speech_threads(requested: Option<i32>, available: usize) -> i32 {
         .min(available.clamp(1, 32) as i32)
 }
 
+/// Restrict the dedicated data directory before creating recordings or SQLite
+/// files. Windows uses the user-profile's inherited ACL; this is not encryption.
+pub fn prepare_data_dir(path: &std::path::Path) -> Result<(), String> {
+    if std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err("保存先が別の場所へのリンクになっています。データを保護するため、起動を中止しました".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(path)
+            .map_err(|_| "アプリ専用の保存先を作成できません".to_string())?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| "保存データのアクセス権を保護できません".to_string())?;
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(path).map_err(|_| "アプリ専用の保存先を作成できません".to_string())?;
+    Ok(())
+}
+
 /// Never mark a working directory as disposable application data when the OS
 /// cannot resolve the dedicated location. The app's delete-all action relies on
 /// this boundary, so path resolution must fail closed.
@@ -35,6 +54,36 @@ pub fn check_inference_support() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::checked_app_data_dir;
+    #[test]
+    fn 保存先の作成は再実行でき通常ファイルをフォルダーとして使わない() {
+        let path = std::env::temp_dir().join(format!("min-dir-boundary-{}", std::process::id()));
+        let data = path.join("data");
+        super::prepare_data_dir(&data).unwrap();
+        super::prepare_data_dir(&data).unwrap();
+        let file = path.join("file");
+        std::fs::write(&file, b"keep").unwrap();
+        assert!(super::prepare_data_dir(&file).is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), b"keep");
+        std::fs::remove_dir_all(path).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn 保存先の権限を所有者だけに限定しリンクは拒否する() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let path = std::env::temp_dir().join(format!("min-private-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let data = path.join("data");
+        super::prepare_data_dir(&data).unwrap();
+        assert_eq!(std::fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+        super::prepare_data_dir(&data).unwrap();
+        assert_eq!(std::fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+        let link = path.join("link");
+        symlink(&data, &link).unwrap();
+        assert!(super::prepare_data_dir(&link).is_err());
+        std::fs::remove_file(link).unwrap();
+        std::fs::remove_dir_all(path).unwrap();
+    }
     #[test]
     fn 音声処理のスレッドは正の数で利用可能なコア数を超えない() {
         use super::speech_threads;

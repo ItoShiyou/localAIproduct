@@ -195,6 +195,7 @@ fn flag(s: &Settings, key: &str, default: bool) -> bool {
 impl AppState {
     /// `asr` を渡すと、それを使う(テスト用)。None なら、モデルの場所から `loader` で読み込む。
     pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, fixed_models: Vec<(PathBuf, &'static str)>) -> Result<Self, String> {
+        crate::platform::prepare_data_dir(&data_dir)?;
         let data_dir_for_ledger = data_dir.clone();
         let app = AppData::init(&data_dir).map_err(err)?;
         let models = ModelManager::new(data_dir.join("models"));
