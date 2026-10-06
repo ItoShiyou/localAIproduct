@@ -68,7 +68,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let data_dir = platform::checked_app_data_dir(app.path().app_data_dir().ok(), &app.config().identifier)?;
             // モデルの場所: 開発用の環境変数 → アプリに同梱(resources/models/)の順。どちらも無ければ設定画面から取得
             let mut fixed = Vec::new();
             if let Some(p) = env_model() {
@@ -97,7 +97,7 @@ pub fn run() {
             state.summary.set_factory(summary::sidecar_factory(sidecar_dirs));
             // 無料版の使った量の記録: データフォルダ・別の場所・OS の資格情報ストア(どれか消されても戻る)
             let id = app.config().identifier.clone();
-            let mut slots: Vec<Box<dyn plan::Slot>> = vec![Box::new(plan::FileSlot(app.path().app_data_dir().unwrap_or_default().join("usage.dat")))];
+            let mut slots: Vec<Box<dyn plan::Slot>> = vec![Box::new(plan::FileSlot(state.app.root.join("usage.dat")))];
             if let Ok(home) = app.path().home_dir() {
                 let other = if cfg!(target_os = "macos") {
                     home.join("Library").join("Preferences").join(format!("{id}.usage"))

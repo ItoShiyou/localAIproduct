@@ -18,6 +18,13 @@ $wv = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
 $win = Get-Process minutes -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
 if ($win) { "メインウィンドウ: handle=$($win.MainWindowHandle) title='$($win.MainWindowTitle)'" } else { "メインウィンドウ: 見つからない" }
 if ($alive) { "メモリ(WorkingSet): {0:N0} MB" -f ($p.WorkingSet64 / 1MB) }
+if ($alive) {
+  "--- C++ runtime module locations (a developer runner is not a clean consumer PC)"
+  try {
+    $p.Modules | Where-Object { $_.ModuleName -match '^(vcruntime|msvcp|concrt)140' } |
+      ForEach-Object { "$($_.ModuleName): $($_.FileName)" }
+  } catch { "Runtime module inspection failed: $_" }
+}
 try {
   Add-Type -AssemblyName System.Windows.Forms, System.Drawing
   $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
