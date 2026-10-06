@@ -1,0 +1,8 @@
+.bird-button{display:grid;grid-template-areas:"bird";width:310px;padding:0;border:0;background:transparent;cursor:pointer;position:relative;border-radius:45%;-webkit-tap-highlight-color:transparent}
+.bird-button .bird-frame{grid-area:bird;width:100%;height:auto;aspect-ratio:1245/1263;object-fit:contain;opacity:0;pointer-events:none}
+.bird-button .bird-frame.is-active{opacity:1}
+.bird-button:focus-visible{outline:2px dashed #78957b;outline-offset:10px}
+.bird-button.is-greeting{animation:bird-hello .65s ease-in-out}
+@keyframes bird-hello{0%,100%{transform:translateY(0) rotate(0)}35%{transform:translateY(-7px) rotate(-3deg)}65%{transform:translateY(-3px) rotate(2deg)}}
+@media(max-width:760px){.bird-button{width:235px}}
+@media(prefers-reduced-motion:reduce){.bird-button,.bird-button .bird-frame{animation:none!important;transition:none!important}}

@@ -1,189 +1,33 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>録音を、この端末の中で議事録に</title>
-  <meta name="description" content="会議や面談の録音を、クラウドに上げずにパソコンの中で文字起こし。話者・要確認・議題と ToDo までまとめる買い切りのアプリです。" />
-  <meta name="theme-color" content="#f3f3ef" />
-  <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="../site.css" />
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>minutes — 外に出せない会話を、手元で記録に。</title>
+  <meta name="description" content="医療の打ち合わせ、研究インタビュー、社内の会議。音声をクラウドへ送らず、手元のMacで文字起こしと議事録を。">
+  <meta name="theme-color" content="#faf9f5">
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="minutes.css"><link rel="stylesheet" href="brand.css">
+  <link rel="stylesheet" href="bird.css">
+  <link rel="stylesheet" href="beta.css">
+  <script src="screens.js" defer></script><script src="motion.js" defer></script><script src="bird.js" defer></script>
 </head>
 <body>
-  <a class="skip" href="#main">本文へ</a>
-  <header class="site">
-    <div class="wrap">
-      <a class="home" href="../">トップ</a>
-      <nav aria-label="このページの中">
-        <a href="#features">できること</a>
-        <a href="#privacy">データの扱い</a>
-        <a href="#plans">無料版と有料版</a>
-        <a href="#faq">よくある質問</a>
-      </nav>
-    </div>
-  </header>
-
-  <main id="main">
-    <section class="hero product">
-      <div class="wrap">
-        <div class="rv">
-          <p class="label">On-device ・ Meeting notes</p>
-          <h1><span class="ib">録音を、</span><span class="ib">この端末の中で</span><br />議事録に。</h1>
-          <p class="lead">会議・面談・取材の録音を、クラウドに上げずにパソコンの中で文字にします。誰が話したか、自信の低い箇所、議題・決定事項・ToDo まで。確認しながら直して、Word や PDF で渡せます。</p>
-          <div class="cta">
-            <a class="btn primary" href="#plans" aria-disabled="true">無料版をダウンロード(準備中)</a>
-            <a class="more" href="#features">できることを見る <span class="arr" aria-hidden="true">↓</span></a>
-          </div>
-          <p class="small under">macOS(Apple Silicon)対応。Windows 版は準備中です。</p>
-        </div>
-        <figure class="plate rv" style="margin:64px 0 0">
-          <img src="../assets/minutes-edit.png" width="1600" height="1000" alt="アプリの確認画面。文ごとの話者と文字、自信の低い文の印、下部に波形の再生バー(架空のデータ)" />
-          <figcaption class="caption">確認の画面。文を押すとその位置から再生し、印の付いた文から順に聞き直せます。画面の画像は架空のデータです。</figcaption>
-        </figure>
-      </div>
-    </section>
-
-    <section id="features" class="tint">
-      <div class="wrap">
-        <div class="cols head">
-          <div class="rv">
-            <p class="label">Features</p>
-            <h2>録って、文字にして、<br />確かめて、渡す。</h2>
-          </div>
-          <p class="lead rv">文字起こしは、終わりではなく下書きです。誤りがある前提で、確かめて直す手間を短くすることに力を入れています。</p>
-        </div>
-        <ul class="features">
-          <li class="rv"><h3><span class="n">01</span>取り込みも、その場の録音も</h3><p>m4a・mp3・wav・mp4 などを取り込めます。マイクで録音すると、話しながら仮の文字が出て、止めたあと高精度のモデルで文字起こしし直します。</p></li>
-          <li class="rv"><h3><span class="n">02</span>誰が話したか</h3><p>声の特徴から話者を分け、色分けして表示します。名前はまとめて付け替えられます。人数を指定して分け直すこともできます。</p></li>
-          <li class="rv"><h3><span class="n">03</span>怪しいところから直す</h3><p>自信の低い文に印を付け、そこだけを順に聞き直せます。文を押すとその位置から再生。入力中は自動で一時停止します。</p></li>
-          <li class="rv"><h3><span class="n">04</span>要約の下書き</h3><p>要点・決定事項・ToDo の下書きを作り、チェックや編集をしてから、議題・決定事項・ToDo に取り込みます。自動では保存しません。下書きには誤りや、話されていない内容が混じることがあります。</p><span class="tagline">有料版・追加機能</span></li>
-          <li class="rv"><h3><span class="n">05</span>議題・決定事項・ToDo</h3><p>担当と期限つきの ToDo を書き込み、そのまま書き出しに入ります。タグを付けて、過去の議事録を全文検索できます。</p></li>
-          <li class="rv"><h3><span class="n">06</span>ノイズ除去と用語辞書</h3><p>エアコンやキーボードの音を抑えてから文字にします。社名や専門用語は、辞書に登録した表記に置き換えます。</p></li>
-          <li class="rv"><h3><span class="n">07</span>Word・PDF・字幕で渡す</h3><p>確定した議事録を、Word・PDF・Markdown・テキスト・字幕(SRT)で書き出せます。</p></li>
-        </ul>
-      </div>
-    </section>
-
-    <section id="privacy" class="night">
-      <div class="wrap cols even">
-        <div class="rv">
-          <p class="label">On-device</p>
-          <h2>録音は、<br />端末の外に出しません。</h2>
-          <p>文字起こし・話者の判別・ノイズ除去は、すべてあなたのパソコンの中で行います。録音や文字を送る通信はありません。文字起こしと話者の判別に必要なモデルはアプリに入っているので、インターネットにつながっていなくても使えます。ライセンスの確認も、パソコンの中で行います。</p>
-          <p>有料版の要約(追加機能)を使うときだけ、要約のモデル(約 2.5GB)を、設定で「取得する」を押したときに一度ダウンロードします。要約も、取得したあとはパソコンの中で動きます。</p>
-          <div class="table-scroll" style="margin-top:28px">
-            <table>
-              <thead><tr><th scope="col">通信する場面</th><th scope="col">送る内容</th></tr></thead>
-              <tbody>
-                <tr><td>更新の確認(設定で止められます)</td><td>アプリのバージョン</td></tr>
-                <tr><td>モデルの取得(押したときだけ。要約のモデルを含む)</td><td>モデルのファイル名</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="small" style="margin-top:16px">録音や文字を送る通信はありません。</p>
-        </div>
-        <figure class="plate rv" style="margin:0">
-          <img src="../assets/minutes-pdf.png" width="909" height="1287" alt="PDF に書き出した議事録の例(架空の内容)" loading="lazy" />
-          <figcaption class="caption">PDF に書き出した例(架空の内容)。</figcaption>
-        </figure>
-      </div>
-    </section>
-
-    <section id="plans">
-      <div class="wrap">
-        <div class="cols head">
-          <div class="rv">
-            <p class="label">Plans</p>
-            <h2>まず無料版で、<br />あなたの録音で試してください。</h2>
-          </div>
-          <p class="lead rv">無料版はお試し用です。気に入ったら、有料版を一度買えば、制限なく使い続けられます。</p>
-        </div>
-        <div class="table-scroll rv" style="margin-top:48px">
-          <table class="plans">
-            <thead><tr><th scope="col"><span class="sr">項目</span></th><th scope="col">無料版</th><th scope="col" class="pro">有料版(買い切り)</th></tr></thead>
-            <tbody>
-              <tr><th scope="row">文字起こしのモデル</th><td>標準(小さなモデル)</td><td class="pro">高精度(大きなモデル)</td></tr>
-              <tr><th scope="row">文字起こしできる時間</th><td>累計 60 分・1件 15 分まで(議事録を消しても戻りません)</td><td class="pro">制限なし</td></tr>
-              <tr><th scope="row">取り込み・マイク録音・確認と修正・検索</th><td>○</td><td class="pro">○</td></tr>
-              <tr><th scope="row">議題・決定事項・ToDo、タグ</th><td>○</td><td class="pro">○</td></tr>
-              <tr><th scope="row">話者の判別・ノイズ除去・用語辞書</th><td>—</td><td class="pro">○</td></tr>
-              <tr><th scope="row">書き出し</th><td>テキストのみ(末尾に無料版の表示)</td><td class="pro">Word・PDF・Markdown・テキスト・字幕・音声</td></tr>
-              <tr><th scope="row">要約(後から追加)</th><td>—</td><td class="pro">○(使うときにモデルを取得。下書きを確認してから取り込み)</td></tr>
-              <tr><th scope="row">価格</th><td>無料</td><td class="pro">発売時に掲載</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="small" style="margin-top:16px">サポートの期間・含まれる更新の範囲・返金の条件は、発売時にこのページに掲載します。</p>
-      </div>
-    </section>
-
-    <section id="spec" class="tint">
-      <div class="wrap cols">
-        <div class="rv">
-          <p class="label">Accuracy</p>
-          <h2>精度について</h2>
-          <p class="muted">文字起こしには誤りが含まれます。録音の質(マイクとの距離、雑音、同時に話す人数)で大きく変わります。重要な箇所は音声で確認してください。無料版で、ご自身の録音で試してから購入されることをおすすめします。</p>
-        </div>
-        <div class="rv">
-          <p class="label">Requirements</p>
-          <h2>動作環境</h2>
-          <div class="table-scroll">
-            <table class="spec">
-              <tbody>
-                <tr><th scope="row">OS</th><td>macOS 12 以降(Apple Silicon)。Windows 版は準備中</td></tr>
-                <tr><th scope="row">空き容量</th><td>アプリ本体で約 0.8GB(macOS の版を測定: アプリ 824MB、インストーラ 736MB。文字起こしと話者判別のモデルを含む)。要約の追加機能を使う場合は、モデルの取得でさらに約 2.5GB</td></tr>
-                <tr><th scope="row">メモリ(要約)</th><td>要約の実行中、開発機(MacBook Air M2・メモリ 16GB)で最大約 5.6〜5.8GB を使用しました(測定条件での値で、保証ではありません)。メモリ 16GB 未満の機械での動作は未確認です。余裕のあるメモリでのご利用をおすすめします</td></tr>
-                <tr><th scope="row">処理の目安</th><td>開発機(MacBook Air M2・メモリ 16GB)で、録音の長さの約 0.3〜0.4 倍の時間。1 時間の録音で約 22 分(合成音声での測定)。お使いの機械や録音によって変わります。要約は、約 2,200 字の架空の議事録で約 40 秒(同じ機械、±30% ほどのばらつき)。長い会議・Windows・低い性能の機械での速さは未測定です</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="faq">
-      <div class="wrap cols">
-        <div class="rv">
-          <p class="label">FAQ</p>
-          <h2>よくある質問</h2>
-        </div>
-        <div class="faq rv" style="margin-top:0">
-          <details><summary>インターネットにつながっていなくても使えますか?</summary><p>文字起こし・話者の判別などはパソコンの中で行うため、通信なしで使えます(要約を使うときの、モデルの取得を除く)。ライセンスの確認もパソコンの中で行うため、そのための通信はありません。</p></details>
-          <details><summary>要約は、どのように動きますか?</summary><p>有料版の追加機能です。設定で要約のモデル(約 2.5GB)を取得すると、議事録の「要約」から下書きを作れます。要約もパソコンの中で動き、内容は送りません。下書きは必ず画面で確認・修正してから取り込みます。誤りや、話されていない内容が混じることがあります。</p></details>
-          <details><summary>Web 会議の相手の声も録れますか?</summary><p>アプリ内の録音はマイクの音が対象です。Web 会議の録音ファイルを取り込んで文字にすることはできます。</p></details>
-          <details><summary>録音や文字は、どこに保存されますか?</summary><p>あなたのパソコンの中の、アプリ専用のフォルダです。設定から全データを削除できます。パソコンのディスク暗号化(FileVault など)を有効にしておくことをおすすめします。</p></details>
-          <details><summary>無料版の「累計 60 分」とは?</summary><p>これまでに文字起こしした音声の合計の長さです。議事録を消しても戻りません。上限に達したあとは、有料版にすると続きから文字起こしできます。</p></details>
-          <details><summary>録音してよいかは、誰が判断しますか?</summary><p>会議や面談を録音する前に、参加者の同意を得てください。同意を得る責任は利用者にあります。</p></details>
-        </div>
-      </div>
-    </section>
-
-    <section style="padding-top:0; border-top:0">
-      <div class="wrap">
-        <p class="notice">開発中のページです。名称・機能・価格は変更される場合があります。画面の画像は架空のデータです。</p>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <div class="wrap">
-      <span>© 2026</span>
-      <span><a href="../">トップへ</a> ・ 利用規約・プライバシー・特定商取引法に基づく表記(準備中)</span>
-    </div>
-  </footer>
-  <script>
-    // 現れる動き(任意)。JS が無い・動きを減らす設定のときは、何もしないで全部見える。
-    (function () {
-      if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      var els = [].slice.call(document.querySelectorAll(".rv"));
-      var vh = window.innerHeight;
-      els.forEach(function (e) { if (e.getBoundingClientRect().top < vh) e.classList.add("in"); });
-      document.documentElement.classList.add("js");
-      var io = new IntersectionObserver(function (es) {
-        es.forEach(function (x) { if (x.isIntersecting) { x.target.classList.add("in"); io.unobserve(x.target); } });
-      }, { rootMargin: "0px 0px -8% 0px" });
-      els.forEach(function (e) { if (!e.classList.contains("in")) io.observe(e); });
-    })();
-  </script>
-</body>
-</html>
+<a class="skip" href="#main">本文へ</a>
+<div class="scroll-progress" aria-hidden="true"></div>
+<header class="wrap"><a class="brand" href="./">minutes<small>大切な会話の、そばに。</small></a><nav aria-label="ページ内"><a href="#privacy">手元で処理</a><a href="#screens">使い心地</a><a href="#availability">無料版とPro</a></nav></header>
+<main id="main">
+  <section class="hero wrap">
+    <div class="hero-copy"><p class="eyebrow">医療の打ち合わせにも。研究のインタビューにも。</p><h1>外に出せない会話を、<br><span>手元で、記録に。</span></h1><p class="lead">患者さんのこと。まだ発表していない研究のこと。<br class="desktop-break">大切な会話を、クラウドに送らず文字にする。<br class="desktop-break">minutesは、あなたのMacの中で働きます。</p><div class="actions"><a class="button" href="#screens">使い心地を見る <span aria-hidden="true">↓</span></a><a href="#privacy">音声はどこへ行く？ →</a></div><div class="hero-tags"><span>音声のクラウド送信なし</span><span>初回準備後はオフライン</span><span>Mac対応</span></div></div>
+    <div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="paper-note note-one">大切な話。</span><span class="paper-note note-two">ちゃんと、手元に。</span><div class="bird-float"><img class="mascot" src="../assets/minutes-bird.png" alt="" width="1024" height="1024"></div><div class="voice-line"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+  </section>
+  <section class="preview-stage wrap" aria-label="minutesの作業画面"><div class="preview-top"><span class="eyebrow">録る。読む。聞き直す。仕上げる。</span><span class="small">画面の会話はサンプルです。</span></div><div class="app-preview" data-parallax><img src="../assets/minutes-calm-reading.jpg" alt="文字起こしを段落で読み、音声を聞き直せるminutesの画面" width="1280" height="720" fetchpriority="high"></div><div class="preview-bottom"><span>音声 → 文字起こし → 議事録</span><span>ぜんぶ、このMacで。</span></div></section>
+  <section id="privacy" class="privacy"><div class="wrap privacy-layout"><div class="reveal"><p class="eyebrow">会話の行き先を、変える。</p><h2>残したい。<br>でも、外には出せない。</h2><p class="lead">その会話にも、文字起こしという選択肢を。</p><p>文字起こしも要約も、あなたのパソコンの中で。録音を外に送らず、読み返せる記録に整えます。</p><a href="privacy/">データの扱いを詳しく →</a></div><div class="local-scene reveal" aria-label="録音、文字起こし、議事録をひとつのMacの中で処理"><div class="computer-frame"><div class="computer-bar"><i></i><i></i><i></i><span>あなたのMac</span></div><div class="local-flow"><span>会話</span><b aria-hidden="true">↓</b><span>文字</span><b aria-hidden="true">↓</b><span>記録</span></div><div class="local-caption">この中で、できあがる。</div></div><div class="computer-foot"></div><img class="scene-bird" src="../assets/minutes-bird.png" alt="" width="1024" height="1024" loading="lazy"></div></div><div class="wrap privacy-footnote"><p>初回の準備や追加機能のダウンロードには、インターネット接続が必要です。準備が終われば、音声の処理にインターネットは使いません。端末・バックアップ・共有先の管理は、ご自身や所属先のルールに沿って行ってください。</p></div></section>
+  <section class="wrap uses"><div class="section-heading reveal"><p class="eyebrow">扱う言葉が、大切なほど。</p><h2>こんな会話の、そばに。</h2></div><div class="three"><article class="use-card reveal"><span class="card-number">01</span><h3>医療の打ち合わせ</h3><p>個人の情報が含まれる話し合い。所属先の録音・保存ルールに沿って、音声を手元で整理したいときに。</p><span class="card-tag">院内の会議・ケースの振り返り</span></article><article class="use-card reveal"><span class="card-number">02</span><h3>研究・インタビュー</h3><p>未発表の内容や、協力者から聞いた言葉。原音を確かめながら、固有名詞や数字まで丁寧に残すために。</p><span class="card-tag">研究室・質的調査・取材</span></article><article class="use-card reveal"><span class="card-number">03</span><h3>社内の打ち合わせ</h3><p>公開前の企画や、チームの相談。会話を読み返し、決まったことと次にすることを共有するために。</p><span class="card-tag">企画会議・少人数ミーティング</span></article></div></section>
+  <section id="screens" class="wrap"><div class="section-heading reveal"><p class="eyebrow">ひとつずつ、進めればいい。</p><h2>いま、したいことが<br>すっと見つかる。</h2><p>読むときは、読むことに。直すときは、その一文に。<br>記録を仕上げるまでの4つの居場所を用意しました。</p></div><div class="tabs" role="tablist" aria-label="作業画面" hidden><button id="tab-read" role="tab" aria-selected="true" aria-controls="screen-panel" data-screen="read">01 読む</button><button id="tab-edit" role="tab" aria-selected="false" aria-controls="screen-panel" tabindex="-1" data-screen="edit">02 聞いて直す</button><button id="tab-notes" role="tab" aria-selected="false" aria-controls="screen-panel" tabindex="-1" data-screen="notes">03 議事録を仕上げる</button><button id="tab-focus" role="tab" aria-selected="false" aria-controls="screen-panel" tabindex="-1" data-screen="focus">04 一文ずつ直す</button></div><div id="screen-panel" role="tabpanel" aria-labelledby="screen-title"><div class="screen-copy"><h3 id="screen-title">読む</h3><p id="screen-description">全文を段落で読み、会話の流れをつかむ画面です。</p></div><div class="screen-frame"><img id="screen-image" src="../assets/minutes-calm-reading.jpg" alt="読む画面" width="1280" height="720" loading="lazy"></div></div><noscript><p><a href="../assets/minutes-calm-edit.jpg">聞いて直す</a> / <a href="../assets/minutes-calm-minutes.jpg">議事録を仕上げる</a> / <a href="../assets/minutes-calm-focus.jpg">一文ずつ直す</a></p></noscript></section>
+  <section class="wrap features"><div class="feature-banner reveal"><div><p class="eyebrow">文字になった、その先まで。</p><h2>聞き直せるから、<br>ちゃんと直せる。</h2><p>不確かな箇所を見つける。音声を聞く。文字を直す。<br>議事録の隣で元の発言を探し、確認してから書き出す。</p><a href="guide/">使い方を読む →</a></div><div class="quote-card"><span class="quote-time">0:08 · 元の発言</span><p>まず、新しい見積もりの件について…</p><span class="quote-control"><span aria-hidden="true">▶</span> 聞いて、確かめる。</span><span class="quote-line"></span></div></div><p class="small accuracy-note">文字起こし・話者分離・要約には誤りがあり得ます。重要な内容は原音で確認してください。</p></section>
+  <section id="beta" class="wrap beta-section" aria-labelledby="beta-title"><div><p class="eyebrow">最初の使い手になってください。</p><h2 id="beta-title">あなたの会話で、<br>使い心地を確かめる。</h2><p>βテストの募集と公開の案内を、メールでお届けします。Mac・Windowsどちらの参加希望も受け付けます。</p><ul><li>短い音声で、文字起こしと修正の流れを試す</li><li>使いにくかったところを教える</li><li>機密の録音を送る必要はありません</li></ul><p class="small">準備が整ったOSから順次ご案内します。参加は任意です。</p></div><div class="beta-signup"><h3>最初の一歩は、メール登録から。</h3><p>メールアドレス・使いたいパソコン・利用場面をご登録ください。参加の案内を受け取れます。</p><a id="beta-register" class="button" href="https://docs.google.com/forms/d/e/1FAIpQLScMucyl5z_wqJOZw70DLu-gqoIbVoVaGqST9z6umTYJ2Z_rMg/viewform" target="_blank" rel="noopener noreferrer">βテストに登録する <span aria-hidden="true">↗</span></a><p class="small">Googleフォームが別のタブで開きます。Googleへのログインは不要です。</p><a class="beta-contact" href="beta-privacy/">登録情報の扱いを確認する →</a></div></section>
+  <section id="availability" class="wrap"><div class="section-heading reveal"><p class="eyebrow">自分の音声で、確かめてから。</p><h2>短い録音から、<br>いつもの記録まで。</h2></div><div class="plans"><article class="reveal"><p class="eyebrow">FREE</p><h3>まずは、短い録音で。</h3><p>累計60分まで・1件15分まで</p><ul><li>録音を文字にする</li><li>マイク録音・ファイル取り込み</li><li>聞き直し・文字の修正・議事録づくり</li><li>テキスト書き出し（無料版の表記付き）</li></ul></article><article class="reveal"><p class="eyebrow">PRO · 3,980円 買い切り</p><h3>日々の記録を、続ける。</h3><p>文字起こしの時間制限を解除</p><ul><li>より精度の高い文字起こし・話した人の判別・用語集</li><li>雑音を抑える・会話から要点をまとめる</li><li>Word・PDF・Markdown・字幕の書き出し</li><li>購入後の利用にオンライン認証は不要</li></ul></article></div><div class="availability-action"><a class="button" href="#beta">βテストの案内を見る ↑</a><p class="small">製品版の配布は準備中です。</p></div></section>
+  <section class="wrap faq"><p class="eyebrow">気になること。</p><h2>使いはじめる前に。</h2><details><summary>医療の現場でも使えますか？</summary><p>音声を端末内で文字起こしする用途に利用できます。録音の同意、端末の保護、情報の保存・共有は所属先のルールを確認してください。医療上の判断や診療記録の自動確定を行う製品ではありません。</p></details><details><summary>インターネットなしでも使えますか？</summary><p>初回の準備を済ませると、文字起こしと要約をインターネットなしで使えます。追加機能のダウンロード時には接続が必要です。</p></details><details><summary>オンライン会議の相手の声も録れますか？</summary><p>現在の録音入力はマイクです。ヘッドホンから聞こえる相手の声を直接録る機能には対応していません。保存した会議音声ファイルは取り込めます。</p></details><details><summary>専門用語も正しく認識できますか？</summary><p>日本語に対応し、Proでは用語集が使えます。人名・専門用語・数字などは音質や会話によって誤るため、原音を聞いて確認してください。</p></details><details><summary>どのMacで使えますか？</summary><p>Apple Silicon搭載Mac向けです。MacBook Air M2で動作確認しています。アプリは約824MiB、要約を追加する場合は別途約2.5GB。録音保存や処理のための空き容量も必要です。正式な対応OSと推奨メモリは配布時にご案内します。</p></details></section>
+  <section class="wrap closing reveal"><img src="../assets/minutes-bird.png" alt="ノートを抱えるminutesの小鳥" width="1024" height="1024" loading="lazy"><div><p class="eyebrow">大切な会話の、そばに。</p><h2>言葉を残そう。<br>安心できる場所に。</h2><a class="button" href="#screens">minutesの画面を見る ↑</a></div></section>
+</main>
+<footer class="wrap"><a class="brand" href="./">minutes</a><a href="guide/">使い方</a><a href="privacy/">データの扱い</a><a href="licenses/">ライセンス</a><small>大切な会話の、そばに。</small><button class="motion-toggle" type="button" aria-pressed="false" hidden>動きを止める</button></footer>
+</body></html>
