@@ -41,9 +41,9 @@ def execute(app, output, identity, profile, run=None):
         raise ValueError('Keychainの公証プロファイル名が必要です')
     if output.exists():
         raise ValueError('出力先は新しいフォルダーを指定してください。上書きしません')
-    config = json.loads((APP_ROOT / 'src-tauri/tauri.conf.json').read_text())
+    config = json.loads((APP_ROOT / 'src-tauri/tauri.conf.json').read_text(encoding='utf-8'))
     notices = APP_ROOT / 'src-tauri/resources/THIRD_PARTY_NOTICES.txt'
-    result = checks(config, (APP_ROOT / 'src-tauri/src/license.rs').read_text(), notices.read_text() if notices.exists() else '')
+    result = checks(config, (APP_ROOT / 'src-tauri/src/license.rs').read_text(encoding='utf-8'), notices.read_text(encoding='utf-8') if notices.exists() else '')
     if not all(result.values()):
         raise ValueError('販売前設定が未完了です: ' + ', '.join(k for k,v in result.items() if not v))
     with (APP_ROOT / 'src-tauri/Entitlements.plist').open('rb') as source:

@@ -32,10 +32,10 @@ def mac_permissions(config, entitlements):
 
 
 def main():
-    config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
-    key_source = (ROOT / "src-tauri/src/license.rs").read_text()
+    config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding='utf-8'))
+    key_source = (ROOT / "src-tauri/src/license.rs").read_text(encoding='utf-8')
     notice_path = ROOT / "src-tauri/resources/THIRD_PARTY_NOTICES.txt"
-    result = checks(config, key_source, notice_path.read_text() if notice_path.exists() else "")
+    result = checks(config, key_source, notice_path.read_text(encoding='utf-8') if notice_path.exists() else "")
     try:
         with (ROOT / 'src-tauri/Entitlements.plist').open('rb') as source:
             entitlements = plistlib.load(source)

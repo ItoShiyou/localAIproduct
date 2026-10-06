@@ -1,0 +1,35 @@
+name: minutes-sales-operations
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac/verify]
+    paths:
+      - 'tools/minutes_*.py'
+      - 'tools/test_minutes_*.py'
+      - 'apps/minutes/spike/release_preflight.py'
+      - 'apps/minutes/spike/test_*permissions.py'
+      - 'apps/minutes/spike/test_release_preflight.py'
+      - 'apps/minutes/src-tauri/Entitlements.plist'
+      - '.github/workflows/minutes-sales-operations.yml'
+permissions:
+  contents: read
+jobs:
+  operations:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 注文・配布処理・権限設定の自己テスト（Appleは模擬応答）
+        run: |
+          python -m unittest discover -s tools -p test_minutes_orders.py
+          python -m unittest discover -s tools -p test_minutes_macos_release.py
+          python -m unittest discover -s apps/minutes/spike -p test_mac_permissions.py
+          python -m unittest discover -s apps/minutes/spike -p test_release_preflight.py
+      # The real issuer CLI test is explicitly skipped here. minutes-windows
+      # compiles that executable and runs this test with MINUTES_ISSUER_BIN.
