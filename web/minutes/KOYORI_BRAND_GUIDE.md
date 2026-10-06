@@ -46,3 +46,5 @@ OSの動きを減らす設定・サイトの停止ボタンを優先する。画
 フレーム時間・停止・動き制限・途中の非表示・連打時の古いコールバック・未知の名前に対する6件の自動試験を追加。表示確認と公開結果は作業完了時に追記する。
 
 ローカル確認: 自動試験6件成功、HTML6ページのリンク・リソース・見出し検査成功。ブラウザーで全6しぐさの選択と再生状態、画像4枚の読み込み、停止時に元絵へ戻ること・animation:none、再開操作、製品ページの名前と導線を確認。PC幅で横のはみ出しなし。今回の確認では実端末のモバイル表示、OS設定を実際に変更しての動き制限、GIF・動画への書き出しは実施していない。
+
+公開確認: [GitHub Pagesの配信処理](https://github.com/ItoShiyou/localAIproduct/actions/runs/37490900317) のbuild・deployが成功。[紹介ページ](https://itoshiyou.github.io/localAIproduct/minutes/character/) のタイトル・挨拶動作・PNG4枚の実読込・PC幅での横はみ出しなしを確認。再利用する動きのモジュールもHTTP200、JavaScriptのContent-Typeで配信されている。
