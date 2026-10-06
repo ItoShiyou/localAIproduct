@@ -47,12 +47,12 @@ jobs:
       - name: テスト(ロジックのみ)
         run: cargo test --release --lib --test recording_lifecycle --no-default-features -- --test-threads=1
       - name: 販売前チェックの自己テスト
-        run: python -m unittest discover -s ../spike -p test_release_preflight.py
+        run: python -m unittest discover -s ../spike -p 'test_*permissions.py' && python -m unittest discover -s ../spike -p test_release_preflight.py
       - name: ライセンス交付の安全試験（公開された開発キーだけを使用）
         run: |
           cargo test --release --no-default-features --example license_issuer
           cargo build --release --no-default-features --example license_issuer
-          export MINUTES_ISSUER_BIN="$PWD/target/release/examples/license_issuer.exe"
+          export MINUTES_ISSUER_BIN="$(cygpath -w "$PWD/target/release/examples/license_issuer.exe")"
           python -m unittest discover -s ../../../tools -p test_minutes_orders.py
           python -m unittest discover -s ../../../tools -p test_minutes_macos_release.py
       - name: 同梱物の仮置き(tauri_build が存在だけを確認するため。テストでは使わない)

@@ -1,5 +1,5 @@
 import unittest
-from release_preflight import checks
+from release_preflight import checks, mac_permissions
 
 
 class PreflightTests(unittest.TestCase):

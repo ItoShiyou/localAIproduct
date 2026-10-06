@@ -57,6 +57,10 @@ python3 tools/minutes_macos_release.py --app /ビルド済み/minutes.app --outp
 
 追加した試験は発行者Rust3件、注文10件（うち実CLIの署名・検証・再交付を公開済みの開発キーのみで実施）、Mac配布処理5件。Appleの応答は模擬であり、本番署名・公証を実施済みとはしない。Windows CIにも発行・注文・配布処理の自己テストを組み込んだ。既存アプリのMac／Windows試験はFINAL_HANDOFF_2026-10-07.mdを参照。
 
+ローカル最終確認: Releaseの音声機能なし構成89件（9.14秒）、既定構成89件（8.57秒）、発行者Rust3件、注文10件、Mac配布処理5件、マイク権限設定3件、従来の販売前検査2件が成功。Mac配布候補は署名検証と権限設定を含むコードへ再ビルド済み。実署名・公証の成功とは別。
+
+販売前検査は本番公開鍵と権利者名が未設定のため、意図どおり失敗を返す。公証への送信や、本番の注文・秘密鍵・証明書の作成、顧客への連絡は実行していない。署名、公証、契約／決済、Windows一般実機、実購入によるPro登録は所有者側の準備後に完了できる。現状を販売開始済みと扱わない。
+
 ## 参考となる公式仕様
 
 [Appleの公証手順](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)、[Audio Input権限](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input)、[Windows署名ツール](https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool)。Windowsの実配布署名は所有者の証明書・署名環境が揃ってから実施・確認する。

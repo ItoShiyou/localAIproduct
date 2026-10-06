@@ -5,6 +5,7 @@ Missing production configuration intentionally exits 1. Payment, contract and
 hardware checks remain manual even if these local checks pass.
 """
 import json
+import plistlib
 import re
 from pathlib import Path
 
@@ -23,11 +24,24 @@ def checks(config, key_source, notices):
     }
 
 
+def mac_permissions(config, entitlements):
+    mac = config.get('bundle', {}).get('macOS', {})
+    return (mac.get('hardenedRuntime') is True
+            and mac.get('entitlements') == 'Entitlements.plist'
+            and entitlements.get('com.apple.security.device.audio-input') is True)
+
+
 def main():
     config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
     key_source = (ROOT / "src-tauri/src/license.rs").read_text()
     notice_path = ROOT / "src-tauri/resources/THIRD_PARTY_NOTICES.txt"
     result = checks(config, key_source, notice_path.read_text() if notice_path.exists() else "")
+    try:
+        with (ROOT / 'src-tauri/Entitlements.plist').open('rb') as source:
+            entitlements = plistlib.load(source)
+    except (OSError, plistlib.InvalidFileException):
+        entitlements = {}
+    result['署名時のマイク権限・Hardened Runtime設定'] = mac_permissions(config, entitlements)
     for name, passed in result.items():
         print(f"{'確認済み' if passed else '未完了'}: {name}")
     print("別途必須: 配布署名・公証、実購入→キー交付→登録、販売表記・規約・返金条件、実機マイク・機器抜去試験")

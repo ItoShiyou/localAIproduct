@@ -14,7 +14,7 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 APP_ROOT = REPO / 'apps/minutes'
 sys.path.insert(0, str(APP_ROOT / 'spike'))
-from release_preflight import checks
+from release_preflight import checks, mac_permissions
 
 def bundle_info(app):
     if not app.is_dir() or app.name != 'minutes.app':
@@ -46,6 +46,10 @@ def execute(app, output, identity, profile, run=None):
     result = checks(config, (APP_ROOT / 'src-tauri/src/license.rs').read_text(), notices.read_text() if notices.exists() else '')
     if not all(result.values()):
         raise ValueError('販売前設定が未完了です: ' + ', '.join(k for k,v in result.items() if not v))
+    with (APP_ROOT / 'src-tauri/Entitlements.plist').open('rb') as source:
+        permissions = plistlib.load(source)
+    if not mac_permissions(config, permissions):
+        raise ValueError('署名時のマイク権限またはHardened Runtime設定が不足しています')
     if run is None:
         def run(arguments):
             completed = subprocess.run(arguments, check=True, capture_output=True, text=True, encoding='utf-8')
