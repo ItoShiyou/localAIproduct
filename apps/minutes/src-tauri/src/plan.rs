@@ -36,7 +36,7 @@ pub fn distribution_tier() -> Option<Tier> {
 pub const FREE_TOTAL_MS: u64 = 60 * 60 * 1000;
 pub const FREE_MEETING_MS: u64 = 15 * 60 * 1000;
 /// 無料版の書き出しの末尾に入れる一文
-pub const FREE_FOOTER: &str = "— この議事録は「議事録(仮称)」無料版で作成しました。";
+pub const FREE_FOOTER: &str = "— この議事録はminutes無料版で作成しました。";
 
 /// 機能ごとの可否(画面にもそのまま渡す)
 #[derive(Debug, Clone, Serialize, PartialEq)]

@@ -1,0 +1,90 @@
+name: minutes-windows-editions
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac/verify]
+    paths: ['.github/workflows/minutes-windows-editions.yml']
+permissions:
+  contents: read
+concurrency:
+  group: minutes-windows-editions-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONUTF8: '1'
+  CMAKE_C_FLAGS_RELEASE: '-O2 -Ob2 -DNDEBUG'
+  CMAKE_CXX_FLAGS_RELEASE: '-O2 -Ob2 -DNDEBUG'
+  CMAKE_PROJECT_INCLUDE: ${{ github.workspace }}/.github/scripts/ggml-x64-baseline.cmake
+jobs:
+  candidate:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [free, pro]
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/minutes/src-tauri
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/minutes/ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/minutes/src-tauri
+            apps/minutes/summarizer
+          key: editions-${{ matrix.edition }}
+      - name: Cross-edition persistence and candidate packaging tests
+        run: |
+          python ../../../tools/test_minutes_edition_upgrade.py
+          python -m unittest discover -s ../../../tools -p test_minutes_windows_candidate.py
+      - name: Prepare only this edition's dependencies
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: ../tools/prepare_bundle.sh ${{ matrix.edition }}
+      - name: Build Free installer
+        if: matrix.edition == 'free'
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: node ../tools/build_edition.mjs free --shared-cache --target x86_64-pc-windows-msvc --bundles nsis --ci
+      - name: Build Pro executable (ZIP64, not a large NSIS installer)
+        if: matrix.edition == 'pro'
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: |
+          node ../tools/build_edition.mjs pro --shared-cache --target x86_64-pc-windows-msvc --no-bundle --ci
+          python ../../../tools/minutes_windows_candidate.py \
+            --exe target/x86_64-pc-windows-msvc/release/minutes.exe \
+            --resources resources \
+            --sidecar binaries/minutes-summarizer-x86_64-pc-windows-msvc.exe \
+            --output target/windows-pro-candidate
+      - name: Real bundled audio processing and Pro summary
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: |
+          export MINUTES_EDITION_RESOURCES="$(cygpath -w "$PWD/resources")"
+          export MINUTES_EDITION_AUDIO="$(cygpath -w "$PWD/../testset/t01_clean.wav")"
+          if [ '${{ matrix.edition }}' = pro ]; then
+            export MINUTES_EDITION_RESOURCES="$(cygpath -w "$PWD/target/windows-pro-candidate/minutes Pro/resources")"
+            export MINUTES_EDITION_SIDECAR_DIR="$(cygpath -w "$PWD/target/windows-pro-candidate/minutes Pro")"
+          fi
+          FEATURES=whisper,edition-${{ matrix.edition }}
+          if [ '${{ matrix.edition }}' = pro ]; then FEATURES="$FEATURES,diarize"; fi
+          cargo test --release --no-default-features --features "$FEATURES" --test distribution_editions -- --include-ignored --skip persisted_edition_upgrade --nocapture
+      - name: Upload unsigned test candidates (never GitHub Releases)
+        uses: actions/upload-artifact@v5
+        with:
+          name: minutes-windows-${{ matrix.edition }}-unsigned-candidate
+          path: |
+            apps/minutes/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            apps/minutes/src-tauri/target/windows-pro-candidate/*.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

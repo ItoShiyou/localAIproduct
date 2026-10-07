@@ -4,6 +4,8 @@
 #   2) 話者の判別の部品(onnxruntime の公式配布、WeSpeaker のモデル)を取得し、SHA-256 を照合して置く
 #   3) 第三者ライセンス表記 src-tauri/resources/THIRD_PARTY_NOTICES.txt を作り直す
 set -euo pipefail
+EDITION="${1:-legacy}"
+case "$EDITION" in free|pro|legacy) ;; *) echo 'Select free or pro' >&2; exit 1 ;; esac
 APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$APP/../.." && pwd)"
 cd "$APP/src-tauri"
@@ -11,7 +13,9 @@ cd "$APP/src-tauri"
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 PY="$(command -v python3 || command -v python)"
 export PYTHONUTF8=1  # Windows の既定(cp1252)だと日本語の出力で落ちる
-cargo run -q --release --no-default-features --example fetch_model -- "$APP/src-tauri/resources/models"
+if [[ "$EDITION" != free ]]; then
+  cargo run -q --release --no-default-features --example fetch_model -- "$APP/src-tauri/resources/models"
+fi
 rm -f resources/models/*.part
 
 fetch() { # <URL> <保存先> <SHA-256>
@@ -24,6 +28,7 @@ fetch() { # <URL> <保存先> <SHA-256>
 # 録音中の仮の文字に使う小さなモデル(Whisper small、MIT)
 fetch https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin \
   resources/models/ggml-small-q5_1.bin ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+if [[ "$EDITION" != free ]]; then
 fetch https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/resolve/main/voxceleb_resnet34_LM.onnx \
   resources/models/voxceleb_resnet34_LM.onnx 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -44,10 +49,18 @@ else
       "$ZIP" resources/onnxruntime/onnxruntime.dll ;;
   esac
 fi
+fi
+if [[ "$EDITION" == pro ]]; then
+  cargo run -q --release --no-default-features --example fetch_summary_model -- "$APP/src-tauri/resources/models"
+fi
 (cd "$APP/ui" && npm ci --silent)
+NOTICE_FEATURES=tauri,whisper
+[[ "$EDITION" == free ]] || NOTICE_FEATURES=tauri,whisper,diarize
 "$PY" "$ROOT/tools/gen_notices.py" "$APP/src-tauri" "$APP/ui" "$APP/src-tauri/resources/THIRD_PARTY_NOTICES.txt" \
-  --features tauri,whisper,diarize --extra "$APP/legal/extra.json"
+  --features "$NOTICE_FEATURES" --extra "$APP/legal/extra.json"
 echo "準備できました: $(du -sh resources | cut -f1)"
 
 # --- 要約のサイドカー(別の実行ファイル)を作って src-tauri/binaries/ に置く(bundle.externalBin)。tools/build_summarizer.sh ---
-bash "$APP/tools/build_summarizer.sh"
+if [[ "$EDITION" != free ]]; then
+  bash "$APP/tools/build_summarizer.sh"
+fi
