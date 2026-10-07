@@ -3,6 +3,7 @@ import type { Api } from "./api";
 import type { Flag, LicenseStatus, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
 import { PRO_LABEL } from "./types";
 import { PageHead } from "./PageHead";
+import { edition, openPurchasePage } from "./edition";
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
@@ -33,7 +34,9 @@ function ModelSection({ api, onChanged, plan, offline }: { api: Api; onChanged: 
           いまは<b>標準の文字起こし</b>を使っています。より精度の高い文字起こしは有料版で使えます。
         </p>
       )}
-      <p className="note">高精度の文字起こしに必要な容量は約 {mb(m.size)} です。音声はこのパソコンの中で処理します。</p>
+      <p className="note">文字起こしはこのパソコンの中で処理します。</p>
+      {edition === "free" && <p className="msg">標準の文字起こしを同梱しています。動かない場合は無料版アプリを入れ直してください。</p>}
+      {edition !== "free" && <>
       {m.source === "bundled" && <p className="msg">アプリに同梱済み(追加の取得は不要です)</p>}
       {m.source === "managed" && <p className="msg">取得済み</p>}
       {m.source === "none" && <p className="note">文字起こしに必要なデータが見つかりません。アプリを入れ直すか、ここからダウンロードしてください。</p>}
@@ -59,6 +62,7 @@ function ModelSection({ api, onChanged, plan, offline }: { api: Api; onChanged: 
             <button className="btn small danger" onClick={async () => { try { setM(await api.deleteModel()); } catch (e) { setMsg(String(e)); } setDelAsk(false); }}>削除する</button>
             <button className="btn small" onClick={() => setDelAsk(false)}>やめる</button>
           </span>)}
+      </>}
     </section>
   );
 }
@@ -97,10 +101,10 @@ function SummarySection({ api, plan, offline }: { api: Api; plan?: Plan | null; 
   return (
     <section className="card" data-testid="summary-model">
       <h2>要約(追加機能){!pro && <span className="pro">{PRO_LABEL}</span>}</h2>
-      <p className="note">会話から要点・決定事項・やることの下書きを作ります。初めて使うときは、必要なデータを追加ダウンロードしてください。</p>
+      <p className="note">会話から要点・決定事項・やることの下書きを作ります。{m.source === "bundled" ? "必要なデータは同梱済みです。" : "必要なデータがない場合は追加できます。"}</p>
       <p className="note">必要な空き容量は約 {gb(m.size)} です。メモリ16GBのパソコンで動作確認しています。長い会議では数分かかることがあります。</p>
       {!pro && <p className="note" data-testid="summary-model-locked">有料版の機能です。無料版では取得できません。</p>}
-      {m.installed && m.source === "managed" && <p className="msg">入っています</p>}
+      {m.installed && <p className="msg">{m.source === "bundled" ? "同梱済み・追加の取得は不要です" : "入っています"}</p>}
       {!m.engine && <p className="note">この版では要約を利用できません。</p>}
       {!m.installed && !busy && (
         <>
@@ -142,7 +146,7 @@ function PlanCard({ plan }: { plan: Plan }) {
     ["マイク録音・取り込み・確認と修正・検索", "○", "○"],
     ["書き出し", "テキストのみ(末尾に無料版の表示)", "Word・PDF・Markdown・テキスト・字幕・音声"],
     ["話者の判別・ノイズ除去・用語辞書", "—", "○"],
-    ["要約(後から追加ダウンロード。下書きを確認して使う)", "—", "○"],
+    ["要約(下書きを確認して使う)", "—", "○"],
   ];
   return (
     <section className="card" data-testid="plan-card">
@@ -157,7 +161,7 @@ function PlanCard({ plan }: { plan: Plan }) {
         <thead><tr><th></th><th>無料版</th><th>有料版(買い切り)</th></tr></thead>
         <tbody>{rows.map(([a, b, c]) => <tr key={a}><td>{a}</td><td>{b}</td><td>{c}</td></tr>)}</tbody>
       </table>
-      {plan.tier === "free" && <p className="note">ライセンスキーをお持ちの方は、すぐ下の「ライセンス」に入力すると有料版になります。購入の方法は準備中です。</p>}
+      {plan.tier === "free" && <><p className="note">有料機能は別のPro版アプリで使えます。購入先を選び、購入したPro版をインストールしてください。</p><button className="btn primary" onClick={() => openPurchasePage().catch((e) => alert(String(e)))}>Pro版の購入先を選ぶ ↗</button></>}
     </section>
   );
 }
@@ -272,7 +276,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </div>
       )}
       {plan && <PlanCard plan={plan} />}
-      <LicenseSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings).catch(() => undefined); onLicenseChanged(); }} />
+      {!edition && <LicenseSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings).catch(() => undefined); onLicenseChanged(); }} />}
       <section className="card" data-testid="offline-mode">
         <h2>ネットワークを使わない</h2>
         <label className={"check" + (s.offlineForced ? " locked" : "")}>
@@ -280,14 +284,14 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </label>
         {s.offlineForced
           ? <p className="note" data-testid="offline-forced">オフライン版のライセンスが登録されているため、常にオンです(切り替えられません)。</p>
-          : <p className="note">オンにすると、追加ダウンロードなどの通信を止めます。要約に必要なファイルはUSBなどから取り込めます。通信できない場所や、機密の扱いが厳しい場所向けです。</p>}
+          : <p className="note">オンにすると、アプリ内の追加ダウンロードなどを止めます。{plan?.summary && "要約に必要なファイルはUSBなどから取り込めます。"}購入案内は、押した場合に外部ブラウザで開きます。</p>}
       </section>
       <ModelSection key={`m-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
-      <SummarySection key={`s-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} />
+      {plan?.summary && <SummarySection key={`s-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} />}
       <section className="card">
         <h2>処理の設定</h2>
-        <label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>
-        <p className="note">ノイズ除去で文字起こしの精度が下がる録音もあります。結果が良くないときは、オフにして取り込み直してください。</p>
+        {plan?.denoise && <><label className="check"><input type="checkbox" checked={s.denoiseDefault} onChange={(e) => set("denoise_default", e.target.checked)} /> 取り込むとき、ノイズ除去を既定でオンにする</label>
+        <p className="note">ノイズ除去で文字起こしの精度が下がる録音もあります。結果が良くないときは、オフにして取り込み直してください。</p></>}
         <label className="check"><input type="checkbox" checked={s.keepAudio} onChange={(e) => set("keep_audio", e.target.checked)} /> 文字起こしの後も音声のコピーを残す(確認画面で再生するために必要)</label>
         <p className="note">オフにすると、文字起こしが終わった時点で音声のコピーを消し、文字だけを残します。</p>
       </section>
@@ -304,7 +308,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
             ))}
           </tbody>
         </table>
-        <p className="note">購入キーの確認にはインターネットを使いません。この版はアプリの更新を自動確認しません。</p>
+        <p className="note">{edition ? "キーの登録は不要です。" : "購入キーの確認にはインターネットを使いません。"}この版はアプリの更新を自動確認しません。</p>
       </section>
 
       <section className="card">
@@ -325,7 +329,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
           <thead><tr><th>名前</th><th>用途</th><th>ライセンス</th></tr></thead>
           <tbody>
             {[
-              ["Whisper small / large-v3-turbo（OpenAI）", "標準 / 高精度の文字起こし", "MIT"],
+              [plan?.tier === "free" ? "Whisper small（OpenAI）" : "Whisper small / large-v3-turbo（OpenAI）", "文字起こし", "MIT"],
               ["WeSpeaker ResNet34-LM（WeSpeaker project）", "話者の判別・改変なし", "CC BY 4.0"],
               ["ONNX Runtime（Microsoft）", "話者判別の実行", "MIT"],
               ["whisper.cpp", "文字起こしの実行", "MIT"],
@@ -337,10 +341,10 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
               ["SQLite / rusqlite", "データベース", "パブリックドメイン / MIT"],
               ["Tauri", "アプリの枠組み", "Apache-2.0 または MIT"],
               ["React", "画面", "MIT"],
-            ].map(([n, u, l]) => <tr key={n}><td>{n}</td><td>{u}</td><td>{l}</td></tr>)}
+            ].filter(([n]) => plan?.tier !== "free" || !/WeSpeaker|ONNX|Qwen|llama|nnnoiseless/.test(n)).map(([n, u, l]) => <tr key={n}><td>{n}</td><td>{u}</td><td>{l}</td></tr>)}
           </tbody>
         </table>
-        <p className="note">オフラインで要約を準備する場合の対応ファイル: Qwen3-4B-Instruct-2507 の GGUF（Q4_K_M）。提供元・利用条件・著作権表示は下の全文に記載しています。</p>
+        {plan?.summary && <p className="note">要約の対応ファイル: Qwen3-4B-Instruct-2507 の GGUF（Q4_K_M）。提供元・利用条件・著作権表示は下の全文に記載しています。</p>}
         <p className="note">ここに挙げたもののほか、多数のオープンソースのライブラリを使っています。すべての著作権表示とライセンスの全文は、次のボタンから読めます(アプリにも同梱しています)。</p>
         <button className="btn small" onClick={async () => { try { setNotices(await api.thirdPartyNotices()); } catch (e) { setMsg(String(e)); } }}>ライセンスの全文を表示</button>
       </section>

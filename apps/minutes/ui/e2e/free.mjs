@@ -1,52 +1,40 @@
-// 無料版の画面(モックの ?free)を Playwright で確認する: 残り時間の表示、有料機能の鍵、書き出しはテキストのみ、プランの比較
-import { createRequire } from "node:module";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import assert from "node:assert/strict";
-const require = createRequire(path.join(process.env.PLAYWRIGHT_DIR ?? process.cwd(), "node_modules/"));
-const { chromium } = require("playwright");
-const shots = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs/ui");
-
+// Free edition UI regression. No real audio recognition or purchases.
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const require = createRequire(path.join(process.env.PLAYWRIGHT_DIR ?? process.cwd(), 'node_modules/'));
+const { chromium } = require('playwright');
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
-const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
-const errors = [];
-page.on("pageerror", (e) => errors.push(String(e)));
-await page.goto((process.env.URL ?? "http://127.0.0.1:5175/") + "?free");
-await page.getByTestId("plan-strip").getByText("残り 60 分").waitFor();
-await page.getByRole("button", { name: /取り込みの設定/ }).click();
-const o = page.getByTestId("options");
-assert.equal(await o.getByLabel(/話者を判別/).isDisabled(), true);
-assert.equal(await o.getByLabel(/ノイズ除去/).isDisabled(), true);
-await page.getByRole("button", { name: "録音を取り込む" }).click();
-await page.getByRole("button", { name: "確認しました" }).click();
-await page.getByText("文字起こし済み").first().waitFor({ timeout: 10000 });
-await page.getByTestId("plan-strip").getByText("残り 59 分").waitFor();
-await page.getByRole("button", { name: "確定", exact: true }).click();
-await page.getByLabel("書き出し").click();
-const items = await page.getByRole("menuitem").evaluateAll((os) => os.map((x) => [x.textContent, x.disabled]));
-assert.deepEqual(items.filter(([, d]) => !d).map(([t]) => t), ["テキスト"], "無料版はテキストのみ");
-assert.ok(items.filter(([, d]) => d).every(([t]) => /有料版/.test(t)), "使えない形式は(有料版)と出る");
-await page.keyboard.press("Escape");
-await page.screenshot({ path: path.join(shots, "mock-free-1.png") });
-// 要約は有料版: タブに有料版の印。押すと鍵の表示だけで、始めるボタンは無い
-const sumTab = page.getByRole("tab", { name: /要約/ });
-await sumTab.getByText("有料版").waitFor();
-await sumTab.click();
-const sum = page.getByTestId("summary");
-await sum.getByTestId("summary-locked").getByText("要約は有料版の機能です").waitFor();
-await sum.getByTestId("summary-note").getByText("要約は自動で作った下書きです").waitFor();
-assert.equal(await sum.getByTestId("summary-run").count(), 0, "無料版では要約を始められない");
-await page.getByRole("tab", { name: "用語辞書" }).click();
-assert.equal(await page.getByRole("button", { name: "追加" }).isDisabled(), true);
-await page.getByRole("tab", { name: "設定" }).click();
-await page.getByTestId("plan-card").getByText("ご利用のプラン: 無料版").waitFor();
-await page.getByTestId("model-tier").getByText("標準モデル(Whisper small)").waitFor();
-// 要約(追加機能)のモデルの取得も、無料版では押せない
-const sm = page.getByTestId("summary-model");
-await sm.getByText("有料版").first().waitFor();
-await sm.getByTestId("summary-model-locked").waitFor();
-assert.equal(await sm.getByRole("button", { name: "取得する" }).isDisabled(), true, "無料版では要約のモデルを取得できない");
-await page.screenshot({ path: path.join(shots, "mock-free-2.png") });
-assert.deepEqual(errors, []);
-console.log("ok: 無料版の制限");
-await browser.close();
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto((process.env.URL ?? 'http://127.0.0.1:5175/') + '?free');
+  await page.getByTestId('edition-badge').getByText('無料版', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '一覧', exact: true }).click();
+  await page.getByTestId('plan-strip').getByText('残り 60 分', { exact: false }).waitFor();
+  await page.getByRole('button', { name: '取り込みの設定 ▼', exact: true }).click();
+  assert.equal(await page.getByTestId('options').getByLabel(/話者を判別/).count(), 0);
+  assert.equal(await page.getByTestId('options').getByLabel(/ノイズ除去/).count(), 0);
+  assert.equal(await page.getByRole('tab', { name: '用語辞書', exact: true }).count(), 0);
+  await page.getByRole('button', { name: '一覧を閉じる', exact: true }).click();
+  await page.getByRole('button', { name: '取り込む', exact: true }).click();
+  await page.getByRole('button', { name: '確認しました', exact: true }).click();
+  await page.getByTestId('reading').waitFor();
+  await page.getByRole('button', { name: '確定', exact: true }).click();
+  await page.getByRole('button', { name: '書き出し', exact: true }).click();
+  const formats = await page.getByRole('menu', { name: '書き出す形式', exact: true })
+    .getByRole('menuitem').allTextContents();
+  assert.deepEqual(formats, ['テキスト']);
+  await page.keyboard.press('Escape');
+  await page.getByRole('tab', { name: '議事録を仕上げる', exact: true }).click();
+  assert.equal(await page.getByTestId('summary').count(), 0);
+  assert.equal(await page.getByRole('button', { name: '用語辞書を適用', exact: true }).count(), 0);
+  await page.getByRole('button', { name: '一覧', exact: true }).click();
+  await page.getByRole('tab', { name: '設定', exact: true }).click();
+  assert.equal(await page.getByTestId('summary-model').count(), 0);
+  assert.equal(await page.getByLabel(/ノイズ除去を既定/).count(), 0);
+  await page.getByTestId('plan-card').getByRole('button', { name: 'Pro版の購入先を選ぶ ↗', exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS Free: no paid controls, TXT only, purchase chooser');
+} finally { await browser.close(); }

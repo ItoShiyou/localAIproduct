@@ -10,6 +10,7 @@ import { Toasts, notify } from "./toast";
 import type { ImportResult, Meeting, MeetingFilter, Plan, ProcessOptions, Progress, SettingsInfo } from "./types";
 import { STATE_LABEL, ago, hms } from "./types";
 import logo from "../../core/brand/logo.svg";
+import { openPurchasePage } from "./edition";
 
 type Tab = "meetings" | "search" | "glossary" | "settings";
 
@@ -122,14 +123,15 @@ export function App({ api }: { api: Api }) {
     <div className={"app calm-app" + (libraryOpen ? " library-open" : "")}>
       <header className="app-header">
         <button className="btn" aria-expanded={libraryOpen} aria-controls="meeting-library" onClick={() => setLibraryOpen((v) => !v)}>一覧</button>
-        <span className="app-name">minutes</span>
+        <span className="app-name">minutes {plan?.tier === "pro" ? "Pro" : ""}</span>
+        {plan && <span className="badge" data-testid="edition-badge">{plan.tier === "pro" ? "Pro・有料版" : "無料版"}</span>}
         <span className="local-note">この端末の中で処理</span>
         <span className="grow" />
         <button className="btn rec" disabled={!!recordOpts} onClick={startRecording}>録音</button>
         <button className="btn primary" onClick={pick}>取り込む</button>
         <details className="more app-menu"><summary className="btn">その他</summary><div className="menu">
           <button className="btn" onClick={() => { setShowOpts(true); setLibraryOpen(true); }}>取り込みの設定</button>
-          {nav.filter(([t]) => t !== "meetings").map(([t, label]) => <button className="btn" key={t} onClick={() => { setTab(t); setLibraryOpen(false); }}>{label}</button>)}
+          {nav.filter(([t]) => t !== "meetings" && (t !== "glossary" || plan?.glossary)).map(([t, label]) => <button className="btn" key={t} onClick={() => { setTab(t); setLibraryOpen(false); }}>{label}</button>)}
           {tab !== "meetings" && <button className="btn" onClick={() => setTab("meetings")}>開いている記録に戻る</button>}
         </div></details>
       </header>
@@ -167,7 +169,7 @@ export function App({ api }: { api: Api }) {
           <div className="plan-strip" data-testid="plan-strip">
             <span className="pro">無料版</span>
             <span>残り {Math.floor((plan.remainingMs ?? 0) / 60000)} 分(累計 {Math.floor((plan.totalLimitMs ?? 0) / 60000)} 分・1件 {Math.floor((plan.meetingLimitMs ?? 0) / 60000)} 分まで)</span>
-            <button className="link" onClick={() => setTab("settings")}>有料版・ライセンスの登録</button>
+            <button className="link" onClick={() => openPurchasePage().catch((e) => notify("err", String(e)))}>Pro版の購入先を選ぶ ↗</button>
           </div>
         )}
         {recordOpts && (
@@ -224,7 +226,7 @@ export function App({ api }: { api: Api }) {
         {!meetings.length && <p className="note pad">まだ議事録はありません。</p>}
         <p className="disclaimer">文字起こしには誤りが含まれます。重要な箇所は音声で確認してください。録音の同意を得る責任は利用者にあります。</p>
         <nav className="side-nav" role="tablist">
-          {nav.map(([t, label, icon]) => (
+          {nav.filter(([t]) => t !== "glossary" || plan?.glossary).map(([t, label, icon]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{icon}{label}</button>
           ))}
         </nav>
@@ -252,7 +254,7 @@ export function App({ api }: { api: Api }) {
               </div>
             ))}
           {tab === "search" && <SearchView api={api} onOpen={openAt} />}
-          {tab === "glossary" && <GlossaryView api={api} plan={plan} />}
+          {tab === "glossary" && plan?.glossary && <GlossaryView api={api} plan={plan} />}
           {tab === "settings" && <SettingsView api={api} settings={settings} plan={plan} onSettings={(s) => { setSettings(s); }} onDeleted={() => { setCur(null); refresh(); }} onModelReady={() => { refresh().then(startJobs); }} onLicenseChanged={() => { refresh().catch(() => undefined); api.settings().then(setSettings).catch(() => undefined); }} />}
         </section>
       </main>

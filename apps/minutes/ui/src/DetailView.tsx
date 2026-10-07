@@ -598,7 +598,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
                 <div className="menu exp-menu" role="menu" aria-label="書き出す形式">
                   {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {
                     const ok = plan?.exports.includes(v) ?? true;
-                    return <button key={v} role="menuitem" className="btn small" disabled={!ok} onClick={() => { setExpOpen(false); exp(v as ExportFormat | "wav" | "pdf"); }}>{label}{ok ? "" : "(有料版)"}</button>;
+                    return ok ? <button key={v} role="menuitem" className="btn small" onClick={() => { setExpOpen(false); exp(v as ExportFormat | "wav" | "pdf"); }}>{label}</button> : null;
                   })}
                 </div>
               )}
@@ -664,7 +664,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             <span className="grow" />
             <button className="btn small" disabled={!d.canUndo} onClick={() => run(() => api.undo(id))} title="元に戻す">↶ 元に戻す</button>
             <button className="btn small" onClick={() => setFind((f) => ({ ...f, open: !f.open }))}>検索・置換</button>
-            <button className="btn small" disabled={!done || !(plan?.glossary ?? true)} title={plan?.glossary ?? true ? "" : "有料版の機能です"} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); notify("ok", `用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); onChanged(); } catch (e) { notify("err", `用語辞書を適用できませんでした: ${e}`); } }}>用語辞書を適用</button>
+            {plan?.glossary && <button className="btn small" disabled={!done} onClick={async () => { try { const [n, x] = await api.reapplyGlossary(id); apply(x); notify("ok", `用語辞書で ${n} 件を置き換えました(手で直した文は変えません)`); onChanged(); } catch (e) { notify("err", `用語辞書を適用できませんでした: ${e}`); } }}>用語辞書を適用</button>}
             <details className="more">
               <summary className="btn small icon" aria-label="その他">⋯</summary>
               <div className="menu">
@@ -786,7 +786,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
             <section className="minutes-document">
               <h2>議事録を仕上げる</h2>
               <Notes key={`${id}-${notesRevision}`} d={d} onSave={async (a, dc, t) => !!await run(() => api.updateNotes(id, a, dc, t))} />
-              <details className="summary-disclosure"><summary>要約から下書きを作る</summary>
+              {plan?.summary && <details className="summary-disclosure"><summary>要約から下書きを作る</summary>
             <SummaryPanel api={api} d={d} plan={plan} onOpenSettings={() => onOpenSettings?.()}
               onImport={async (picked, count) => {
                 await flush();
@@ -798,7 +798,7 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
                 if (!x) throw new Error("議事録に追加できませんでした");
                 setNotesRevision((v) => v + 1);
               }} />
-              </details>
+              </details>}
             </section>
             <TranscriptReference segments={segs} audio={!!audio}
               onListen={s => { seek(s.startMs); clipEnd.current = s.endMs; }}

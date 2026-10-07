@@ -93,6 +93,9 @@ pub fn run() {
                 live.push(r.join("models").join("ggml-small-q5_1.bin"));
             }
             state.set_live_models(live);
+            if let Some(r) = &res {
+                state.summary.set_bundled_model(r.join("models").join(summary::SUMMARY_MODEL.file_name));
+            }
             // 要約のエンジン(サイドカー。アプリの実行ファイルと同じフォルダに同梱)
             let sidecar_dirs: Vec<std::path::PathBuf> = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())).into_iter().collect();
             state.summary.set_sidecar_dirs(sidecar_dirs.clone());
@@ -115,6 +118,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            tauri_glue::open_purchase_page,
             tauri_glue::pick_and_import,
             tauri_glue::import_paths,
             tauri_glue::run_jobs,

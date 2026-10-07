@@ -23,6 +23,16 @@ pub enum Tier {
     Pro,
 }
 
+#[cfg(all(feature = "edition-free", feature = "edition-pro"))]
+compile_error!("Select only one minutes edition");
+
+/// Distribution edition is fixed at compile time, never by a runtime environment variable.
+pub fn distribution_tier() -> Option<Tier> {
+    if cfg!(feature = "edition-free") { Some(Tier::Free) }
+    else if cfg!(feature = "edition-pro") { Some(Tier::Pro) }
+    else { None }
+}
+
 pub const FREE_TOTAL_MS: u64 = 60 * 60 * 1000;
 pub const FREE_MEETING_MS: u64 = 15 * 60 * 1000;
 /// 無料版の書き出しの末尾に入れる一文
@@ -69,6 +79,7 @@ impl Entitlements {
 /// 版の決定。有効なライセンスがあれば有料版。無ければ、デバッグビルドだけ環境変数 `MINUTES_TIER`(pro / free)を見る
 /// (未指定なら有料版)。**配布用のビルドは環境変数を無視して無料版**(環境変数で有料版にできない)。
 pub fn resolve_tier(license_valid: bool, env: Option<&str>, debug_build: bool) -> Tier {
+    if let Some(tier) = distribution_tier() { return tier; }
     if license_valid {
         return Tier::Pro;
     }
@@ -292,12 +303,28 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(any(feature = "edition-free", feature = "edition-pro")))]
     fn 配布用のビルドは環境変数で有料版にならず_ライセンスだけが有料版にする() {
         assert_eq!(resolve_tier(false, Some("pro"), false), Tier::Free);
         assert_eq!(resolve_tier(false, None, false), Tier::Free);
         assert_eq!(resolve_tier(true, Some("free"), false), Tier::Pro);
         assert_eq!(resolve_tier(false, None, true), Tier::Pro);
         assert_eq!(resolve_tier(false, Some("free"), true), Tier::Free);
+    }
+
+    #[test]
+    fn distribution_edition_is_fixed() {
+        if let Some(tier) = distribution_tier() {
+            for license in [false, true] {
+                for debug in [false, true] {
+                    for env in [None, Some("free"), Some("pro")] {
+                        assert_eq!(resolve_tier(license, env, debug), tier);
+                    }
+                }
+            }
+            let ent = Entitlements::of(tier);
+            assert_eq!(ent.summary, cfg!(feature = "edition-pro"));
+        }
     }
 
     #[test]

@@ -398,6 +398,9 @@ impl AppState {
     // ---------------- 無料版・有料版 ----------------
 
     pub fn ent(&self) -> Entitlements {
+        if let Some(tier) = crate::plan::distribution_tier() {
+            return Entitlements::of(tier);
+        }
         let mut e = Entitlements::of(*self.tier.lock().unwrap_or_else(|p| p.into_inner()));
         // ライセンスに「要約」が含まれていなければ、要約は使えない(ライセンスが無い開発用の有料版は全部使える)
         if let Some(info) = self.license.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
@@ -428,6 +431,12 @@ impl AppState {
 
     /// 保存してあるキーを読み直して、版を決める(起動時と、取り込み・削除のあと)
     fn reload_license(&self) {
+        if let Some(tier) = crate::plan::distribution_tier() {
+            self.set_tier(tier);
+            *self.license.lock().unwrap_or_else(|p| p.into_inner()) = None;
+            *self.license_error.lock().unwrap_or_else(|p| p.into_inner()) = None;
+            return;
+        }
         let (info, error) = match std::fs::read_to_string(self.license_path()) {
             Ok(text) => match self.verify_license(&text) {
                 Ok(i) => (Some(i), None),
@@ -454,6 +463,9 @@ impl AppState {
 
     /// キー(または .license の中身)を取り込む。検証に通らなければ保存しない。
     pub fn install_license(&self, text: &str) -> Result<LicenseStatusDto, String> {
+        if crate::plan::distribution_tier().is_some() {
+            return Err("この版はキーを登録せず使えます。有料機能はPro版アプリをご購入ください。".into());
+        }
         let info = self.verify_license(text).map_err(err)?;
         let _ = info;
         std::fs::write(self.license_path(), text.trim().to_string() + "\n").map_err(|_| "ライセンスを保存できません".to_string())?;
@@ -537,6 +549,20 @@ impl AppState {
     }
 
     pub fn model_status(&self) -> ModelDto {
+        if cfg!(feature = "edition-free") {
+            let spec = ModelSpec {
+                name: "Whisper small(q5_1)", file_name: "ggml-small-q5_1.bin",
+                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+                sha256: "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+                size: 190_085_487,
+            };
+            let mut status = self.models.status(&spec);
+            let installed = self.live_models.lock().unwrap_or_else(|p| p.into_inner()).iter()
+                .any(|p| std::fs::metadata(p).map(|m| m.is_file() && m.len() == spec.size).unwrap_or(false));
+            status.installed = installed;
+            status.downloaded = if installed { spec.size } else { 0 };
+            return ModelDto { status, downloading: false, source: if installed { "bundled" } else { "none" }, error: None };
+        }
         let (downloading, _, error) = self.model_dl.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let mut status = self.models.status(&WHISPER_MODEL);
         let source = match self.model_source() {
@@ -555,6 +581,7 @@ impl AppState {
 
     /// モデルを取得する(利用者が設定画面で押したときだけ呼ぶ。通信一覧の「モデルの取得」)。終わるまで返らない。
     pub fn download_model(&self) -> Result<ModelDto, String> {
+        if cfg!(feature = "edition-free") { return Err(PRO_ONLY.into()); }
         self.require_network()?;
         {
             let mut g = self.model_dl.lock().unwrap_or_else(|p| p.into_inner());

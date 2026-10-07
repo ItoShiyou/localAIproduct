@@ -4,6 +4,20 @@
 use crate::commands::*;
 use crate::store::{GlossaryEntry, Meeting, MeetingFilter, ProcessOptions, SearchHit, Todo};
 use std::path::PathBuf;
+
+/// Only a fixed public purchase page can be opened. No meeting data or identifiers are attached.
+#[tauri::command]
+pub fn open_purchase_page() -> Result<(), String> {
+    let url = "https://itoshiyou.github.io/localAIproduct/minutes/purchase/";
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("/usr/bin/open").arg(url).status();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("rundll32.exe").args(["url.dll,FileProtocolHandler", url]).status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let result = std::process::Command::new("xdg-open").arg(url).status();
+    result.map_err(|_| "ブラウザを開けませんでした".to_string())?
+        .success().then_some(()).ok_or_else(|| "ブラウザを開けませんでした".into())
+}
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 

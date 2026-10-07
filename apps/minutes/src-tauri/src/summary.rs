@@ -666,6 +666,7 @@ pub struct SummaryRuntime {
     factory: Mutex<Option<SummarizerFactory>>,
     /// 開発用: 環境変数 MINUTES_SUMMARY_MODEL で指定したモデル
     env_model: Option<PathBuf>,
+    bundled_model: Mutex<Option<PathBuf>>,
     sidecar_dirs: Mutex<Vec<PathBuf>>,
 }
 
@@ -685,6 +686,7 @@ impl SummaryRuntime {
             factory: Mutex::new(None),
             env_model: std::env::var("MINUTES_SUMMARY_MODEL").ok().map(PathBuf::from).filter(|p| p.is_file()),
             sidecar_dirs: Mutex::new(Vec::new()),
+            bundled_model: Mutex::new(None),
         }
     }
 
@@ -696,9 +698,20 @@ impl SummaryRuntime {
         *lock(&self.sidecar_dirs) = dirs;
     }
 
+    pub fn set_bundled_model(&self, path: PathBuf) {
+        // Packaging verifies SHA-256. Check exact size here to reject truncated resources.
+        *lock(&self.bundled_model) = std::fs::metadata(&path).ok()
+            .filter(|m| m.is_file() && m.len() == SUMMARY_MODEL.size).map(|_| path);
+    }
+
     fn model_source(&self) -> Option<(PathBuf, &'static str)> {
         if let Some(p) = &self.env_model {
             return Some((p.clone(), "env"));
+        }
+        if let Some(p) = lock(&self.bundled_model).as_ref().filter(|p| {
+            std::fs::metadata(p).map(|m| m.is_file() && m.len() == SUMMARY_MODEL.size).unwrap_or(false)
+        }) {
+            return Some((p.clone(), "bundled"));
         }
         self.models.installed_path(&SUMMARY_MODEL).map(|p| (p, "managed"))
     }

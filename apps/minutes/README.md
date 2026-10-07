@@ -5,6 +5,21 @@
 
 ## 開発と検証
 
+### 無料版・Pro版の独立配布（2026-10-07）
+
+無料版は無料機能と標準の文字起こしだけを同梱します。Pro版は全機能・全モデルを同梱し、購入者のキー登録は不要です。
+両版とも同じデータ保存場所を使います。入れ替え前にアプリを終了してください。
+
+リポジトリ直下から:
+
+```
+node apps/minutes/tools/build_edition.mjs free --bundles app --no-sign
+node apps/minutes/tools/build_edition.mjs pro --bundles app --no-sign
+```
+
+以下の従来コマンドはキー認証方式の開発ビルドです。販売用の別版は上の専用コマンドで作ります。
+構成・検証・残ゲート: `docs/DISTRIBUTION_EDITIONS.md`。
+
 UIのフォルダで実行します。
 
 ```sh

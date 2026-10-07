@@ -3,6 +3,7 @@
  * Tauri の中なら `makeTauriApi`(src-tauri/src/tauri_glue.rs)、ブラウザだけで開いたときは `makeMockApi`(架空の固定データ)。
  */
 import type { LicenseInfo, LicenseStatus, Detail, ExportFormat, Flag, GlossaryEntry, ImportResult, Meeting, MeetingFilter, ModelInfo, Plan, ProcessOptions, Progress, RecordStatus, RediarizeStatus, SearchHit, Segment, SettingsInfo, SummaryResult, SummaryStatus, Todo } from "./types";
+import { edition } from "./edition";
 
 export interface Api {
   readonly kind: "tauri" | "mock";
@@ -234,7 +235,7 @@ export function makeMockApi(): Api {
   let sumCancel = false;
   let mockImportError: string | null = null;
   (globalThis as { __mockImportError?: (m: string) => void }).__mockImportError = (m) => { mockImportError = m; };
-  const isFree = () => typeof location !== "undefined" && location.search.includes("free");
+  const isFree = () => edition === "free" || (edition !== "pro" && typeof location !== "undefined" && location.search.includes("free"));
   const isPro = () => !!license || !isFree();
   let current: Progress = { busy: false, pending: 0, meetingId: null, doneChunks: 0, totalChunks: 0 };
   const wait = (ms = 200) => new Promise<void>((r) => setTimeout(r, ms));
@@ -365,7 +366,7 @@ export function makeMockApi(): Api {
     },
     async waveform(_id, n) { return Array.from({ length: n }, (_, i) => 0.25 + 0.6 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11))); },
     async plan() {
-      const free = !license && typeof location !== "undefined" && location.search.includes("free");
+      const free = edition === "free" || (edition !== "pro" && !license && typeof location !== "undefined" && location.search.includes("free"));
       const used = free ? usedMs : 0;
       return free
         ? { tier: "free", accurateModel: false, diarize: false, denoise: false, glossary: false, summary: false, exports: ["txt"], totalLimitMs: 3_600_000, meetingLimitMs: 900_000, usage: { usedMs: used, count: 0, tampered: false }, remainingMs: Math.max(0, 3_600_000 - used) }

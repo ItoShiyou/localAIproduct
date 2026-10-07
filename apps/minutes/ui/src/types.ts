@@ -127,7 +127,7 @@ export const PRO_LABEL = "有料版";
 /** 要約(有料版の追加機能)。src-tauri/src/summary.rs の DTO と同じ形 */
 export interface SummaryStatus {
   name: string; installed: boolean; downloaded: number; size: number;
-  downloading: boolean; source: "managed" | "env" | "none"; error: string | null;
+  downloading: boolean; source: "bundled" | "managed" | "env" | "none"; error: string | null;
   /** 要約のエンジン(サイドカー)がアプリに入っているか */
   engine: boolean;
   license: string; licenseUrl: string;

@@ -43,6 +43,9 @@ getrandom = "0.3"
 
 [features]
 default = ["tauri", "whisper", "diarize"]
+# Separate downloadable editions. No customer keys are required for these builds.
+edition-free = []
+edition-pro = []
 tauri = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:keyring"]
 # whisper.cpp(whisper-rs)による文字起こし。ビルドに cmake と C/C++ コンパイラが要る
 whisper = ["dep:whisper-rs"]
