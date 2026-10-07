@@ -16,9 +16,42 @@ APP_ROOT = REPO / 'apps/minutes'
 sys.path.insert(0, str(APP_ROOT / 'spike'))
 from release_preflight import checks, mac_permissions
 
+MODEL_HASHES = {
+    'ggml-small-q5_1.bin': 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb',
+    'ggml-large-v3-turbo-q5_0.bin': '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2',
+    'voxceleb_resnet34_LM.onnx': '7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068',
+    'Qwen3-4B-Instruct-2507-Q4_K_M.gguf': '3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597',
+}
+
+def validate_edition_resources(app, edition):
+    if edition == 'licensed':
+        return
+    resources = app / 'Contents/Resources/resources'
+    models = resources / 'models'
+    required = list(MODEL_HASHES) if edition == 'pro' else ['ggml-small-q5_1.bin']
+    if edition == 'free' and (set(p.name for p in models.glob('*')) - set(required)
+            or (resources / 'onnxruntime').exists()
+            or any((app / 'Contents/MacOS').glob('minutes-summarizer*'))):
+        raise ValueError('無料版に不要なProデータまたはエンジンが含まれています')
+    for name in required:
+        path = models / name
+        if not path.is_file():
+            raise ValueError('同梱モデルが不足しています: ' + name)
+        digest = hashlib.sha256()
+        with path.open('rb') as source:
+            for chunk in iter(lambda:source.read(1024*1024), b''):
+                digest.update(chunk)
+        if digest.hexdigest() != MODEL_HASHES[name]:
+            raise ValueError('同梱モデルの検証に失敗しました: ' + name)
+    if edition == 'pro':
+        engines = [resources / 'onnxruntime/libonnxruntime.dylib',
+                   app / 'Contents/MacOS/minutes-summarizer']
+        if any(not path.is_file() or path.stat().st_size == 0 for path in engines):
+            raise ValueError('Proの処理エンジンが不足しています')
+
 def bundle_info(app):
-    if not app.is_dir() or app.name != 'minutes.app':
-        raise ValueError('minutes.appを指定してください')
+    if not app.is_dir() or app.name not in ('minutes.app', 'minutes Free.app', 'minutes Pro.app'):
+        raise ValueError('minutes.app / minutes Free.app / minutes Pro.appを指定してください')
     with (app / 'Contents/Info.plist').open('rb') as source:
         info = plistlib.load(source)
     if info.get('CFBundleIdentifier') != 'dev.localaiproduct.minutes':
@@ -43,7 +76,14 @@ def execute(app, output, identity, profile, run=None):
         raise ValueError('出力先は新しいフォルダーを指定してください。上書きしません')
     config = json.loads((APP_ROOT / 'src-tauri/tauri.conf.json').read_text(encoding='utf-8'))
     notices = APP_ROOT / 'src-tauri/resources/THIRD_PARTY_NOTICES.txt'
-    result = checks(config, (APP_ROOT / 'src-tauri/src/license.rs').read_text(encoding='utf-8'), notices.read_text(encoding='utf-8') if notices.exists() else '')
+    edition = {'minutes Free.app':'free', 'minutes Pro.app':'pro'}.get(app.name, 'licensed')
+    validate_edition_resources(app, edition)
+    if edition != 'licensed':
+        with (app / 'Contents/Info.plist').open('rb') as source:
+            built_info = plistlib.load(source)
+        config['bundle']['copyright'] = built_info.get('NSHumanReadableCopyright', '')
+        notices = app / 'Contents/Resources/resources/THIRD_PARTY_NOTICES.txt'
+    result = checks(config, (APP_ROOT / 'src-tauri/src/license.rs').read_text(encoding='utf-8'), notices.read_text(encoding='utf-8') if notices.exists() else '', edition)
     if not all(result.values()):
         raise ValueError('販売前設定が未完了です: ' + ', '.join(k for k,v in result.items() if not v))
     with (APP_ROOT / 'src-tauri/Entitlements.plist').open('rb') as source:
@@ -55,7 +95,7 @@ def execute(app, output, identity, profile, run=None):
             completed = subprocess.run(arguments, check=True, capture_output=True, text=True, encoding='utf-8')
             return completed.stdout
     output.mkdir(parents=True)
-    staged = output / 'staging/minutes.app'
+    staged = output / 'staging' / app.name
     staged.parent.mkdir()
     shutil.copytree(app, staged, symlinks=True)
     magic = {bytes.fromhex(value) for value in ['feedface','feedfacf','cefaedfe','cffaedfe','cafebabe','bebafeca','cafebabf','bfbafeca']}
@@ -76,13 +116,14 @@ def execute(app, output, identity, profile, run=None):
     run(['xcrun','stapler','staple',str(staged)])
     run(['xcrun','stapler','validate',str(staged)])
     run(['spctl','--assess','--type','execute','--verbose=2',str(staged)])
-    final = output / f'minutes-{version}-macos-arm64.zip'
+    label = 'minutes' if edition == 'licensed' else f'minutes-{edition}'
+    final = output / f'{label}-{version}-macos-arm64.zip'
     run(['ditto','-c','-k','--sequesterRsrc','--keepParent',str(staged),str(final)])
     digest = hashlib.sha256()
     with final.open('rb') as file:
         for chunk in iter(lambda:file.read(1024*1024), b''):
             digest.update(chunk)
-    report = {'version':version,'file':final.name,'sha256':digest.hexdigest(),'bytes':final.stat().st_size,
+    report = {'version':version,'edition':edition,'file':final.name,'sha256':digest.hexdigest(),'bytes':final.stat().st_size,
         'notarization_id':response.get('id'), 'note':'実ダウンロード・マイク試験と契約／決済確認は別途必須。自動公開はしない。'}
     (output / 'release-manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     return report

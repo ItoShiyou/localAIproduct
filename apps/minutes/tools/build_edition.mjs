@@ -44,6 +44,11 @@ async function verify(path, digest) {
 async function main() {
   const edition = process.argv[2];
   const config = editionConfig(edition);
+  if (process.env.MINUTES_COPYRIGHT) {
+    const copyright = process.env.MINUTES_COPYRIGHT.trim();
+    if (!copyright || /販売前|記入|仮称/.test(copyright)) throw new Error('Set the actual copyright owner');
+    config.bundle.copyright = copyright;
+  }
   const models = join(app, 'src-tauri/resources/models');
   for (const resource of config.bundle.resources) {
     const name = resource.split('/').at(-1);

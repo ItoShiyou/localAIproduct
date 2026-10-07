@@ -66,5 +66,35 @@ class ReleaseTests(unittest.TestCase):
             release.execute(self.app,self.output,'Developer ID Application: Test','test-profile',self.simulate)
         self.assertTrue(self.calls)
 
+    def test_separate_editions_keep_names_and_do_not_require_activation_keys(self):
+        for edition in ('free', 'pro'):
+            app = self.root / f'minutes {edition.title()}.app'
+            app.mkdir()
+            import shutil
+            shutil.copytree(self.app / 'Contents', app / 'Contents')
+            output = self.root / edition
+            with patch.object(release, 'validate_edition_resources'), patch.object(release, 'checks', return_value={'test-only':True}) as check:
+                report = release.execute(app, output, 'Developer ID Application: Test', 'test-profile', self.simulate)
+            self.assertEqual(check.call_args.args[3], edition)
+            self.assertEqual(report['edition'], edition)
+            self.assertEqual(report['file'], f'minutes-{edition}-0.1.0-macos-arm64.zip')
+            self.assertTrue((output / 'staging' / app.name).exists())
+
+    def test_missing_models_and_paid_assets_in_free_are_rejected(self):
+        with self.assertRaises(ValueError):
+            release.validate_edition_resources(self.app, 'pro')
+        models = self.app / 'Contents/Resources/resources/models'
+        models.mkdir(parents=True)
+        (models / 'unexpected.gguf').write_bytes(b'test-only')
+        with self.assertRaises(ValueError):
+            release.validate_edition_resources(self.app, 'free')
+
+    def test_wrong_model_hash_is_rejected(self):
+        models = self.app / 'Contents/Resources/resources/models'
+        models.mkdir(parents=True)
+        (models / 'ggml-small-q5_1.bin').write_bytes(b'not a model')
+        with self.assertRaises(ValueError):
+            release.validate_edition_resources(self.app, 'free')
+
 if __name__ == '__main__':
     unittest.main()
