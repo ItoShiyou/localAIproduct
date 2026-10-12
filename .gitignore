@@ -19,3 +19,9 @@ testset-real/
 # ライセンスの秘密鍵と、発行した顧客のライセンス(docs/license.md)。コミットしない
 *.key
 *.license
+
+# Apple署名用ファイル・認証鍵は公開リポジトリへ含めない
+*.provisionprofile
+*.mobileprovision
+*.p12
+*.p8

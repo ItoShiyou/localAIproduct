@@ -1,5 +1,6 @@
 """Validate/sign a COPY for Mac App Store. Never publish or access private keys directly."""
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import plistlib
@@ -50,6 +51,28 @@ def validate(app):
             raise ValueError('最低対応OSが同梱エンジンの必要OSより古いです。エンジンを再構築してください: '+engine.name)
     return info
 
+def validate_distribution_profile(document, bundle_id, now=None):
+    """Reject an expired or development/device-limited profile before copying/signing."""
+    grant = document.get('Entitlements', {})
+    appid = grant.get('com.apple.application-identifier', '')
+    if not isinstance(appid, str) or not appid.endswith('.'+bundle_id) or '*' in appid:
+        raise ValueError('プロファイルとBundle IDが一致しません')
+    expiry = document.get('ExpirationDate')
+    if not isinstance(expiry, datetime):
+        raise ValueError('プロファイルの有効期限を確認できません')
+    if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    if expiry <= now:
+        raise ValueError('配布プロファイルの有効期限が切れています')
+    if grant.get('get-task-allow') or grant.get('com.apple.security.get-task-allow'):
+        raise ValueError('開発用プロファイルはApp Store配布に使えません')
+    if document.get('ProvisionedDevices') or document.get('ProvisionsAllDevices'):
+        raise ValueError('デバイス限定・Developer ID用プロファイルはApp Store配布に使えません')
+    team = grant.get('com.apple.developer.team-identifier')
+    if not team or team not in document.get('TeamIdentifier', []):
+        raise ValueError('プロファイルのTeam IDが一致しません')
+    return grant
+
 def prepare(app, output, identity, installer=None, profile=None, release_approved=False):
     info = validate(app)
     production = identity != '-'
@@ -70,9 +93,7 @@ def prepare(app, output, identity, installer=None, profile=None, release_approve
     ent = plistlib.loads((TAURI/'Entitlements.mas.plist').read_bytes())
     if production:
         decoded = subprocess.check_output(['security','cms','-D','-i',str(profile)])
-        grant = plistlib.loads(decoded)['Entitlements']
-        appid = grant.get('com.apple.application-identifier', '')
-        if not appid.endswith('.'+info['CFBundleIdentifier']): raise ValueError('プロファイルとBundle IDが一致しません')
+        grant = validate_distribution_profile(plistlib.loads(decoded), info['CFBundleIdentifier'])
         for key in ['com.apple.application-identifier','com.apple.developer.team-identifier','keychain-access-groups']:
             if key in grant: ent[key] = grant[key]
     output.mkdir(parents=True)
