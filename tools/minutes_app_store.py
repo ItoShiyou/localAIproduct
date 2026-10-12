@@ -29,6 +29,9 @@ def validate(app):
     if privacy.get('NSPrivacyTracking') is not False or privacy.get('NSPrivacyTrackingDomains') != [] or privacy.get('NSPrivacyCollectedDataTypes') != []:
         raise ValueError('PrivacyInfo.xcprivacyが現在の収集しない方針と一致しません')
     models = app/'Contents/Resources/resources/models'
+    bundled = list(models.iterdir())
+    if {path.name for path in bundled} != set(HASHES) or any(path.is_symlink() or not path.is_file() for path in bundled):
+        raise ValueError('同梱モデルは商用配布を確認した4ファイルのみ許可します')
     for name, expected in HASHES.items():
         h = hashlib.sha256()
         with (models/name).open('rb') as source:

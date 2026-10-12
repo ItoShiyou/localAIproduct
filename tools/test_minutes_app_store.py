@@ -47,6 +47,31 @@ class ProfileTests(unittest.TestCase):
                 with self.assertRaises(ValueError): validate_distribution_profile(document, BUNDLE, NOW)
 
 class BundleMetadataTests(unittest.TestCase):
+    def test_unreviewed_model_or_audio_cannot_enter_distribution(self):
+        from minutes_app_store import HASHES
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root)/'minutes.app'
+            resources = app/'Contents/Resources'
+            models = resources/'resources/models'
+            models.mkdir(parents=True)
+            info = {'CFBundleIdentifier': BUNDLE, 'MinutesDistributionChannel': 'mac-app-store',
+                    'NSMicrophoneUsageDescription': '合成音声の検証',
+                    'LSApplicationCategoryType': 'public.app-category.productivity'}
+            (app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+            (resources/'PrivacyInfo.xcprivacy').write_bytes(plistlib.dumps({
+                'NSPrivacyTracking': False, 'NSPrivacyTrackingDomains': [], 'NSPrivacyCollectedDataTypes': []}))
+            for name in HASHES: (models/name).write_bytes(b'synthetic')
+            for name in ['unknown.gguf', 'recording.wav', 'nested']:
+                with self.subTest(name=name):
+                    extra = models/name
+                    extra.write_bytes(b'synthetic')
+                    with self.assertRaisesRegex(ValueError, '同梱モデル'): validate(app)
+                    extra.unlink()
+            first = models/next(iter(HASHES))
+            first.unlink()
+            first.symlink_to(models/next(name for name in HASHES if name != first.name))
+            with self.assertRaisesRegex(ValueError, '同梱モデル'): validate(app)
+
     def test_missing_store_category_fails_before_signing_or_model_reads(self):
         with tempfile.TemporaryDirectory() as root:
             app = Path(root)/'minutes.app'
