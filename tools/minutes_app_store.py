@@ -17,6 +17,18 @@ HASHES = {
  'Qwen3-4B-Instruct-2507-Q4_K_M.gguf':'3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597',
  'voxceleb_resnet34_LM.onnx':'7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068',
 }
+
+def clean_distribution_attributes(staged):
+    """Remove download quarantine only from the newly staged release copy (Apple 91109)."""
+    for path in [staged, *staged.rglob('*')]:
+        if path.is_symlink():
+            continue
+        attributes = subprocess.check_output(['xattr', str(path)], text=True).splitlines()
+        if 'com.apple.quarantine' in attributes:
+            subprocess.run(['xattr', '-d', 'com.apple.quarantine', str(path)], check=True)
+        if 'com.apple.quarantine' in subprocess.check_output(['xattr', str(path)], text=True).splitlines():
+            raise ValueError('提出用コピーにダウンロード属性が残っています')
+
 def validate(app):
     info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
     if info.get('CFBundleIdentifier') != 'dev.localaiproduct.minutes' or info.get('MinutesDistributionChannel') != 'mac-app-store':
@@ -108,6 +120,7 @@ def prepare(app, output, identity, installer=None, profile=None, release_approve
     staged = output/app.name
     shutil.copytree(app, staged, symlinks=True)
     if production: shutil.copy2(profile, staged/'Contents/embedded.provisionprofile')
+    clean_distribution_attributes(staged)
     entitlement = output/'app-entitlements.plist'; entitlement.write_bytes(plistlib.dumps(ent))
     magic = {bytes.fromhex(x) for x in ['feedface','feedfacf','cefaedfe','cffaedfe','cafebabe','bebafeca','cafebabf','bfbafeca']}
     for path in sorted(staged.rglob('*'), key=lambda p: len(p.parts), reverse=True):

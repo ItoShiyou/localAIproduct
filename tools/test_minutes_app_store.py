@@ -3,8 +3,11 @@ from datetime import datetime, timedelta, timezone
 import unittest
 import tempfile
 import plistlib
+import shutil
+import sys
+import subprocess
 from pathlib import Path
-from minutes_app_store import validate_distribution_profile, validate
+from minutes_app_store import validate_distribution_profile, validate, clean_distribution_attributes
 
 NOW = datetime(2026, 10, 13, tzinfo=timezone.utc)
 BUNDLE = 'dev.localaiproduct.minutes'
@@ -47,6 +50,28 @@ class ProfileTests(unittest.TestCase):
                 with self.assertRaises(ValueError): validate_distribution_profile(document, BUNDLE, NOW)
 
 class BundleMetadataTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'darwin', 'macOS extended attributes')
+    def test_quarantine_removed_only_from_staged_copy_other_attributes_preserved(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = Path(root)/'source.app'
+            source.mkdir()
+            profile = source/'embedded.provisionprofile'
+            profile.write_bytes(b'synthetic profile')
+            subprocess.run(['xattr', '-w', 'com.apple.quarantine', '0081;synthetic;test;', str(profile)], check=True)
+            subprocess.run(['xattr', '-w', 'com.minutes.qa', 'preserve', str(profile)], check=True)
+            staged = Path(root)/'staged.app'
+            shutil.copytree(source, staged)
+            # Python copy behavior varies; reproduce Apple's rejected staged attributes explicitly.
+            subprocess.run(['xattr', '-w', 'com.apple.quarantine', '0081;synthetic;test;', str(staged/profile.name)], check=True)
+            subprocess.run(['xattr', '-w', 'com.minutes.qa', 'preserve', str(staged/profile.name)], check=True)
+            attributes = lambda path: subprocess.check_output(['xattr', str(path)], text=True)
+            self.assertIn('com.apple.quarantine', attributes(staged/profile.name))
+            clean_distribution_attributes(staged)
+            self.assertNotIn('com.apple.quarantine', attributes(staged/profile.name))
+            self.assertIn('com.apple.quarantine', attributes(profile))
+            self.assertEqual(subprocess.check_output(['xattr', '-p', 'com.minutes.qa', str(staged/profile.name)], text=True).strip(), 'preserve')
+            self.assertEqual((staged/profile.name).read_bytes(), profile.read_bytes())
+
     def test_unreviewed_model_or_audio_cannot_enter_distribution(self):
         from minutes_app_store import HASHES
         with tempfile.TemporaryDirectory() as root:
