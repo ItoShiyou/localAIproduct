@@ -51,3 +51,5 @@ Mac App Store版の使用量補助記録へのアクセスだけを、プロセ�
 Wordを実Saveダイアログで保存し、ZIP整合性とXML内のタイトル・決定事項・ToDo・担当・相対期限を確認した。PDFは初回にOSから印刷非対応と表示された。Mac App Store Entitlementsへcom.apple.security.printを追加し、再署名後に実印刷画面の「Save as PDF」から保存できた。実プリンターへの印刷はしていない。PDFはA4・2ページで、全ページをレンダリングして重なり・欠け・日本語の文字化けがないことを確認した。OSが既定で入れる作成者名はQA保存時に空にした。
 
 出力はcandidate内のpro-gui-qa.docx / pro-gui-qa.pdf。画面3枚も合成音声と手動編集した資料のみで、実録音は含めない。本番の実行ファイルを使い、QA専用Bundle IDとAppleのローカル署名済み権利で確認した。新規購入成功・本番配布署名を示す画面ではない。
+
+Markdown・SRT・ノイズ除去後WAVも実Saveダイアログで保存した。Markdownの修正済み議題・決定事項、SRTの字幕時刻と発言、WAVのモノラル・16kHz・80.6秒を確認した。WAVは保存後のファイル名が空白になったため、成果物内でnoise-reduced.wavへ整理した。音声内容は再読込可能だったが、保存名のGUI操作は追加確認が必要。すべて合成音声のQA出力に限る。
