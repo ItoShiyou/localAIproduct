@@ -14,7 +14,7 @@ ProはApple公式の買い切りアプリ内購入です。高精度モデル、
 提出前ゲート: Sandbox実機確認とPro取引試験を通過後に上記の機能を掲載する。無料版は累計60分・1件15分、Pro価格は3,980円（2026-10-12 所有者承認）。価格はApp Store Connectへ登録し、アプリはAppleから取得した表示価格を示す。処理速度・精度の数値はストア説明に記載しない。
 
 アイコン: src-tauri/icons/mas/AppStoreIcon.png（既存ブランドSVGの図形を使用、1024px・不透明）。Mac用icnsはicons/mas/icon.icns。
-スクリーンショット: 実アプリの架空データで取得する。docs/ui/mock-*.pngを実機結果として提出しない。
+スクリーンショット: candidate成果物のscreenshotsに実アプリの架空データ3枚（JPEG 2560×1600）を取得済み。QA専用Bundle ID・Appleローカル権利で確認した画面であり、正式購入の実績ではない。docs/ui/mock-*.pngを実機結果として提出しない。
 サポートURL候補: https://itoshiyou.github.io/localAIproduct/minutes/support/ 。連絡先を記載したページを準備済み。まだ公開していないため、公開と到達確認後に登録する。
 プライバシーポリシーURL: privacy-ja.mdを所有者管理のHTTPSページへ公開後に登録。
 

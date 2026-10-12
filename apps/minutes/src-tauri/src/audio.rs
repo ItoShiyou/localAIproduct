@@ -214,27 +214,56 @@ pub fn denoise_16k(pcm: &[f32]) -> Vec<f32> {
 }
 
 /// 16kHz モノラル i16 の生データを WAV として書き出す(ノイズ除去後の音声の書き出し用)。
-pub fn write_wav16(dest: &Path, pcm: &[f32]) -> Result<(), String> {
-    let mut w = BufWriter::new(File::create(dest).map_err(|_| "書き出し先に保存できません".to_string())?);
-    let data_len = (pcm.len() * 2) as u32;
-    let mut h = Vec::with_capacity(44);
-    h.extend_from_slice(b"RIFF");
-    h.extend_from_slice(&(36 + data_len).to_le_bytes());
-    h.extend_from_slice(b"WAVEfmt ");
-    h.extend_from_slice(&16u32.to_le_bytes());
-    h.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    h.extend_from_slice(&1u16.to_le_bytes()); // mono
-    h.extend_from_slice(&RATE.to_le_bytes());
-    h.extend_from_slice(&(RATE * 2).to_le_bytes());
-    h.extend_from_slice(&2u16.to_le_bytes());
-    h.extend_from_slice(&16u16.to_le_bytes());
-    h.extend_from_slice(b"data");
-    h.extend_from_slice(&data_len.to_le_bytes());
-    w.write_all(&h).map_err(|e| e.to_string())?;
-    for s in pcm {
-        w.write_all(&((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).map_err(|e| e.to_string())?;
+pub struct Wav16Writer {
+    writer: BufWriter<File>,
+    data_len: u32,
+}
+
+impl Wav16Writer {
+    pub fn create(dest: &Path) -> Result<Self, String> {
+        let mut writer = BufWriter::new(File::create(dest).map_err(|_| "書き出し先に保存できません".to_string())?);
+        let mut h = Vec::with_capacity(44);
+        h.extend_from_slice(b"RIFF");
+        h.extend_from_slice(&36u32.to_le_bytes());
+        h.extend_from_slice(b"WAVEfmt ");
+        h.extend_from_slice(&16u32.to_le_bytes());
+        h.extend_from_slice(&1u16.to_le_bytes());
+        h.extend_from_slice(&1u16.to_le_bytes());
+        h.extend_from_slice(&RATE.to_le_bytes());
+        h.extend_from_slice(&(RATE * 2).to_le_bytes());
+        h.extend_from_slice(&2u16.to_le_bytes());
+        h.extend_from_slice(&16u16.to_le_bytes());
+        h.extend_from_slice(b"data");
+        h.extend_from_slice(&0u32.to_le_bytes());
+        writer.write_all(&h).map_err(|e| e.to_string())?;
+        Ok(Self { writer, data_len: 0 })
     }
-    w.flush().map_err(|e| e.to_string())
+
+    pub fn append(&mut self, pcm: &[f32]) -> Result<(), String> {
+        let bytes = u32::try_from(pcm.len()).ok().and_then(|n| n.checked_mul(2));
+        let next = bytes.and_then(|n| self.data_len.checked_add(n))
+            .filter(|n| *n <= u32::MAX - 36).ok_or("WAVの最大サイズを超えています。音声を分けて書き出してください")?;
+        for sample in pcm {
+            self.writer.write_all(&((sample.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).map_err(|e| e.to_string())?;
+        }
+        self.data_len = next;
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<(), String> {
+        use std::io::{Seek, SeekFrom};
+        self.writer.seek(SeekFrom::Start(4)).map_err(|e| e.to_string())?;
+        self.writer.write_all(&(36 + self.data_len).to_le_bytes()).map_err(|e| e.to_string())?;
+        self.writer.seek(SeekFrom::Start(40)).map_err(|e| e.to_string())?;
+        self.writer.write_all(&self.data_len.to_le_bytes()).map_err(|e| e.to_string())?;
+        self.writer.flush().map_err(|e| e.to_string())
+    }
+}
+
+pub fn write_wav16(dest: &Path, pcm: &[f32]) -> Result<(), String> {
+    let mut writer = Wav16Writer::create(dest)?;
+    writer.append(pcm)?;
+    writer.finish()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -428,6 +457,30 @@ mod tests {
         assert!(after > before + 3.0);
         std::fs::remove_file(&noisy).ok();
         std::fs::remove_file(&clean).ok();
+    }
+
+    #[test]
+    fn streamed_wav_preserves_samples_across_uneven_chunks_and_empty_input() {
+        let p = tmp("stream.wav");
+        let x = sine(RATE, 200.0, 0.501);
+        let mut writer = Wav16Writer::create(&p).unwrap();
+        for chunk in x.chunks(997) { writer.append(chunk).unwrap(); }
+        writer.finish().unwrap();
+        let bytes = std::fs::read(&p).unwrap();
+        assert_eq!(u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize, x.len() * 2);
+        for (sample, encoded) in x.iter().zip(bytes[44..].chunks_exact(2)) {
+            assert_eq!(i16::from_le_bytes(encoded.try_into().unwrap()), (sample.clamp(-1.0, 1.0) * 32767.0) as i16);
+        }
+        let q = tmp("stream.pcm");
+        assert_eq!(decode_to_pcm16k(&p, &q).unwrap(), 501);
+        let mut writer = Wav16Writer::create(&p).unwrap();
+        writer.data_len = u32::MAX - 37;
+        assert!(writer.append(&[0.0]).is_err(), "RIFF size must not overflow");
+        drop(writer);
+        Wav16Writer::create(&p).unwrap().finish().unwrap();
+        assert_eq!(std::fs::metadata(&p).unwrap().len(), 44);
+        std::fs::remove_file(&p).ok();
+        std::fs::remove_file(&q).ok();
     }
 
     #[test]

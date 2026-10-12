@@ -252,6 +252,8 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   const [diar, setDiar] = useState<{ done: number; total: number; phase: string; cancelling: boolean } | null>(null);
   const diarHere = useRef(false); // この画面で始めたか(別の画面から戻ったときは、終わりを検知して読み直す)
   const [expOpen, setExpOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
   const expRef = useRef<HTMLDivElement>(null);
   const [printOpts, setPrintOpts] = useState<PrintOptions>({ notes: true, body: true, times: true, speakers: true });
   const [printAsk, setPrintAsk] = useState(false);
@@ -502,12 +504,18 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
   };
 
   const exp = async (f: ExportFormat | "wav" | "pdf") => {
+    if (exportLock.current) return;
+    exportLock.current = true;
+    setExporting(true);
     try {
+      const before = fails.current;
       await flush();
+      if (fails.current !== before) { notify("err", "直した内容を保存できなかったため、書き出しませんでした。保存し直してから書き出してください"); return; }
       if (f === "pdf") { setPrintAsk(true); return; }
       const p = f === "wav" ? await api.exportDenoised(id) : await api.exportAs(id, f);
       if (p) notify("ok", `書き出しました: ${p}`);
     } catch (e) { notify("err", `書き出せませんでした: ${String(e).replace(/^Error:\s*/, "")}`); }
+    finally { exportLock.current = false; setExporting(false); }
   };
 
   const doFind = async (q: string) => {
@@ -592,8 +600,8 @@ export function DetailView({ api, id, version, seekTo, settings, plan, progress,
               ? <button className="btn primary" disabled={!!confirmWhy} title={confirmWhy ?? "内容を確認できたら押してください"} aria-describedby={confirmWhy ? "confirm-why" : undefined} onClick={confirm}>確定</button>
               : <button className="btn" onClick={() => run(() => api.unconfirm(id), undefined, { toDraft: true })}>下書きに戻す</button>}
             <div className="exp" ref={expRef}>
-              <button className="btn" aria-label="書き出し" aria-haspopup="menu" aria-expanded={expOpen} disabled={m.status !== "confirmed"}
-                title={m.status !== "confirmed" ? "確定すると書き出せます" : ""} onClick={() => setExpOpen((o) => !o)}>⤓ 書き出し ▾</button>
+              <button className="btn" aria-label="書き出し" aria-haspopup="menu" aria-expanded={expOpen} disabled={m.status !== "confirmed" || exporting}
+                title={m.status !== "confirmed" ? "確定すると書き出せます" : ""} onClick={() => setExpOpen((o) => !o)}>{exporting ? "書き出し中…" : "⤓ 書き出し ▾"}</button>
               {expOpen && (
                 <div className="menu exp-menu" role="menu" aria-label="書き出す形式">
                   {([["docx", "Word(.docx)"], ["pdf", "PDF(印刷から保存)"], ["md", "Markdown"], ["txt", "テキスト"], ["srt", "字幕(SRT)"], ...(m.hasAudio ? [["wav", "ノイズ除去後の音声(WAV)"]] : [])] as [string, string][]).map(([v, label]) => {

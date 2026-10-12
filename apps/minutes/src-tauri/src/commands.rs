@@ -1095,17 +1095,20 @@ impl AppState {
         let tmp = self.app.root.join("work").join(format!("export-{id}.pcm"));
         std::fs::create_dir_all(tmp.parent().unwrap()).map_err(err)?;
         let ms = crate::audio::decode_to_pcm16k(Path::new(&audio), &tmp)?;
-        let mut out = Vec::new();
-        // 長い録音でも一度に全部をメモリに載せないよう、5 分ずつ処理する
-        let step = 300_000u64;
-        let mut t = 0;
-        while t < ms {
-            let x = crate::audio::read_pcm16k(&tmp, t, (t + step).min(ms))?;
-            out.extend(crate::audio::denoise_16k(&x));
-            t += step;
-        }
+        let result = (|| {
+            let mut writer = crate::audio::Wav16Writer::create(dest)?;
+            // Flush each five-minute block instead of retaining the full meeting.
+            let step = 300_000u64;
+            let mut t = 0;
+            while t < ms {
+                let x = crate::audio::read_pcm16k(&tmp, t, (t + step).min(ms))?;
+                writer.append(&crate::audio::denoise_16k(&x))?;
+                t += step;
+            }
+            writer.finish()
+        })();
         let _ = std::fs::remove_file(&tmp);
-        crate::audio::write_wav16(dest, &out)
+        result
     }
 
     // ---------------- 検索・用語辞書 ----------------
