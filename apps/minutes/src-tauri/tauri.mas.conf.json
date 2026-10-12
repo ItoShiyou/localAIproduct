@@ -21,7 +21,8 @@
       "icons/mas/icon.png",
       "icons/mas/icon.icns"
     ],
-    "copyright": "© 2026 尾薗圭亮"
+    "copyright": "© 2026 尾薗圭亮",
+    "category": "Productivity"
   },
   "build": {
     "beforeBuildCommand": {

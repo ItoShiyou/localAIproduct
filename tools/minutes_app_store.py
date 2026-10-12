@@ -21,6 +21,8 @@ def validate(app):
     info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
     if info.get('CFBundleIdentifier') != 'dev.localaiproduct.minutes' or info.get('MinutesDistributionChannel') != 'mac-app-store':
         raise ValueError('Mac App Store専用ビルドだけを受け付けます')
+    if info.get('LSApplicationCategoryType') != 'public.app-category.productivity':
+        raise ValueError('Mac App Store用の仕事効率化カテゴリがありません')
     if not info.get('NSMicrophoneUsageDescription'):
         raise ValueError('マイク使用説明がありません')
     models = app/'Contents/Resources/resources/models'
@@ -116,7 +118,7 @@ def prepare(app, output, identity, installer=None, profile=None, release_approve
         subprocess.run(['productbuild','--component',str(staged),'/Applications','--sign',installer,str(output/'minutes.pkg')],check=True)
         subprocess.run(['pkgutil','--check-signature',str(output/'minutes.pkg')],check=True)
     report={'version':info['CFBundleShortVersionString'],'channel':'mac-app-store','distribution_signed':production,
-            'app':str(staged),'uploaded':False,'note':'開発用署名では購入・TestFlight・Apple審査の成功を証明しません'}
+            'app':str(staged),'uploaded':False,'note':('App Store用署名済み。アップロード・TestFlight・審査・公開は別工程です' if production else '開発用署名では購入・TestFlight・Apple審査の成功を証明しません')}
     (output/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     return report
 

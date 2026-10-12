@@ -1,7 +1,10 @@
 """Distribution-profile failures must stop packaging, using synthetic metadata only."""
 from datetime import datetime, timedelta, timezone
 import unittest
-from minutes_app_store import validate_distribution_profile
+import tempfile
+import plistlib
+from pathlib import Path
+from minutes_app_store import validate_distribution_profile, validate
 
 NOW = datetime(2026, 10, 13, tzinfo=timezone.utc)
 BUNDLE = 'dev.localaiproduct.minutes'
@@ -42,5 +45,19 @@ class ProfileTests(unittest.TestCase):
             with self.subTest(team=team):
                 document = self.profile(); document['Entitlements']['com.apple.developer.team-identifier'] = team
                 with self.assertRaises(ValueError): validate_distribution_profile(document, BUNDLE, NOW)
+
+class BundleMetadataTests(unittest.TestCase):
+    def test_missing_store_category_fails_before_signing_or_model_reads(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root)/'minutes.app'
+            (app/'Contents').mkdir(parents=True)
+            info = {'CFBundleIdentifier': BUNDLE, 'MinutesDistributionChannel': 'mac-app-store',
+                    'NSMicrophoneUsageDescription': '合成音声の検証'}
+            for category in [None, 'public.app-category.invalid']:
+                with self.subTest(category=category):
+                    info['LSApplicationCategoryType'] = category or ''
+                    (app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+                    with self.assertRaisesRegex(ValueError, 'カテゴリ'):
+                        validate(app)
 
 if __name__ == '__main__': unittest.main()
