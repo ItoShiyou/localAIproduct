@@ -17,7 +17,7 @@
   },
   {
     "name": "Qwen3-4B-Instruct-2507 (Alibaba Cloud / Qwen team), GGUF Q4_K_M quantization by Unsloth",
-    "version": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf (SHA-256 3605803b982cb64a…). Optional add-on downloaded by the user on request (summary feature, paid tier)",
+    "version": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf (SHA-256 3605803b982cb64a…); bundled in Mac App Store edition, optional download in legacy builds",
     "license": "Apache-2.0",
     "url": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507 / https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
     "text_file": "qwen3-model-LICENSE.txt",
@@ -25,10 +25,11 @@
   },
   {
     "name": "ONNX Runtime",
-    "version": "1.30.0 (onnxruntime-osx-arm64-1.30.0, official release)",
+    "version": "1.30.0; macOS arm64 rebuilt from pinned source f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7 for deployment target 12.0",
     "license": "MIT",
     "url": "https://github.com/microsoft/onnxruntime",
-    "text_file": "onnxruntime-LICENSE.txt"
+    "text_file": "onnxruntime-LICENSE.txt",
+    "note": "Mac App Store build uses CPU engine rebuilt without model modifications. Windows distribution assets are maintained separately."
   },
   {
     "name": "ONNX Runtime third-party notices",

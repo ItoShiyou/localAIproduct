@@ -1,0 +1,14 @@
+{
+  "name": "ONNX Runtime",
+  "version": "1.30.0",
+  "source": "https://github.com/microsoft/onnxruntime",
+  "revision": "f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7",
+  "architecture": "arm64",
+  "deployment_target": "12.0",
+  "telemetry_compiled": false,
+  "execution_provider": "CPU",
+  "raw_library_sha256": "0c2189be21951d031cbdea05e3ce1caee52458dd3e379a8c70f11bb84ee3fea6",
+  "rebuild_script": "apps/minutes/tools/build_ort_macos12.sh",
+  "minimum_os_hardware_tested": false,
+  "note": "Raw pre-signing hash; codesign changes library bytes. Validated on macOS 27.0.1 only."
+}

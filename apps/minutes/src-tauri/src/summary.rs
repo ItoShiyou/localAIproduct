@@ -224,16 +224,16 @@ pub const SYSTEM_PROMPT: &str = "あなたは会議の記録係です。会議�
 - 因果関係・否定・数字を変えない。原因と結果を逆にしない。発言にない因果関係を作らない。\n\
 - summaryは原文の短い表現を中心に並べる。因果が明記されていない二つの事実は「AとBが報告された」のように併記し、「AのためB」「Aが原因でB」に言い換えない。\n\
 - summary は会議の要点。話題ごとに1項目とし、1項目は1〜2文以内の短い文にして、3〜8項目に分ける(1項目に全部を詰め込まない)。\n\
-- decisions は「決まったこと」だけを、内容が分かる短い文で。決まったことが無ければ空の配列。\n\
+- decisions は「決まったこと」だけを、内容が分かる短い文で。例えば「次回から定例会は毎週月曜に開催すると決定しました」は「定例会を毎週月曜に開催する」をdecisionsに必ず残す。summaryに同じ内容があってもdecisionsから省かない。決まったことが無ければ空の配列。\n\
 - todos は、誰かがやると話した作業だけ。text は作業の内容だけを書く。owner は話者や担当者の名前が分かるときだけ書き、分からなければ空文字。due は「来週の月曜日まで」のように話されたとおりに書き(日付には直さない)、分からなければ空文字。\n\
 - 期限つきで約束した作業をtodosから落とさない。例えば「来週の月曜日までに見積書を作成して共有します」は、text「見積書を作成して共有する」、due「来週の月曜日まで」として残す。decisionsに入れた作業もtodosに残す。\n\
 - 「保存場所はこれまでと変えずにサーバーにする」のような現状維持、単なる報告、完了済みの作業はtodosにしない。依頼・約束・今後の作業として明言されたものだけを選ぶ。\n\
 - 出力は JSON だけ。前置きや説明は書かない。";
 
-const SCHEMA_EXAMPLE: &str = r#"{"todos":[{"text":"作業の内容","owner":"","due":""}],"summary":["要点"],"decisions":["決まったこと"]}"#;
+const SCHEMA_EXAMPLE: &str = r#"{"todos":[{"text":"作業の内容","owner":"","due":""}],"decisions":["決まったこと"],"summary":["要点"]}"#;
 
 /// 出力の形を縛る文法(GBNF)。モデルが形を崩しても、この形のJSONしか出せない。
-pub const DRAFT_GRAMMAR: &str = r#"root ::= "{" ws "\"todos\"" ws ":" ws todos ws "," ws "\"summary\"" ws ":" ws strs ws "," ws "\"decisions\"" ws ":" ws strs ws "}"
+pub const DRAFT_GRAMMAR: &str = r#"root ::= "{" ws "\"todos\"" ws ":" ws todos ws "," ws "\"decisions\"" ws ":" ws strs ws "," ws "\"summary\"" ws ":" ws strs ws "}"
 strs ::= "[" ws (str (ws "," ws str)*)? ws "]"
 todos ::= "[" ws (todo (ws "," ws todo)*)? ws "]"
 todo ::= "{" ws "\"text\"" ws ":" ws str ws "," ws "\"owner\"" ws ":" ws str ws "," ws "\"due\"" ws ":" ws str ws "}"
@@ -255,7 +255,7 @@ pub fn user_prompt(title: &str, text: &str, feedback: Option<&str>) -> String {
         p.push_str(&format!("会議名: {}\n\n", defang(title.trim())));
     }
     p.push_str("次の文字起こしを整理して、下の形のJSONだけを出力してください。\n");
-    p.push_str("最初に、期限を伴う作業を含めてtodosを列挙し、その後でsummaryとdecisionsを整理してください。作業の期限をdueに残し、不明な担当者を埋めないでください。\n");
+    p.push_str("最初に、期限を伴う作業を含めてtodosを列挙し、その後で明示された決定事項をdecisionsへ列挙し、最後にsummaryを整理してください。作業の期限をdueに残し、不明な担当者を埋めないでください。\n");
     p.push_str(SCHEMA_EXAMPLE);
     p.push_str("\n\n");
     if let Some(f) = feedback {
@@ -599,7 +599,7 @@ pub type SummarizerFactory = Box<dyn Fn(&Path) -> Result<Arc<dyn Summarizer>, St
 
 /// サイドカーの実行ファイルを探す: 開発用の環境変数 `MINUTES_SUMMARIZER_BIN` → `dirs`(アプリの実行ファイルのあるフォルダなど)。
 pub fn find_sidecar(dirs: &[PathBuf]) -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("MINUTES_SUMMARIZER_BIN") {
+    if let Some(p) = std::env::var("MINUTES_SUMMARIZER_BIN").ok().filter(|_| !cfg!(feature = "mac-app-store")) {
         let p = PathBuf::from(p);
         if p.is_file() {
             return Some(p);
@@ -684,7 +684,7 @@ impl SummaryRuntime {
             run_cancel: AtomicBool::new(false),
             active: Mutex::new(None),
             factory: Mutex::new(None),
-            env_model: std::env::var("MINUTES_SUMMARY_MODEL").ok().map(PathBuf::from).filter(|p| p.is_file()),
+            env_model: std::env::var("MINUTES_SUMMARY_MODEL").ok().filter(|_| !cfg!(feature = "mac-app-store")).map(PathBuf::from).filter(|p| p.is_file()),
             sidecar_dirs: Mutex::new(Vec::new()),
             bundled_model: Mutex::new(None),
         }
