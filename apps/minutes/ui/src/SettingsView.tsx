@@ -305,7 +305,7 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
           <tbody>
             {s.network.map((e) => (
               <tr key={e.purpose}><td>{e.purpose}</td><td>{e.destination}</td><td>{e.content}</td>
-                <td>{isMacAppStore && e.purpose.startsWith("Apple") ? "Appleが管理（購入・復元には接続が必要）" : s.offlineMode ? "止めています(ネットワークを使わない設定)" : e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
+                <td>{isMacAppStore && e.purpose.startsWith("Apple") ? "Appleが管理（購入・復元には接続が必要）" : s.offlineMode ? "止めています(ネットワークを使わない設定)" : e.purpose.includes("モデル") ? "操作したときのみ（上の設定で停止できます）" : e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
             ))}
           </tbody>
         </table>
@@ -380,19 +380,27 @@ function StorePurchaseSection({ pro, onChanged }: { pro: boolean; onChanged: () 
   const [state, setState] = useState<PurchaseState | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  useEffect(() => { storePurchase("status").then(setState).catch(() => setMessage("購入状態を確認できません。時間をおいてお試しください。")); }, []);
-  const run = async (action: "purchase" | "restore") => {
+  useEffect(() => {
+    setBusy(true);
+    storePurchase("status").then((result) => {
+      setState(result);
+      if (!result.price && !result.pro) setMessage("価格を取得できませんでした。接続状況を確認して再試行してください。");
+    }).catch(() => setMessage("購入状態を確認できません。時間をおいてお試しください。"))
+      .finally(() => setBusy(false));
+  }, []);
+  const run = async (action: "status" | "purchase" | "restore") => {
     setBusy(true); setMessage("");
     try {
       const result = await storePurchase(action); setState(result); onChanged();
       const messages: Record<string, string> = { purchased: "購入を確認しました。", restored: result.pro ? "購入を復元しました。" : "復元できる購入が見つかりませんでした。", cancelled: "購入をキャンセルしました。", pending: "購入は承認待ちです。承認後に反映します。", unavailable: "商品を取得できません。接続状況を確認し、時間をおいてお試しください。", unverified: "購入を検証できませんでした。購入の復元をお試しください。", error: "購入操作を完了できませんでした。接続状況を確認してください。" };
-      setMessage(messages[result.status] ?? "購入状態を更新しました。");
+      setMessage(action === "status" ? (result.price ? "価格を更新しました。" : result.pro ? "Pro購入済み" : "価格を取得できませんでした。接続状況を確認して再試行してください。") : messages[result.status] ?? "購入状態を更新しました。");
     } catch { setMessage("購入操作を完了できませんでした。時間をおいてお試しください。"); }
     finally { setBusy(false); }
   };
   return <section className="card"><h2>minutes Pro（買い切り）</h2>
     <p className="note">Apple公式のアプリ内購入です。購入済みのApple Accountで復元できます。</p>
-    {!pro && <button className="btn primary" disabled={busy || !state?.price} onClick={() => run("purchase")}>Proを購入{state?.price ? `（${state.price}）` : "（価格を確認中）"}</button>}
+    {!pro && <button className="btn primary" disabled={busy || !state?.price} onClick={() => run("purchase")}>Proを購入{state?.price ? `（${state.price}）` : busy ? "（価格を確認中）" : "（価格を取得できません）"}</button>}
+    {!pro && <button className="btn" disabled={busy} onClick={() => run("status")}>価格を再確認</button>}
     <button className="btn" disabled={busy} onClick={() => run("restore")}>購入を復元</button>
     <p role="status">{message || (pro ? "Pro購入済み" : "")}</p></section>;
 }

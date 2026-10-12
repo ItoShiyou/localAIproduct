@@ -129,12 +129,58 @@ pub struct KeychainSlot {
 #[cfg(feature = "tauri")]
 impl Slot for KeychainSlot {
     fn read(&self) -> Option<String> {
+        #[cfg(all(feature = "mac-app-store", target_os = "macos"))]
+        return noninteractive_keychain::run(|| keyring::Entry::new(&self.service, "usage").ok()?.get_password().ok()).flatten();
+        #[cfg(not(all(feature = "mac-app-store", target_os = "macos")))]
         keyring::Entry::new(&self.service, "usage").ok()?.get_password().ok()
     }
     fn write(&self, v: &str) {
-        if let Ok(e) = keyring::Entry::new(&self.service, "usage") {
-            let _ = e.set_password(v);
+        let write = || {
+            if let Ok(e) = keyring::Entry::new(&self.service, "usage") { let _ = e.set_password(v); }
+        };
+        #[cfg(all(feature = "mac-app-store", target_os = "macos"))]
+        let _ = noninteractive_keychain::run(write);
+        #[cfg(not(all(feature = "mac-app-store", target_os = "macos")))]
+        write();
+    }
+}
+
+// The optional quota mirror must never put app startup or audio processing behind
+// a login-keychain authorization dialog. This affects this process only and does
+// not authorize access: unavailable entries remain unavailable; file mirrors stay.
+#[cfg(all(feature = "mac-app-store", feature = "tauri", target_os = "macos"))]
+mod noninteractive_keychain {
+    use std::sync::Mutex;
+    static ACCESS: Mutex<()> = Mutex::new(());
+    #[link(name = "Security", kind = "framework")]
+    extern "C" {
+        fn SecKeychainGetUserInteractionAllowed(state: *mut u8) -> i32;
+        fn SecKeychainSetUserInteractionAllowed(state: u8) -> i32;
+    }
+    struct Restore(u8);
+    impl Drop for Restore {
+        fn drop(&mut self) { unsafe { SecKeychainSetUserInteractionAllowed(self.0); } }
+    }
+    pub fn run<T>(operation: impl FnOnce() -> T) -> Option<T> {
+        let _serial = ACCESS.lock().unwrap_or_else(|p| p.into_inner());
+        let mut previous = 0;
+        unsafe {
+            if SecKeychainGetUserInteractionAllowed(&mut previous) != 0 || SecKeychainSetUserInteractionAllowed(0) != 0 { return None; }
         }
+        let _restore = Restore(previous);
+        Some(operation())
+    }
+    #[cfg(test)]
+    #[test]
+    fn quota_access_disallows_prompts_and_restores_policy_on_success_and_panic() {
+        let mut before = 0;
+        assert_eq!(unsafe { SecKeychainGetUserInteractionAllowed(&mut before) }, 0);
+        let check = || { let mut state = 1; assert_eq!(unsafe { SecKeychainGetUserInteractionAllowed(&mut state) }, 0); assert_eq!(state, 0); };
+        run(check).unwrap();
+        let _ = std::panic::catch_unwind(|| run(|| { check(); panic!("fixture panic"); }));
+        let mut after = 0;
+        assert_eq!(unsafe { SecKeychainGetUserInteractionAllowed(&mut after) }, 0);
+        assert_eq!(after, before);
     }
 }
 
