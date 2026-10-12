@@ -25,6 +25,9 @@ def validate(app):
         raise ValueError('Mac App Store用の仕事効率化カテゴリがありません')
     if not info.get('NSMicrophoneUsageDescription'):
         raise ValueError('マイク使用説明がありません')
+    privacy = plistlib.loads((app/'Contents/Resources/PrivacyInfo.xcprivacy').read_bytes())
+    if privacy.get('NSPrivacyTracking') is not False or privacy.get('NSPrivacyTrackingDomains') != [] or privacy.get('NSPrivacyCollectedDataTypes') != []:
+        raise ValueError('PrivacyInfo.xcprivacyが現在の収集しない方針と一致しません')
     models = app/'Contents/Resources/resources/models'
     for name, expected in HASHES.items():
         h = hashlib.sha256()
@@ -117,7 +120,7 @@ def prepare(app, output, identity, installer=None, profile=None, release_approve
     if production:
         subprocess.run(['productbuild','--component',str(staged),'/Applications','--sign',installer,str(output/'minutes.pkg')],check=True)
         subprocess.run(['pkgutil','--check-signature',str(output/'minutes.pkg')],check=True)
-    report={'version':info['CFBundleShortVersionString'],'channel':'mac-app-store','distribution_signed':production,
+    report={'version':info['CFBundleShortVersionString'],'build':info.get('CFBundleVersion'),'channel':'mac-app-store','distribution_signed':production,
             'app':str(staged),'uploaded':False,'note':('App Store用署名済み。アップロード・TestFlight・審査・公開は別工程です' if production else '開発用署名では購入・TestFlight・Apple審査の成功を証明しません')}
     (output/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     return report

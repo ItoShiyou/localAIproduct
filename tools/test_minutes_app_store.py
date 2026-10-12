@@ -60,4 +60,23 @@ class BundleMetadataTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'カテゴリ'):
                         validate(app)
 
+    def test_tracking_or_collected_data_manifest_is_rejected_before_signing(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root)/'minutes.app'
+            (app/'Contents/Resources').mkdir(parents=True)
+            info = {'CFBundleIdentifier': BUNDLE, 'MinutesDistributionChannel': 'mac-app-store',
+                    'NSMicrophoneUsageDescription': '合成音声の検証',
+                    'LSApplicationCategoryType': 'public.app-category.productivity'}
+            (app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+            for field, value in [('NSPrivacyTracking', True),
+                                 ('NSPrivacyTrackingDomains', ['example.invalid']),
+                                 ('NSPrivacyCollectedDataTypes', [{'NSPrivacyCollectedDataType': 'test'}])]:
+                with self.subTest(field=field):
+                    manifest = {'NSPrivacyTracking': False, 'NSPrivacyTrackingDomains': [],
+                                'NSPrivacyCollectedDataTypes': [], 'NSPrivacyAccessedAPITypes': []}
+                    manifest[field] = value
+                    (app/'Contents/Resources/PrivacyInfo.xcprivacy').write_bytes(plistlib.dumps(manifest))
+                    with self.assertRaisesRegex(ValueError, 'PrivacyInfo'):
+                        validate(app)
+
 if __name__ == '__main__': unittest.main()

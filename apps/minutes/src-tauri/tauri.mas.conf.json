@@ -7,7 +7,7 @@
       "entitlements": "Entitlements.mas.plist",
       "minimumSystemVersion": "12.0",
       "infoPlist": "Info.mas.plist",
-      "bundleVersion": "1"
+      "bundleVersion": "2"
     },
     "resources": [
       "resources/THIRD_PARTY_NOTICES.txt",
@@ -15,7 +15,8 @@
       "resources/models/ggml-small-q5_1.bin",
       "resources/models/voxceleb_resnet34_LM.onnx",
       "resources/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-      "resources/onnxruntime/*"
+      "resources/onnxruntime/*",
+      "PrivacyInfo.xcprivacy"
     ],
     "icon": [
       "icons/mas/icon.png",

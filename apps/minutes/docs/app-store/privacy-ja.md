@@ -15,3 +15,12 @@ Pro購入・復元と取引状態の管理はApple StoreKitを使用します。
 保存内容をアプリ独自に暗号化する機能はありません。共有Macでの利用やバックアップ管理は利用者が適切に設定してください。処理エラーに録音内容を出力しないよう実装しています。OSの診断情報やAppleへ任意送信するクラッシュレポートはAppleの設定に従います。
 
 App Storeのプライバシー回答は最終バイナリの通信検証とAppleの定義に照合して提出します。本案はネットワーク実測完了を主張するものではありません。
+
+
+## 同梱プライバシーマニフェスト
+
+Mac App Store版のContents/Resources/PrivacyInfo.xcprivacyへ、アプリによるトラッキングなし・トラッキングドメインなし・開発者のデータ収集なしを宣言する。録音・文字・議事録は端末内処理に限定する。StoreKitのApple側処理、利用者が開始するモデル取得との区別は本ポリシーの通信一覧を参照する。
+
+Appleの現在の文書では、データ収集情報は全プラットフォームが対象だが、required reasons APIの用途宣言対象にはmacOSを列挙していない。そのため本Mac専用マニフェストのNSPrivacyAccessedAPITypesは空配列とし、iOS等への転用時は用途を再監査する。第三者SDK独自の宣言義務までアプリの空配列で代替したと扱わない。
+
+一次情報: https://developer.apple.com/documentation/bundleresources/privacy-manifest-files ; https://developer.apple.com/documentation/bundleresources/adding-a-privacy-manifest-to-your-app-or-third-party-sdk

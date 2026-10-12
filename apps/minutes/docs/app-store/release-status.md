@@ -35,3 +35,7 @@ Mac専用StoreKit、購入復元・取引更新、App Sandbox、マイク・利�
 7. 最終審査提出・公開は所有者承認後。現在は手動リリース設定。
 
 詳細: build-and-submit.md / qa-matrix.md / gui-verification-2026-10-12.md / verification-2026-10-12.md。
+
+## 追加のプライバシー提出準備
+
+PrivacyInfo.xcprivacyをMac App Store版のContents/Resourcesへ同梱し、現在の収集しない方針との整合性を署名前に検査する。ビルド番号2でソースからの生成に成功した。ビルド1のTransporterは所有者から「アップロード・検証中」と報告を受けた。自動承認の利用上限が解消するまでは、こちらで完了を確認したとは扱わない。ビルド2の正式署名パッケージをartifacts/minutes-mas-2026-10-13-build2/minutes.pkgへ生成した。署名工程・パッケージ署名検査は成功し、ビルド番号2・カテゴリ・プライバシーマニフェストの実同梱を確認した。提出前検査の試験7件が成功。ビルド2は未アップロード。Gitへのpushは行わず、ローカルコミットを保存する。
