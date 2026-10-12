@@ -12,6 +12,8 @@ pub mod platform;
 pub mod recorder;
 pub mod store;
 pub mod summary;
+pub mod storekit;
+pub mod migration;
 #[cfg(feature = "tauri")]
 pub mod tauri_glue;
 
@@ -40,7 +42,7 @@ pub fn embedder_loader(resources: Option<std::path::PathBuf>) -> commands::Embed
         #[cfg(feature = "diarize")]
         {
             let pick = |env: &str, rel: &[&str]| -> Option<std::path::PathBuf> {
-                std::env::var(env).ok().map(std::path::PathBuf::from).filter(|p| p.exists()).or_else(|| {
+                std::env::var(env).ok().filter(|_| !cfg!(feature = "mac-app-store")).map(std::path::PathBuf::from).filter(|p| p.exists()).or_else(|| {
                     resources.as_ref().map(|r| rel.iter().fold(r.clone(), |p, s| p.join(s))).filter(|p| p.exists())
                 })
             };
@@ -66,6 +68,8 @@ pub fn env_model() -> Option<std::path::PathBuf> {
 #[cfg(feature = "tauri")]
 pub fn run() {
     use tauri::Manager;
+    #[cfg(all(feature = "mac-app-store", target_os = "macos"))]
+    storekit::start();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -73,7 +77,7 @@ pub fn run() {
             let data_dir = platform::checked_app_data_dir(app.path().app_data_dir().ok(), &app.config().identifier)?;
             // モデルの場所: 開発用の環境変数 → アプリに同梱(resources/models/)の順。どちらも無ければ設定画面から取得
             let mut fixed = Vec::new();
-            if let Some(p) = env_model() {
+            if let Some(p) = env_model().filter(|_| !cfg!(feature = "mac-app-store")) {
                 fixed.push((p, "env"));
             }
             let res = app.path().resource_dir().ok().map(|r| r.join("resources"));
@@ -86,7 +90,7 @@ pub fn run() {
             state.set_embedder_loader(embedder_loader(res.clone()));
             // 録音中の仮の文字に使う小さなモデル(開発用の環境変数 → 同梱)
             let mut live = Vec::new();
-            if let Ok(p) = std::env::var("MINUTES_LIVE_MODEL") {
+            if let Some(p) = std::env::var("MINUTES_LIVE_MODEL").ok().filter(|_| !cfg!(feature = "mac-app-store")) {
                 live.push(std::path::PathBuf::from(p));
             }
             if let Some(r) = &res {
@@ -119,6 +123,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             tauri_glue::open_purchase_page,
+            tauri_glue::storekit_request,
+            tauri_glue::migrate_legacy_data,
             tauri_glue::pick_and_import,
             tauri_glue::import_paths,
             tauri_glue::run_jobs,

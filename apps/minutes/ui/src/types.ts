@@ -115,6 +115,7 @@ export function ago(sec: number): string {
 }
 
 export interface Plan {
+  purchaseVerificationPending?: boolean;
   tier: "free" | "pro";
   accurateModel: boolean; diarize: boolean; denoise: boolean; glossary: boolean; summary: boolean;
   exports: string[];

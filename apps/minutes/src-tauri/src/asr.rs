@@ -72,6 +72,7 @@ mod whisper {
 
     impl WhisperAsr {
         pub fn new(model: &std::path::Path, threads: i32) -> Result<Self, String> {
+            whisper_rs::install_logging_hooks();
             let mut p = WhisperContextParameters::default();
             // GPU は使わない(最低ラインの機械に合わせ、結果を揃える)
             p.use_gpu(false);

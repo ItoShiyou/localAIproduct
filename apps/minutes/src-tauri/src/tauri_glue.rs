@@ -8,6 +8,7 @@ use std::path::PathBuf;
 /// Only a fixed public purchase page can be opened. No meeting data or identifiers are attached.
 #[tauri::command]
 pub fn open_purchase_page() -> Result<(), String> {
+    if cfg!(feature = "mac-app-store") { return Err("Proの購入はアプリ内のApple公式決済をご利用ください".into()); }
     let url = "https://itoshiyou.github.io/localAIproduct/minutes/purchase/";
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("/usr/bin/open").arg(url).status();
@@ -416,4 +417,30 @@ pub async fn pick_and_import_summary_model(app: tauri::AppHandle, state: State<'
     let Some(f) = app.dialog().file().add_filter("要約のモデル(GGUF)", &["gguf"]).blocking_pick_file() else { return Ok(None) };
     let path = f.into_path().map_err(|_| "ファイルを選べません".to_string())?;
     state.import_summary_model(&path).map(Some)
+}
+
+#[tauri::command]
+pub async fn storekit_request(action: String) -> Result<serde_json::Value, String> {
+    #[cfg(all(feature = "mac-app-store", target_os = "macos"))]
+    {
+        let code = match action.as_str() { "status" => 0, "purchase" => 1, "restore" => 2, _ => return Err("不明な購入操作です".into()) };
+        tauri::async_runtime::spawn_blocking(move || crate::storekit::request(code)).await.map_err(|_| "購入操作を完了できませんでした".to_string())?
+    }
+    #[cfg(not(all(feature = "mac-app-store", target_os = "macos")))]
+    { let _ = action; Err("このビルドはMac App Store版ではありません".into()) }
+}
+
+#[tauri::command]
+pub async fn migrate_legacy_data(app: tauri::AppHandle, state: State<'_,AppState>) -> Result<(),String> {
+    if !cfg!(feature = "mac-app-store") { return Err("この移行操作はMac App Store版で利用できます".into()); }
+    if state.progress()?.busy || !state.meetings()?.is_empty() { return Err("処理が止まっていて、議事録がない初回の保存先でだけ移行できます".into()); }
+    let Some(folder)=app.dialog().file().blocking_pick_folder() else { return Ok(()); };
+    let source=folder.into_path().map_err(|_|"保存フォルダーを選んでください".to_string())?;
+    crate::migration::prepare(&source,&state.app.root)?;
+    if !state.meetings()?.is_empty() {
+        crate::migration::cancel_prepared(&state.app.root)?;
+        return Err("コピー中に新しい議事録が作成されたため移行を中止しました。どちらの元データも保持しています".into());
+    }
+    app.exit(0);
+    Ok(())
 }

@@ -1,0 +1,31 @@
+{
+  "identifier": "9095C3F5-5C67-442F-BD5A-6B88094A50F7",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "100001",
+      "localizations": [
+        {
+          "description": "Local automated test only",
+          "displayName": "minutes Pro test",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "dev.localaiproduct.minutes.pro",
+      "referenceName": "minutes Pro QA only",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

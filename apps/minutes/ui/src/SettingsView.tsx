@@ -3,7 +3,7 @@ import type { Api } from "./api";
 import type { Flag, LicenseStatus, ModelInfo, Plan, SettingsInfo, SummaryStatus } from "./types";
 import { PRO_LABEL } from "./types";
 import { PageHead } from "./PageHead";
-import { edition, openPurchasePage } from "./edition";
+import { edition, openPurchasePage, isMacAppStore, storePurchase, PurchaseState } from "./edition";
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
 const gb = (n: number) => `${(n / 1024 / 1024 / 1024).toFixed(1)}GB`;
@@ -161,7 +161,7 @@ function PlanCard({ plan }: { plan: Plan }) {
         <thead><tr><th></th><th>無料版</th><th>有料版(買い切り)</th></tr></thead>
         <tbody>{rows.map(([a, b, c]) => <tr key={a}><td>{a}</td><td>{b}</td><td>{c}</td></tr>)}</tbody>
       </table>
-      {plan.tier === "free" && <><p className="note">有料機能は別のPro版アプリで使えます。購入先を選び、購入したPro版をインストールしてください。</p><button className="btn primary" onClick={() => openPurchasePage().catch((e) => alert(String(e)))}>Pro版の購入先を選ぶ ↗</button></>}
+      {!isMacAppStore && plan.tier === "free" && <><p className="note">有料機能は別のPro版アプリで使えます。購入先を選び、購入したPro版をインストールしてください。</p><button className="btn primary" onClick={() => openPurchasePage().catch((e) => alert(String(e)))}>Pro版の購入先を選ぶ ↗</button></>}
     </section>
   );
 }
@@ -276,15 +276,16 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         </div>
       )}
       {plan && <PlanCard plan={plan} />}
-      {!edition && <LicenseSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings).catch(() => undefined); onLicenseChanged(); }} />}
+      {isMacAppStore && <StorePurchaseSection pro={plan?.tier === "pro"} onChanged={onLicenseChanged} />}
+      {!isMacAppStore && !edition && <LicenseSection api={api} plan={plan} onChanged={() => { api.settings().then(onSettings).catch(() => undefined); onLicenseChanged(); }} />}
       <section className="card" data-testid="offline-mode">
         <h2>ネットワークを使わない</h2>
         <label className={"check" + (s.offlineForced ? " locked" : "")}>
-          <input type="checkbox" data-testid="offline-toggle" checked={s.offlineMode} disabled={s.offlineForced} onChange={(e) => set("offline_mode", e.target.checked)} /> ネットワークを使う機能をすべて止める
+          <input type="checkbox" data-testid="offline-toggle" checked={s.offlineMode} disabled={s.offlineForced} onChange={(e) => set("offline_mode", e.target.checked)} /> {isMacAppStore ? "追加モデルのダウンロードを止める" : "ネットワークを使う機能をすべて止める"}
         </label>
         {s.offlineForced
           ? <p className="note" data-testid="offline-forced">オフライン版のライセンスが登録されているため、常にオンです(切り替えられません)。</p>
-          : <p className="note">オンにすると、アプリ内の追加ダウンロードなどを止めます。{plan?.summary && "要約に必要なファイルはUSBなどから取り込めます。"}購入案内は、押した場合に外部ブラウザで開きます。</p>}
+          : <p className="note">オンにすると、アプリ内の追加ダウンロードなどを止めます。{plan?.summary && "要約に必要なファイルはUSBなどから取り込めます。"}{isMacAppStore ? "Appleの購入・復元には通信が必要です。" : "購入案内は、押した場合に外部ブラウザで開きます。"}</p>}
       </section>
       <ModelSection key={`m-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} onChanged={() => { api.settings().then(onSettings); onModelReady(); }} />
       {plan?.summary && <SummarySection key={`s-${plan?.tier}`} api={api} plan={plan} offline={s.offlineMode} />}
@@ -304,11 +305,11 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
           <tbody>
             {s.network.map((e) => (
               <tr key={e.purpose}><td>{e.purpose}</td><td>{e.destination}</td><td>{e.content}</td>
-                <td>{s.offlineMode ? "止めています(ネットワークを使わない設定)" : e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
+                <td>{isMacAppStore && e.purpose.startsWith("Apple") ? "Appleが管理（購入・復元には接続が必要）" : s.offlineMode ? "止めています(ネットワークを使わない設定)" : e.stoppable ? <label><input type="checkbox" checked={e.enabled} onChange={(ev) => set("update_check", ev.target.checked)} /> {e.enabled ? "オン" : "オフ"}</label> : "止められません"}</td></tr>
             ))}
           </tbody>
         </table>
-        <p className="note">{edition ? "キーの登録は不要です。" : "購入キーの確認にはインターネットを使いません。"}この版はアプリの更新を自動確認しません。</p>
+        <p className="note">{isMacAppStore ? "購入状態はApple StoreKitで確認します。録音・文章はAppleへ送信しません。" : edition ? "キーの登録は不要です。" : "購入キーの確認にはインターネットを使いません。"}この版はアプリの更新を自動確認しません。</p>
       </section>
 
       <section className="card">
@@ -322,6 +323,13 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
         <p className="note">音声のコピー・議事録・用語辞書・設定はこのフォルダに保存します。アプリ内では暗号化していません。パソコンのディスク暗号化(macOS は FileVault、Windows は BitLocker)を有効にしておくことをおすすめします。</p>
       </section>
 
+      {isMacAppStore && <section className="card"><h2>以前の開発版のデータを移行</h2>
+        <p className="note">旧アプリを終了してから、以前の保存フォルダーを選択してください。新しい保存先に議事録がない場合だけコピーします。元のデータは変更しません。コピー後にアプリを終了するので、もう一度起動してください。購入権利はAppleから復元します。</p>
+        <button className="btn" onClick={async () => { try {
+          const native = (window as unknown as { __TAURI__: { core: { invoke: (name: string) => Promise<void> } } }).__TAURI__;
+          await native.core.invoke("migrate_legacy_data");
+        } catch (e) { setMsg(String(e)); } }}>以前の保存フォルダーを選ぶ</button>
+      </section>}
       <section className="card" id="third-party-licenses">
         <h2>第三者ライセンス・技術情報</h2>
         <p className="note">通常の利用に、この一覧を覚える必要はありません。使用しているモデル、提供元、利用条件をまとめています。</p>
@@ -366,4 +374,25 @@ export function SettingsView({ api, settings: s, plan, onSettings, onDeleted, on
       </section>
     </div>
   );
+}
+
+function StorePurchaseSection({ pro, onChanged }: { pro: boolean; onChanged: () => void }) {
+  const [state, setState] = useState<PurchaseState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => { storePurchase("status").then(setState).catch(() => setMessage("購入状態を確認できません。時間をおいてお試しください。")); }, []);
+  const run = async (action: "purchase" | "restore") => {
+    setBusy(true); setMessage("");
+    try {
+      const result = await storePurchase(action); setState(result); onChanged();
+      const messages: Record<string, string> = { purchased: "購入を確認しました。", restored: result.pro ? "購入を復元しました。" : "復元できる購入が見つかりませんでした。", cancelled: "購入をキャンセルしました。", pending: "購入は承認待ちです。承認後に反映します。", unavailable: "商品を取得できません。接続状況を確認し、時間をおいてお試しください。", unverified: "購入を検証できませんでした。購入の復元をお試しください。", error: "購入操作を完了できませんでした。接続状況を確認してください。" };
+      setMessage(messages[result.status] ?? "購入状態を更新しました。");
+    } catch { setMessage("購入操作を完了できませんでした。時間をおいてお試しください。"); }
+    finally { setBusy(false); }
+  };
+  return <section className="card"><h2>minutes Pro（買い切り）</h2>
+    <p className="note">Apple公式のアプリ内購入です。購入済みのApple Accountで復元できます。</p>
+    {!pro && <button className="btn primary" disabled={busy || !state?.price} onClick={() => run("purchase")}>Proを購入{state?.price ? `（${state.price}）` : "（価格を確認中）"}</button>}
+    <button className="btn" disabled={busy} onClick={() => run("restore")}>購入を復元</button>
+    <p role="status">{message || (pro ? "Pro購入済み" : "")}</p></section>;
 }

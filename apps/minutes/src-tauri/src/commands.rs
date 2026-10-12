@@ -106,6 +106,9 @@ pub struct SettingsDto {
 
 pub fn network_entries() -> Vec<NetworkEntry> {
     let e = |p: &str, d: &str, c: &str, stoppable: bool| NetworkEntry { purpose: p.into(), destination: d.into(), content: c.into(), stoppable, enabled: true };
+    if cfg!(feature = "mac-app-store") {
+        return vec![e("Appleの購入・復元・取引更新", "Apple StoreKit", "商品ID・Appleが管理する購入取引（録音・文章は含まない）", false), e("モデルの取得(操作したときのみ)", "Hugging Faceと配信先", "公開モデルのURL・取得位置", false)];
+    }
     vec![
         e(UPDATE_PURPOSE, "配布元", "アプリのバージョン", true),
         e("モデルの取得(操作したときのみ)", "モデルの配布元(文字起こし・要約のモデル)", "モデル名", false),
@@ -186,6 +189,7 @@ pub struct PlanDto {
     pub usage: Usage,
     /// 無料版の残り(ミリ秒)。有料版は None
     pub remaining_ms: Option<u64>,
+    pub purchase_verification_pending: bool,
 }
 
 fn flag(s: &Settings, key: &str, default: bool) -> bool {
@@ -196,6 +200,8 @@ impl AppState {
     /// `asr` を渡すと、それを使う(テスト用)。None なら、モデルの場所から `loader` で読み込む。
     pub fn new(data_dir: PathBuf, asr: Option<Box<dyn Asr>>, loader: AsrLoader, fixed_models: Vec<(PathBuf, &'static str)>) -> Result<Self, String> {
         crate::platform::prepare_data_dir(&data_dir)?;
+        #[cfg(feature = "mac-app-store")]
+        crate::migration::apply_pending(&data_dir)?;
         let data_dir_for_ledger = data_dir.clone();
         let app = AppData::init(&data_dir).map_err(err)?;
         let models = ModelManager::new(data_dir.join("models"));
@@ -286,7 +292,16 @@ impl AppState {
         o
     }
 
+    fn require_purchase_verification(&self) -> Result<(), String> {
+        #[cfg(feature = "mac-app-store")]
+        if !crate::storekit::is_ready() {
+            return Err("Appleの購入状態を確認中です。しばらくしてから再試行してください".into());
+        }
+        Ok(())
+    }
+
     pub fn import_audio(&self, path: &Path, opts: &ProcessOptions) -> Result<i64, String> {
+        self.require_purchase_verification()?;
         let opts = &self.allowed_options(opts);
         if self.plan().remaining_ms == Some(0) {
             return Err(crate::pipeline::LIMIT_REACHED.into());
@@ -324,6 +339,7 @@ impl AppState {
 
     /// 待ちの処理をすべて実行する(呼び出し側の別スレッドで)。実行中なら何もしない。
     pub fn run_jobs(&self) -> Result<usize, String> {
+        self.require_purchase_verification()?;
         if self.busy.swap(true, Ordering::SeqCst) {
             return Ok(0);
         }
@@ -398,6 +414,9 @@ impl AppState {
     // ---------------- 無料版・有料版 ----------------
 
     pub fn ent(&self) -> Entitlements {
+        if cfg!(feature = "mac-app-store") {
+            return Entitlements::of(if crate::storekit::is_pro() { Tier::Pro } else { Tier::Free });
+        }
         if let Some(tier) = crate::plan::distribution_tier() {
             return Entitlements::of(tier);
         }
@@ -417,6 +436,7 @@ impl AppState {
 
     /// この端末の端末コード(テストでは差し替え可)
     pub fn machine_code(&self) -> Option<String> {
+        if cfg!(feature = "mac-app-store") { return None; }
         self.machine_override.lock().unwrap_or_else(|p| p.into_inner()).clone().or_else(crate::license::machine_code)
     }
 
@@ -431,6 +451,7 @@ impl AppState {
 
     /// 保存してあるキーを読み直して、版を決める(起動時と、取り込み・削除のあと)
     fn reload_license(&self) {
+        if cfg!(feature = "mac-app-store") { self.set_tier(Tier::Free); return; }
         if let Some(tier) = crate::plan::distribution_tier() {
             self.set_tier(tier);
             *self.license.lock().unwrap_or_else(|p| p.into_inner()) = None;
@@ -463,7 +484,7 @@ impl AppState {
 
     /// キー(または .license の中身)を取り込む。検証に通らなければ保存しない。
     pub fn install_license(&self, text: &str) -> Result<LicenseStatusDto, String> {
-        if crate::plan::distribution_tier().is_some() {
+        if cfg!(feature = "mac-app-store") || crate::plan::distribution_tier().is_some() {
             return Err("この版はキーを登録せず使えます。有料機能はPro版アプリをご購入ください。".into());
         }
         let info = self.verify_license(text).map_err(err)?;
@@ -484,6 +505,7 @@ impl AppState {
     }
 
     pub fn remove_license(&self) -> Result<LicenseStatusDto, String> {
+        if cfg!(feature = "mac-app-store") { return Err("購入の管理はAppleの購入履歴をご利用ください".into()); }
         match std::fs::remove_file(self.license_path()) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -521,7 +543,7 @@ impl AppState {
     pub fn plan(&self) -> PlanDto {
         let ent = self.ent();
         let l = self.ledger.lock().unwrap_or_else(|p| p.into_inner());
-        PlanDto { remaining_ms: l.remaining(&ent), usage: l.usage(), ent }
+        PlanDto { remaining_ms: l.remaining(&ent), usage: l.usage(), ent, purchase_verification_pending: cfg!(feature = "mac-app-store") && !crate::storekit::is_ready() }
     }
 
     fn require(&self, ok: bool) -> Result<(), String> {
@@ -696,6 +718,7 @@ impl AppState {
 
     /// マイクの録音を始める(議事録を作り、話しながら文字にしていく)。議事録の id を返す。
     pub fn record_start(&self, opts: &ProcessOptions) -> Result<i64, String> {
+        self.require_purchase_verification()?;
         let opts = &self.allowed_options(opts);
         if self.plan().remaining_ms == Some(0) {
             return Err(crate::pipeline::LIMIT_REACHED.into());

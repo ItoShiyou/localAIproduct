@@ -1,0 +1,29 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+A00000000000000000000001 = {isa = PBXProject; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000010,A00000000000000000000020);};
+A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000031,A00000000000000000000032,A00000000000000000000033,A00000000000000000000034,A00000000000000000000004); sourceTree = "<group>";};
+A00000000000000000000004 = {isa = PBXGroup; name = Products; children = (A00000000000000000000011,A00000000000000000000021); sourceTree = "<group>";};
+A00000000000000000000031 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitHost.swift; sourceTree = "<group>";};
+A00000000000000000000032 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../src-tauri/apple/StoreKitBridge.swift; sourceTree = "<group>";};
+A00000000000000000000033 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitTests.swift; sourceTree = "<group>";};
+A00000000000000000000034 = {isa = PBXFileReference; lastKnownFileType = text; path = ../src-tauri/apple/Minutes.storekit; sourceTree = "<group>";};
+A00000000000000000000011 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = MinutesStoreKitQA.app; sourceTree = BUILT_PRODUCTS_DIR;};
+A00000000000000000000021 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = MinutesStoreKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;};
+A00000000000000000000041 = {isa = PBXBuildFile; fileRef = A00000000000000000000031;};
+A00000000000000000000042 = {isa = PBXBuildFile; fileRef = A00000000000000000000032;};
+A00000000000000000000043 = {isa = PBXBuildFile; fileRef = A00000000000000000000033;};
+A00000000000000000000044 = {isa = PBXBuildFile; fileRef = A00000000000000000000034;};
+A00000000000000000000010 = {isa = PBXNativeTarget; name = MinutesStoreKitQA; productName = MinutesStoreKitQA; productReference = A00000000000000000000011; productType = "com.apple.product-type.application"; buildConfigurationList = A00000000000000000000012; buildPhases = (A00000000000000000000013,A00000000000000000000014); dependencies = (); buildRules = ();};
+A00000000000000000000013 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000041,A00000000000000000000042); runOnlyForDeploymentPostprocessing = 0;};
+A00000000000000000000014 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000044); runOnlyForDeploymentPostprocessing = 0;};
+A00000000000000000000020 = {isa = PBXNativeTarget; name = MinutesStoreKitTests; productName = MinutesStoreKitTests; productReference = A00000000000000000000021; productType = "com.apple.product-type.bundle.unit-test"; buildConfigurationList = A00000000000000000000022; buildPhases = (A00000000000000000000023); dependencies = (A00000000000000000000024); buildRules = ();};
+A00000000000000000000023 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000043); runOnlyForDeploymentPostprocessing = 0;};
+A00000000000000000000024 = {isa = PBXTargetDependency; target = A00000000000000000000010; targetProxy = A00000000000000000000025;};
+A00000000000000000000025 = {isa = PBXContainerItemProxy; containerPortal = A00000000000000000000001; proxyType = 1; remoteGlobalIDString = A00000000000000000000010; remoteInfo = MinutesStoreKitQA;};
+A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000050); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
+A00000000000000000000012 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000051); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
+A00000000000000000000022 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000052); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
+A00000000000000000000050 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone";};};
+A00000000000000000000051 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = dev.localaiproduct.minutes.storekit-qa; PRODUCT_NAME = "$(TARGET_NAME)"; GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_TESTABILITY = YES; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";};};
+A00000000000000000000052 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = dev.localaiproduct.minutes.storekit-tests; PRODUCT_NAME = "$(TARGET_NAME)"; GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MinutesStoreKitQA.app/Contents/MacOS/MinutesStoreKitQA"; BUNDLE_LOADER = "$(TEST_HOST)"; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";};};
+}; rootObject = A00000000000000000000001; }

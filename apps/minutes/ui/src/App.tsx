@@ -10,7 +10,7 @@ import { Toasts, notify } from "./toast";
 import type { ImportResult, Meeting, MeetingFilter, Plan, ProcessOptions, Progress, SettingsInfo } from "./types";
 import { STATE_LABEL, ago, hms } from "./types";
 import logo from "../../core/brand/logo.svg";
-import { openPurchasePage } from "./edition";
+import { openPurchasePage, isMacAppStore } from "./edition";
 
 type Tab = "meetings" | "search" | "glossary" | "settings";
 
@@ -48,6 +48,7 @@ export function App({ api }: { api: Api }) {
 
   const startJobs = useCallback(async () => {
     if (running.current) return;
+    if ((await api.plan()).purchaseVerificationPending) return;
     running.current = true;
     setJobsActive(true);
     const timer = setInterval(() => { refresh().catch(() => undefined); }, 800);
@@ -71,6 +72,19 @@ export function App({ api }: { api: Api }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
   useEffect(() => { refresh().catch(() => undefined); }, [refresh]);
+  useEffect(() => {
+    if (!isMacAppStore) return;
+    const timer = setInterval(() => {
+      api.plan().then((p) => {
+        setPlan(p);
+        if (plan?.purchaseVerificationPending && !p.purchaseVerificationPending) {
+          api.progress().then((v) => { if (v.pending > 0) startJobs(); }).catch(() => undefined);
+        }
+      }).catch(() => undefined);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [api, plan?.purchaseVerificationPending, startJobs]);
+
 
   /** 初回だけ、録音の同意についての注意を出してから取り込む */
   const withConsent = useCallback((go: () => void) => {
@@ -127,8 +141,8 @@ export function App({ api }: { api: Api }) {
         {plan && <span className="badge" data-testid="edition-badge">{plan.tier === "pro" ? "Pro・有料版" : "無料版"}</span>}
         <span className="local-note">この端末の中で処理</span>
         <span className="grow" />
-        <button className="btn rec" disabled={!!recordOpts} onClick={startRecording}>録音</button>
-        <button className="btn primary" onClick={pick}>取り込む</button>
+        <button className="btn rec" disabled={!!recordOpts || !!plan?.purchaseVerificationPending} onClick={startRecording}>録音</button>
+        <button className="btn primary" disabled={!!plan?.purchaseVerificationPending} onClick={pick}>取り込む</button>
         <details className="more app-menu"><summary className="btn">その他</summary><div className="menu">
           <button className="btn" onClick={() => { setShowOpts(true); setLibraryOpen(true); }}>取り込みの設定</button>
           {nav.filter(([t]) => t !== "meetings" && (t !== "glossary" || plan?.glossary)).map(([t, label]) => <button className="btn" key={t} onClick={() => { setTab(t); setLibraryOpen(false); }}>{label}</button>)}
@@ -157,19 +171,20 @@ export function App({ api }: { api: Api }) {
           {api.kind === "mock" && <span className="mock" title="画面確認用のモック(実際の文字起こしは行っていません)">モック</span>}
         </div>
         <div className="side-actions">
-          <button className="btn primary" onClick={pick} title="録音ファイル(m4a・mp3・wav・mp4 など)を選ぶ。ここにドラッグしても取り込めます">＋ 録音を取り込む</button>
-          <button className="btn rec" disabled={!!recordOpts} onClick={startRecording} aria-label="● 録音する">録音</button>
+          <button className="btn primary" disabled={!!plan?.purchaseVerificationPending} onClick={pick} title="録音ファイル(m4a・mp3・wav・mp4 など)を選ぶ。ここにドラッグしても取り込めます">＋ 録音を取り込む</button>
+          <button className="btn rec" disabled={!!recordOpts || !!plan?.purchaseVerificationPending} onClick={startRecording} aria-label="● 録音する">録音</button>
         </div>
         <div className="opts-toggle">
           <span className="note">{[opts.denoise && (plan?.denoise ?? true) && "ノイズ除去", opts.diarize && (plan?.diarize ?? true) && (settings?.diarizeAvailable ?? true) && `話者の判別(${opts.numSpeakers ? `${opts.numSpeakers}人` : "自動"})`, opts.language !== "ja" && (opts.language === "en" ? "英語" : "言語は自動"), (opts.rangeStartMs != null || opts.rangeEndMs != null) && "範囲指定"].filter(Boolean).join("・") || "設定なし"}</span>
           <button className="link" onClick={() => setShowOpts((v) => !v)} aria-expanded={showOpts}>取り込みの設定 {showOpts ? "▲" : "▼"}</button>
         </div>
         {showOpts && <div className="pad"><OptionsForm value={opts} onChange={setOpts} diarizeAvailable={settings?.diarizeAvailable ?? true} plan={plan} /></div>}
-        {plan?.tier === "free" && (
+        {plan?.purchaseVerificationPending && <p className="note" role="status">Appleの購入状態を確認しています…</p>}
+        {!plan?.purchaseVerificationPending && plan?.tier === "free" && (
           <div className="plan-strip" data-testid="plan-strip">
             <span className="pro">無料版</span>
             <span>残り {Math.floor((plan.remainingMs ?? 0) / 60000)} 分(累計 {Math.floor((plan.totalLimitMs ?? 0) / 60000)} 分・1件 {Math.floor((plan.meetingLimitMs ?? 0) / 60000)} 分まで)</span>
-            <button className="link" onClick={() => openPurchasePage().catch((e) => notify("err", String(e)))}>Pro版の購入先を選ぶ ↗</button>
+            <button className="link" onClick={() => isMacAppStore ? setTab("settings") : openPurchasePage().catch((e) => notify("err", String(e)))}>{isMacAppStore ? "Proの購入・復元" : "Pro版の購入先を選ぶ ↗"}</button>
           </div>
         )}
         {recordOpts && (
@@ -242,8 +257,8 @@ export function App({ api }: { api: Api }) {
                 <h1>録音を、この端末の中で<br />議事録にしましょう。</h1>
                 <p>録音ファイルを取り込むか、マイクで録音を始めてください。文字起こしはこのパソコンの中で行い、録音や文字を外に送りません。</p>
                 <div className="row">
-                  <button className="btn primary" onClick={pick}>録音ファイルを選ぶ</button>
-                  <button className="btn rec" disabled={!!recordOpts} onClick={startRecording}>マイクで録音を始める</button>
+                  <button className="btn primary" disabled={!!plan?.purchaseVerificationPending} onClick={pick}>録音ファイルを選ぶ</button>
+                  <button className="btn rec" disabled={!!recordOpts || !!plan?.purchaseVerificationPending} onClick={startRecording}>マイクで録音を始める</button>
                 </div>
                 <ol className="steps">
                   <li><b>取り込む・録る</b>m4a・mp3・wav・mp4 など。この画面にドラッグしても取り込めます。</li>
