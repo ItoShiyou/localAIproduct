@@ -15,7 +15,7 @@ ProはApple公式の買い切りアプリ内購入です。高精度モデル、
 
 アイコン: src-tauri/icons/mas/AppStoreIcon.png（既存ブランドSVGの図形を使用、1024px・不透明）。Mac用icnsはicons/mas/icon.icns。
 スクリーンショット: 実アプリの架空データで取得する。docs/ui/mock-*.pngを実機結果として提出しない。
-サポートURL: 未確定。所有者が管理し連絡方法のあるHTTPSページを公開後に登録。購入リンクを捏造しない。
+サポートURL候補: https://itoshiyou.github.io/localAIproduct/minutes/support/ 。連絡先を記載したページを準備済み。まだ公開していないため、公開と到達確認後に登録する。
 プライバシーポリシーURL: privacy-ja.mdを所有者管理のHTTPSページへ公開後に登録。
 
 ## 審査担当者向け説明案
